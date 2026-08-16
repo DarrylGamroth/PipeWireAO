@@ -135,6 +135,8 @@ static void link_update_state(struct pw_impl_link *link, enum pw_link_state stat
 	if (old < PW_LINK_STATE_PAUSED && state == PW_LINK_STATE_PAUSED) {
 		link->prepared = true;
 		link->preparing = false;
+		if (link->buffer_latest)
+			pw_impl_link_activate(link);
 		pw_context_recalc_graph(link->context, "link prepared");
 	} else if (old >= PW_LINK_STATE_PAUSED && state < PW_LINK_STATE_PAUSED) {
 		link->prepared = false;
@@ -813,7 +815,8 @@ int pw_impl_link_activate(struct pw_impl_link *this)
 			pw_link_state_as_string(this->info.state));
 
 	if (this->destroyed || impl->activated || !this->prepared ||
-		!impl->input.node->runnable || !impl->output.node->runnable)
+	    (!this->buffer_latest &&
+	     (!impl->input.node->runnable || !impl->output.node->runnable)))
 		return 0;
 
 	/* check if the output node is a driver for the input node and if
