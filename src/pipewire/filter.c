@@ -85,7 +85,7 @@ struct port {
 	struct spa_param_info params[N_PORT_PARAMS];
 
 	struct spa_io_buffers *io;
-	struct spa_io_buffers_queue *queue_io;
+	struct spa_io_buffers_latest *latest_io;
 
 	struct buffer buffers[MAX_BUFFERS];
 	uint32_t n_buffers;
@@ -618,11 +618,11 @@ static int impl_port_set_io(void *object, enum spa_direction direction, uint32_t
 		else
 			port->io = NULL;
 		break;
-	case SPA_IO_BuffersQueue:
-		if (data && size >= sizeof(struct spa_io_buffers_queue))
-			port->queue_io = data;
+	case SPA_IO_BuffersLatest:
+		if (data && size >= sizeof(struct spa_io_buffers_latest))
+			port->latest_io = data;
 		else
-			port->queue_io = NULL;
+			port->latest_io = NULL;
 		break;
 	}
 
@@ -1031,7 +1031,7 @@ static int impl_node_process(void *object)
 	spa_list_for_each(p, &impl->port_list, link) {
 		struct spa_io_buffers *io = p->io;
 
-		if (SPA_UNLIKELY(p->queue_io != NULL || io == NULL ||
+		if (SPA_UNLIKELY(p->latest_io != NULL || io == NULL ||
 		    io->buffer_id >= p->n_buffers))
 			continue;
 
@@ -1061,7 +1061,7 @@ static int impl_node_process(void *object)
 	spa_list_for_each(p, &impl->port_list, link) {
 		struct spa_io_buffers *io = p->io;
 
-		if (SPA_UNLIKELY(p->queue_io != NULL || io == NULL))
+		if (SPA_UNLIKELY(p->latest_io != NULL || io == NULL))
 			continue;
 
 		if (p->direction == SPA_DIRECTION_INPUT) {
@@ -1757,8 +1757,8 @@ static void add_port_params(struct filter *impl, struct port *port)
 	add_param(impl, port, SPA_PARAM_IO, PARAM_FLAG_LOCKED,
 		spa_pod_builder_add_object(&b,
 			SPA_TYPE_OBJECT_ParamIO, SPA_PARAM_IO,
-			SPA_PARAM_IO_id,   SPA_POD_Id(SPA_IO_BuffersQueue),
-			SPA_PARAM_IO_size, SPA_POD_Int(sizeof(struct spa_io_buffers_queue))));
+			SPA_PARAM_IO_id,   SPA_POD_Id(SPA_IO_BuffersLatest),
+			SPA_PARAM_IO_size, SPA_POD_Int(sizeof(struct spa_io_buffers_latest))));
 }
 
 static void add_audio_dsp_port_params(struct filter *impl, struct port *port)
@@ -2041,10 +2041,14 @@ struct pw_buffer *pw_filter_dequeue_buffer(void *port_data)
 	int res;
 
 	b = pop_queue(p, &p->dequeued);
-	if (b == NULL && p->queue_io != NULL) {
-		res = p->direction == SPA_DIRECTION_INPUT
-			? spa_io_buffers_queue_pop_ready(p->queue_io, &id)
-			: spa_io_buffers_queue_pop_recycle(p->queue_io, &id);
+	if (b == NULL && p->latest_io != NULL) {
+		if (p->direction == SPA_DIRECTION_INPUT) {
+			res = spa_io_buffers_latest_acquire(p->latest_io, &id);
+		} else {
+			res = spa_io_buffers_latest_pop_recycle(p->latest_io, &id);
+			if (res == -EPIPE)
+				res = spa_io_buffers_latest_withdraw(p->latest_io, &id);
+		}
 		if (res == 0) {
 			if (SPA_UNLIKELY(id >= p->n_buffers)) {
 				errno = EPROTO;
@@ -2083,13 +2087,31 @@ int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer)
 		return -EINVAL;
 	}
 	pw_log_trace_fp("%p: queue buffer %d", p->filter, b->id);
-	if (p->queue_io != NULL) {
-		int res = p->direction == SPA_DIRECTION_OUTPUT
-			? spa_io_buffers_queue_push_ready(p->queue_io, b->id)
-			: spa_io_buffers_queue_push_recycle(p->queue_io, b->id);
+	if (p->latest_io != NULL) {
+		uint32_t superseded_id;
+		int res;
+
+		if (p->direction == SPA_DIRECTION_OUTPUT) {
+			res = spa_io_buffers_latest_publish(p->latest_io, b->id,
+					&superseded_id);
+		} else {
+			res = spa_io_buffers_latest_push_recycle(p->latest_io, b->id);
+		}
 		if (res < 0)
 			return res;
 		SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
+		if (res > 0) {
+			struct buffer *superseded;
+
+			if (SPA_UNLIKELY(superseded_id >= p->n_buffers ||
+			    superseded_id == b->id))
+				return -EPROTO;
+			superseded = &p->buffers[superseded_id];
+			if (SPA_UNLIKELY(SPA_FLAG_IS_SET(superseded->flags,
+					BUFFER_FLAG_DEQUEUED)))
+				return -EPROTO;
+			push_queue(p, &p->dequeued, superseded);
+		}
 		return 0;
 	}
 	SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
