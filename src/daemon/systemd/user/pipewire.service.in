@@ -1,5 +1,5 @@
 [Unit]
-Description=PipeWire Multimedia Service
+Description=PipeWireAO Service
 
 # We require pipewire.socket to be active before starting the daemon, because
 # while it is possible to use the service without the socket, it is not clear
@@ -13,7 +13,7 @@ Description=PipeWire Multimedia Service
 #
 # After=pipewire.socket is not needed, as it is already implicit in the
 # socket-service relationship, see systemd.socket(5).
-Requires=pipewire.socket @PW_SERVICE_REQS@
+Requires=pipewire-ao.socket @PW_SERVICE_REQS@
 ConditionUser=!root
 
 [Service]
@@ -28,5 +28,5 @@ Restart=on-failure
 Slice=session.slice
 
 [Install]
-Also=pipewire.socket
+Also=pipewire-ao.socket
 WantedBy=default.target
