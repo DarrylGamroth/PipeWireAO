@@ -97,14 +97,14 @@ PWTEST(node_io_buffers_latest)
 
 	pwtest_int_eq(spa_io_buffers_latest_publish(&latest, 3, NULL), 0);
 	pwtest_int_eq(spa_io_buffers_latest_acquire(&latest, &id), 0);
-	pwtest_int_eq(id, 3);
+	pwtest_int_eq(id, 3U);
 
 	pwtest_int_eq(spa_io_buffers_latest_publish(&latest, 5, NULL), 0);
 	pwtest_int_eq(spa_io_buffers_latest_publish(&latest, 7, &superseded), 1);
-	pwtest_int_eq(superseded, 5);
+	pwtest_int_eq(superseded, 5U);
 	pwtest_int_eq(SPA_ATOMIC_LOAD(latest.superseded), 1U);
 	pwtest_int_eq(spa_io_buffers_latest_withdraw(&latest, &id), 0);
-	pwtest_int_eq(id, 7);
+	pwtest_int_eq(id, 7U);
 	pwtest_int_eq(SPA_ATOMIC_LOAD(latest.superseded), 2U);
 
 	for (i = 0; i < SPA_IO_BUFFERS_LATEST_CAPACITY; i++)
