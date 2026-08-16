@@ -924,6 +924,7 @@ struct pw_impl_port {
 #define PW_IMPL_PORT_FLAG_CONTROL		(1<<2)		/**< port has control */
 #define PW_IMPL_PORT_FLAG_NO_MIXER		(1<<3)		/**< don't try to add mixer to port */
 #define PW_IMPL_PORT_FLAG_ASYNC			(1<<4)		/**< port support async io */
+#define PW_IMPL_PORT_FLAG_BUFFERS_QUEUE		(1<<5)		/**< port supports buffer queue io */
 	uint32_t flags;
 	uint64_t spa_flags;
 
@@ -1045,7 +1046,7 @@ struct pw_impl_link {
 	struct pw_link_info info;		/**< introspectable link info */
 	struct pw_properties *properties;	/**< extra link properties */
 
-	struct spa_io_buffers *io;		/**< link io area */
+	void *io;				/**< link io area */
 
 	struct pw_impl_port *output;		/**< output port */
 	struct spa_list output_link;		/**< link in output port links */
@@ -1067,6 +1068,7 @@ struct pw_impl_link {
 	void *user_data;
 
 	unsigned int async:1;
+	unsigned int buffer_queue:1;
 	unsigned int registered:1;
 	unsigned int feedback:1;
 	unsigned int preparing:1;
