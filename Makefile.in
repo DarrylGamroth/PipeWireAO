@@ -16,31 +16,31 @@ clean:
 	ninja -C $(BUILD_ROOT) clean
 
 run: all
-	SPA_PLUGIN_DIR=$(BUILD_ROOT)/spa/plugins \
+	PIPEWIREAO_SPA_PLUGIN_DIR=$(BUILD_ROOT)/spa/plugins \
 	SPA_DATA_DIR=$(SOURCE_ROOT)/spa/plugins \
-	PIPEWIRE_MODULE_DIR=$(BUILD_ROOT)/src/modules \
+	PIPEWIREAO_MODULE_DIR=$(BUILD_ROOT)/src/modules \
 	PATH=$(BUILD_ROOT)/src/examples:$(PATH) \
-	PIPEWIRE_CONFIG_DIR=$(BUILD_ROOT)/src/daemon \
+	PIPEWIREAO_CONFIG_DIR=$(BUILD_ROOT)/src/daemon \
 	ACP_PATHS_DIR=$(SOURCE_ROOT)/spa/plugins/alsa/mixer/paths \
 	ACP_PROFILES_DIR=$(SOURCE_ROOT)/spa/plugins/alsa/mixer/profile-sets \
-	PIPEWIRE_LOG_SYSTEMD=false \
+	PIPEWIREAO_LOG_SYSTEMD=false \
 	$(DBG) $(BUILD_ROOT)/src/daemon/pipewire-uninstalled
 
 run-pulse: all
-	SPA_PLUGIN_DIR=$(BUILD_ROOT)/spa/plugins \
+	PIPEWIREAO_SPA_PLUGIN_DIR=$(BUILD_ROOT)/spa/plugins \
 	SPA_DATA_DIR=$(SOURCE_ROOT)/spa/plugins \
-	PIPEWIRE_MODULE_DIR=$(BUILD_ROOT)/src/modules \
-	PIPEWIRE_CONFIG_DIR=$(BUILD_ROOT)/src/daemon \
+	PIPEWIREAO_MODULE_DIR=$(BUILD_ROOT)/src/modules \
+	PIPEWIREAO_CONFIG_DIR=$(BUILD_ROOT)/src/daemon \
 	ACP_PATHS_DIR=$(SOURCE_ROOT)/spa/plugins/alsa/mixer/paths \
 	ACP_PROFILES_DIR=$(SOURCE_ROOT)/spa/plugins/alsa/mixer/profile-sets \
-	PIPEWIRE_LOG_SYSTEMD=false \
+	PIPEWIREAO_LOG_SYSTEMD=false \
 	$(DBG) $(BUILD_ROOT)/src/daemon/pipewire-pulse
 
 gdb:
 	$(MAKE) run DBG=gdb
 
 valgrind:
-	$(MAKE) run DBG="DISABLE_RTKIT=1 PIPEWIRE_DLCLOSE=false valgrind --trace-children=yes --leak-check=full"
+	$(MAKE) run DBG="DISABLE_RTKIT=1 PIPEWIREAO_DLCLOSE=false valgrind --trace-children=yes --leak-check=full"
 
 test: all
 	ninja -C $(BUILD_ROOT) test
@@ -49,15 +49,15 @@ benchmark: all
 	ninja -C $(BUILD_ROOT) benchmark
 
 monitor: all
-	SPA_PLUGIN_DIR=$(BUILD_ROOT)/spa/plugins \
+	PIPEWIREAO_SPA_PLUGIN_DIR=$(BUILD_ROOT)/spa/plugins \
 	SPA_DATA_DIR=$(SOURCE_ROOT)/spa/plugins \
-	PIPEWIRE_MODULE_DIR=$(BUILD_ROOT)/src/modules/ \
+	PIPEWIREAO_MODULE_DIR=$(BUILD_ROOT)/src/modules/ \
 	$(BUILD_ROOT)/src/tools/pw-mon
 
 cli: all
-	SPA_PLUGIN_DIR=$(BUILD_ROOT)/spa/plugins \
+	PIPEWIREAO_SPA_PLUGIN_DIR=$(BUILD_ROOT)/spa/plugins \
 	SPA_DATA_DIR=$(SOURCE_ROOT)/spa/plugins \
-	PIPEWIRE_MODULE_DIR=$(BUILD_ROOT)/src/modules/ \
+	PIPEWIREAO_MODULE_DIR=$(BUILD_ROOT)/src/modules/ \
 	$(BUILD_ROOT)/src/tools/pw-cli
 
 shell: all

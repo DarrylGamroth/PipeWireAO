@@ -162,7 +162,7 @@ PWTEST(default_env_test)
 	/* This one is set automatically */
 	pwtest_str_eq(getenv("PWTEST"), "1");
 	/* Default value */
-	pwtest_str_eq(getenv("PIPEWIRE_REMOTE"), "test-has-no-daemon");
+	pwtest_str_eq(getenv("PIPEWIREAO_REMOTE"), "test-has-no-daemon");
 
 	return PWTEST_PASS;
 }
@@ -173,7 +173,7 @@ PWTEST(daemon_test)
         struct pw_core *core;
 	struct pw_loop *loop;
 
-	pwtest_str_eq_n(getenv("PIPEWIRE_REMOTE"), "pwtest-pw-", 10);
+	pwtest_str_eq_n(getenv("PIPEWIREAO_REMOTE"), "pwtest-pw-", 10);
 
 	pw_init(0, NULL);
 	loop = pw_loop_new(NULL);

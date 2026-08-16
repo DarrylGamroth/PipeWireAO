@@ -1666,9 +1666,9 @@ pw_filter_connect(struct pw_filter *filter,
 	pw_context_conf_section_match_rules(impl->context, "filter.rules",
 		&filter->properties->dict, execute_match, &match);
 
-	if ((str = getenv("PIPEWIRE_PROPS")) != NULL)
+	if ((str = getenv("PIPEWIREAO_PROPS")) != NULL)
 		pw_properties_update_string(filter->properties, str, strlen(str));
-	if ((str = getenv("PIPEWIRE_QUANTUM")) != NULL) {
+	if ((str = getenv("PIPEWIREAO_QUANTUM")) != NULL) {
 		struct spa_fraction q;
 		if (sscanf(str, "%u/%u", &q.num, &q.denom) == 2 && q.denom != 0) {
 			pw_properties_setf(filter->properties, PW_KEY_NODE_FORCE_RATE,
@@ -1677,9 +1677,9 @@ pw_filter_connect(struct pw_filter *filter,
 					"%u", q.num);
 		}
 	}
-	if ((str = getenv("PIPEWIRE_LATENCY")) != NULL)
+	if ((str = getenv("PIPEWIREAO_LATENCY")) != NULL)
 		pw_properties_set(filter->properties, PW_KEY_NODE_LATENCY, str);
-	if ((str = getenv("PIPEWIRE_RATE")) != NULL)
+	if ((str = getenv("PIPEWIREAO_RATE")) != NULL)
 		pw_properties_set(filter->properties, PW_KEY_NODE_RATE, str);
 
 	if (filter->core == NULL) {

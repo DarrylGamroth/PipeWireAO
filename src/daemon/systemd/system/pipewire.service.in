@@ -27,7 +27,7 @@ Restart=on-failure
 RuntimeDirectory=pipewire-ao
 RuntimeDirectoryPreserve=yes
 User=pipewire
-Environment=PIPEWIRE_RUNTIME_DIR=%t/pipewire-ao
+Environment=PIPEWIREAO_RUNTIME_DIR=%t/pipewire-ao
 
 [Install]
 Also=pipewire-ao.socket
