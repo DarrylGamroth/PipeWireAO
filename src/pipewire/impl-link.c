@@ -51,10 +51,8 @@ struct impl {
 	struct spa_pod *format_filter;
 	struct pw_properties *properties;
 
-	union {
-		struct spa_io_async_buffers async_buffers;
-		struct spa_io_buffers_queue buffers_queue;
-	} io;
+	struct spa_io_async_buffers io;
+	struct pw_memblock *latest_mem;
 	uint32_t io_type;
 };
 
@@ -650,16 +648,20 @@ static void select_io(struct pw_impl_link *this)
 	struct impl *impl = SPA_CONTAINER_OF(this, struct impl, this);
 	void *io;
 
-	io = this->rt.in_mix.io_data;
-	if (io == NULL)
-		io = this->rt.out_mix.io_data;
-	if (io == NULL)
-		io = &impl->io;
+	if (this->buffer_latest) {
+		io = impl->latest_mem->map->ptr;
+	} else {
+		io = this->rt.in_mix.io_data;
+		if (io == NULL)
+			io = this->rt.out_mix.io_data;
+		if (io == NULL)
+			io = &impl->io;
+	}
 
 	this->io = io;
-	if (this->buffer_queue) {
-		struct spa_io_buffers_queue *queue = io;
-		*queue = SPA_IO_BUFFERS_QUEUE_INIT;
+	if (this->buffer_latest) {
+		struct spa_io_buffers_latest *latest = io;
+		*latest = SPA_IO_BUFFERS_LATEST_INIT;
 	} else {
 		struct spa_io_async_buffers *async = io;
 		async->buffers[0] = SPA_IO_BUFFERS_INIT;
@@ -822,9 +824,9 @@ int pw_impl_link_activate(struct pw_impl_link *this)
 	reliable_driver = (impl->output.node == impl->input.node->driver_node) &&
 		impl->output.node->reliable;
 
-	if (this->buffer_queue) {
-		io_type = SPA_IO_BuffersQueue;
-		io_size = sizeof(struct spa_io_buffers_queue);
+	if (this->buffer_latest) {
+		io_type = SPA_IO_BuffersLatest;
+		io_size = sizeof(struct spa_io_buffers_latest);
 	} else if (this->async && !reliable_driver) {
 		io_type = SPA_IO_AsyncBuffers;
 		io_size = sizeof(struct spa_io_async_buffers);
@@ -1490,17 +1492,17 @@ static const struct pw_global_events input_global_events = {
 	.permissions_changed = input_permissions_changed,
 };
 
-static bool port_has_buffer_queue_link(struct pw_impl_port *port)
+static bool port_has_buffer_latest_link(struct pw_impl_port *port)
 {
 	struct pw_impl_link *link;
 
 	if (port->direction == PW_DIRECTION_OUTPUT) {
 		spa_list_for_each(link, &port->links, output_link)
-			if (link->buffer_queue)
+			if (link->buffer_latest)
 				return true;
 	} else {
 		spa_list_for_each(link, &port->links, input_link)
-			if (link->buffer_queue)
+			if (link->buffer_latest)
 				return true;
 	}
 	return false;
@@ -1565,32 +1567,44 @@ struct pw_impl_link *pw_context_create_link(struct pw_context *context,
 
 	this->output = output;
 	this->input = input;
-	this->buffer_queue = pw_properties_get_bool(properties,
-			PW_KEY_LINK_BUFFER_QUEUE, false);
-	if ((this->buffer_queue && (output->n_mix != 0 || input->n_mix != 0)) ||
-	    port_has_buffer_queue_link(output) ||
-	    port_has_buffer_queue_link(input)) {
+	this->buffer_latest = pw_properties_get_bool(properties,
+			PW_KEY_LINK_BUFFER_LATEST, false);
+	if ((this->buffer_latest && (output->n_mix != 0 || input->n_mix != 0)) ||
+	    port_has_buffer_latest_link(output) ||
+	    port_has_buffer_latest_link(input)) {
 		res = -EBUSY;
-		pw_log_error("buffer queue io requires exclusive ports");
+		pw_log_error("buffer latest io requires exclusive ports");
 		goto error_free;
 	}
-	if (this->buffer_queue &&
-	    (!SPA_FLAG_IS_SET(output->flags, PW_IMPL_PORT_FLAG_BUFFERS_QUEUE) ||
-	     !SPA_FLAG_IS_SET(input->flags, PW_IMPL_PORT_FLAG_BUFFERS_QUEUE))) {
+	if (this->buffer_latest &&
+	    (!SPA_FLAG_IS_SET(output->flags, PW_IMPL_PORT_FLAG_BUFFERS_LATEST) ||
+	     !SPA_FLAG_IS_SET(input->flags, PW_IMPL_PORT_FLAG_BUFFERS_LATEST))) {
 		res = -ENOTSUP;
-		pw_log_error("buffer queue io is not supported by both ports");
+		pw_log_error("buffer latest io is not supported by both ports");
 		goto error_free;
+	}
+	if (this->buffer_latest) {
+		impl->latest_mem = pw_mempool_alloc(pw_context_get_mempool(context),
+				PW_MEMBLOCK_FLAG_READWRITE |
+				PW_MEMBLOCK_FLAG_SEAL |
+				PW_MEMBLOCK_FLAG_MAP,
+				SPA_DATA_MemFd, sizeof(struct spa_io_buffers_latest));
+		if (impl->latest_mem == NULL) {
+			res = -errno;
+			pw_log_error("can't allocate buffer latest io: %m");
+			goto error_free;
+		}
 	}
 
-	this->async = !this->buffer_queue &&
+	this->async = !this->buffer_latest &&
 		(output_node->async || input_node->async) &&
 		SPA_FLAG_IS_SET(output->flags, PW_IMPL_PORT_FLAG_ASYNC) &&
 		SPA_FLAG_IS_SET(input->flags, PW_IMPL_PORT_FLAG_ASYNC);
 
 	if (this->async)
 		 pw_properties_set(properties, PW_KEY_LINK_ASYNC, "true");
-	if (this->buffer_queue)
-		pw_properties_set(properties, PW_KEY_LINK_BUFFER_QUEUE, "true");
+	if (this->buffer_latest)
+		pw_properties_set(properties, PW_KEY_LINK_BUFFER_LATEST, "true");
 
 	spa_hook_list_init(&this->listener_list);
 
@@ -1690,6 +1704,8 @@ error_input_mix:
 	pw_impl_port_release_mix(output, &this->rt.out_mix);
 	goto error_free;
 error_free:
+	if (impl->latest_mem != NULL)
+		pw_memblock_unref(impl->latest_mem);
 	free(impl);
 error_exit:
 	pw_properties_free(properties);
@@ -1823,6 +1839,8 @@ void pw_impl_link_destroy(struct pw_impl_link *link)
 	free(link->name);
 	free(link->info.format);
 	free((char *) link->info.error);
+	if (impl->latest_mem != NULL)
+		pw_memblock_unref(impl->latest_mem);
 	free(impl);
 }
 
