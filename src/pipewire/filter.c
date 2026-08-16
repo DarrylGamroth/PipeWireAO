@@ -38,6 +38,9 @@ struct buffer {
 #define BUFFER_FLAG_MAPPED	(1 << 0)
 #define BUFFER_FLAG_DEQUEUED	(1 << 1)
 #define BUFFER_FLAG_ADDED	(1 << 2)
+#define BUFFER_FLAG_PROGRESSIVE	(1 << 3)
+#define BUFFER_FLAG_RECYCLED	(1 << 4)
+#define BUFFER_FLAG_SUPERSEDED	(1 << 5)
 	uint32_t flags;
 };
 
@@ -2045,9 +2048,56 @@ struct pw_buffer *pw_filter_dequeue_buffer(void *port_data)
 		if (p->direction == SPA_DIRECTION_INPUT) {
 			res = spa_io_buffers_latest_acquire(p->latest_io, &id);
 		} else {
-			res = spa_io_buffers_latest_pop_recycle(p->latest_io, &id);
-			if (res == -EPIPE)
-				res = spa_io_buffers_latest_withdraw(p->latest_io, &id);
+			uint32_t attempts = 0;
+
+			for (;;) {
+				res = spa_io_buffers_latest_pop_recycle(p->latest_io, &id);
+				if (res == -EPIPE)
+					break;
+				if (res < 0)
+					goto latest_error;
+				if (SPA_UNLIKELY(id >= p->n_buffers)) {
+					res = -EPROTO;
+					goto latest_error;
+				}
+				b = &p->buffers[id];
+				if (!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED))
+					goto latest_done;
+				if (SPA_UNLIKELY(!SPA_FLAG_IS_SET(b->flags,
+						BUFFER_FLAG_PROGRESSIVE))) {
+					res = -EPROTO;
+					goto latest_error;
+				}
+				SPA_FLAG_SET(b->flags, BUFFER_FLAG_RECYCLED);
+				b = NULL;
+				if (SPA_UNLIKELY(++attempts > p->n_buffers)) {
+					res = -EPROTO;
+					goto latest_error;
+				}
+			}
+			res = spa_io_buffers_latest_withdraw(p->latest_io, &id);
+			if (res == 0 && SPA_LIKELY(id < p->n_buffers)) {
+				b = &p->buffers[id];
+				if (SPA_UNLIKELY(SPA_FLAG_IS_SET(b->flags,
+						BUFFER_FLAG_DEQUEUED))) {
+					uint32_t superseded_id;
+
+					if (!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_PROGRESSIVE)) {
+						res = -EPROTO;
+						goto latest_error;
+					}
+					res = spa_io_buffers_latest_publish(p->latest_io, id,
+							&superseded_id);
+					if (SPA_UNLIKELY(res != 0)) {
+						res = -EPROTO;
+						goto latest_error;
+					}
+					b = NULL;
+					res = -EBUSY;
+				}
+			} else if (res == 0) {
+				res = -EPROTO;
+			}
 		}
 		if (res == 0) {
 			if (SPA_UNLIKELY(id >= p->n_buffers)) {
@@ -2061,8 +2111,10 @@ struct pw_buffer *pw_filter_dequeue_buffer(void *port_data)
 				return NULL;
 			}
 		} else {
+		latest_error:
 			errno = -res;
 		}
+	latest_done:;
 	}
 	if (SPA_UNLIKELY(b == NULL)) {
 		res = -errno;
@@ -2076,6 +2128,24 @@ struct pw_buffer *pw_filter_dequeue_buffer(void *port_data)
 	return &b->this;
 }
 
+static int handle_latest_superseded(struct port *p, uint32_t buffer_id,
+		uint32_t published_id)
+{
+	struct buffer *b;
+
+	if (SPA_UNLIKELY(buffer_id >= p->n_buffers || buffer_id == published_id))
+		return -EPROTO;
+	b = &p->buffers[buffer_id];
+	if (SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED)) {
+		if (SPA_UNLIKELY(!SPA_FLAG_IS_SET(b->flags,
+				BUFFER_FLAG_PROGRESSIVE)))
+			return -EPROTO;
+		SPA_FLAG_SET(b->flags, BUFFER_FLAG_SUPERSEDED);
+		return 0;
+	}
+	return push_queue(p, &p->dequeued, b);
+}
+
 SPA_EXPORT
 int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer)
 {
@@ -2085,6 +2155,11 @@ int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer)
 	if (!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED)) {
 		pw_log_warn("%p: tried to queue cleared buffer %d", p->filter, b->id);
 		return -EINVAL;
+	}
+	if (SPA_UNLIKELY(SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_PROGRESSIVE))) {
+		pw_log_warn("%p: tried to queue active progressive buffer %d",
+				p->filter, b->id);
+		return -EBUSY;
 	}
 	pw_log_trace_fp("%p: queue buffer %d", p->filter, b->id);
 	if (p->latest_io != NULL) {
@@ -2100,22 +2175,61 @@ int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer)
 		if (res < 0)
 			return res;
 		SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
-		if (res > 0) {
-			struct buffer *superseded;
-
-			if (SPA_UNLIKELY(superseded_id >= p->n_buffers ||
-			    superseded_id == b->id))
-				return -EPROTO;
-			superseded = &p->buffers[superseded_id];
-			if (SPA_UNLIKELY(SPA_FLAG_IS_SET(superseded->flags,
-					BUFFER_FLAG_DEQUEUED)))
-				return -EPROTO;
-			push_queue(p, &p->dequeued, superseded);
-		}
+		if (res > 0)
+			return handle_latest_superseded(p, superseded_id, b->id);
 		return 0;
 	}
 	SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
 	return push_queue(p, &p->queued, b);
+}
+
+SPA_EXPORT
+int pw_filter_begin_progressive_buffer(void *port_data, struct pw_buffer *buffer)
+{
+	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
+	struct buffer *b = SPA_CONTAINER_OF(buffer, struct buffer, this);
+	uint32_t superseded_id;
+	int res;
+
+	if (SPA_UNLIKELY(p->latest_io == NULL))
+		return -ENOTSUP;
+	if (SPA_UNLIKELY(p->direction != SPA_DIRECTION_OUTPUT))
+		return -EINVAL;
+	if (SPA_UNLIKELY(!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED) ||
+			(b->flags & (BUFFER_FLAG_PROGRESSIVE |
+				BUFFER_FLAG_RECYCLED | BUFFER_FLAG_SUPERSEDED)) != 0))
+		return -EINVAL;
+
+	SPA_FLAG_SET(b->flags, BUFFER_FLAG_PROGRESSIVE);
+	res = spa_io_buffers_latest_publish(p->latest_io, b->id, &superseded_id);
+	if (SPA_UNLIKELY(res < 0)) {
+		SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_PROGRESSIVE);
+		return res;
+	}
+	return res > 0 ? handle_latest_superseded(p, superseded_id, b->id) : 0;
+}
+
+SPA_EXPORT
+int pw_filter_end_progressive_buffer(void *port_data, struct pw_buffer *buffer)
+{
+	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
+	struct buffer *b = SPA_CONTAINER_OF(buffer, struct buffer, this);
+	bool reusable;
+
+	if (SPA_UNLIKELY(p->latest_io == NULL))
+		return -ENOTSUP;
+	if (SPA_UNLIKELY(p->direction != SPA_DIRECTION_OUTPUT))
+		return -EINVAL;
+	if (SPA_UNLIKELY(!SPA_FLAG_IS_SET(b->flags,
+			BUFFER_FLAG_DEQUEUED | BUFFER_FLAG_PROGRESSIVE)))
+		return -EINVAL;
+
+	reusable = (b->flags & (BUFFER_FLAG_RECYCLED |
+			BUFFER_FLAG_SUPERSEDED)) != 0;
+	SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED | BUFFER_FLAG_PROGRESSIVE |
+			BUFFER_FLAG_RECYCLED | BUFFER_FLAG_SUPERSEDED);
+
+	return reusable ? push_queue(p, &p->dequeued, b) : 0;
 }
 
 SPA_EXPORT
