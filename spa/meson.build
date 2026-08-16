@@ -28,9 +28,9 @@ spa_inc_dep = declare_dependency(
 meson.override_dependency('lib@0@'.format(spa_name), spa_dep)
 
 pkgconfig.generate(filebase : 'lib@0@'.format(spa_name),
-  name : 'libspa',
+  name : 'libspa-ao',
   subdirs : spa_name,
-  description : 'Simple Plugin API',
+  description : 'PipeWireAO Simple Plugin API',
   version : spaversion,
   extra_cflags : ['-D_REENTRANT', '-fno-strict-aliasing', '-fno-strict-overflow'],
   variables : ['plugindir=${libdir}/@0@'.format(spa_name)],

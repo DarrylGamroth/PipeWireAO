@@ -9,12 +9,12 @@ if get_option('systemd-user-unit-dir') != ''
 endif
 
 install_data(
-  sources : ['pipewire.socket', 'pipewire-pulse.socket'],
+  sources : ['pipewire.socket'],
+  rename : ['pipewire-ao.socket'],
   install_dir : systemd_user_services_dir)
 
 systemd_config = configuration_data()
-systemd_config.set('PW_BINARY', pipewire_bindir / 'pipewire')
-systemd_config.set('PW_PULSE_BINARY', pipewire_bindir / 'pipewire-pulse')
+systemd_config.set('PW_BINARY', pipewire_bindir / pipewire_daemon_name)
 
 pw_service_reqs = ''
 if get_option('dbus').enabled()
@@ -23,16 +23,6 @@ endif
 systemd_config.set('PW_SERVICE_REQS', pw_service_reqs)
 
 configure_file(input : 'pipewire.service.in',
-               output : 'pipewire.service',
-               configuration : systemd_config,
-               install_dir : systemd_user_services_dir)
-
-configure_file(input : 'pipewire-pulse.service.in',
-               output : 'pipewire-pulse.service',
-               configuration : systemd_config,
-               install_dir : systemd_user_services_dir)
-
-configure_file(input : 'filter-chain.service.in',
-               output : 'filter-chain.service',
+               output : 'pipewire-ao.service',
                configuration : systemd_config,
                install_dir : systemd_user_services_dir)

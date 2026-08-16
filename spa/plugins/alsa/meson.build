@@ -40,7 +40,7 @@ alsa_udevrules = [
   '90-pipewire-alsa.rules',
 ]
 
-executable('spa-acp-tool',
+executable('pwao-spa-acp-tool',
   [ 'acp-tool.c' ],
   c_args : acp_c_args,
   dependencies : [ spa_dep, alsa_dep, mathlib, acp_dep ],
@@ -61,6 +61,7 @@ executable('test-hw-params',
 
 if libudev_dep.found()
   install_data(alsa_udevrules,
+    rename : ['90-pipewire-ao-alsa.rules'],
     install_dir : udevrulesdir,
   )
 endif

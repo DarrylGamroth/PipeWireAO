@@ -24,7 +24,7 @@ context.properties = {
     #cpu.zero.denormals                    = false
 
     core.daemon = true              # listening for socket connections
-    core.name   = pipewire-0        # core name and socket name
+    core.name   = pipewire-ao       # core name and socket name
 
     ## Properties for the DSP configuration.
     #default.clock.rate          = 48000
