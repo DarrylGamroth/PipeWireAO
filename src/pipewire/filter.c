@@ -7,6 +7,7 @@
 #include <math.h>
 #include <sys/mman.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <spa/buffer/alloc.h>
 #include <spa/param/props.h>
@@ -89,6 +90,7 @@ struct port {
 
 	struct spa_io_buffers *io;
 	struct spa_io_buffers_latest *latest_io;
+	int latest_notify_fd;
 
 	struct buffer buffers[MAX_BUFFERS];
 	uint32_t n_buffers;
@@ -339,6 +341,7 @@ static struct port *alloc_port(struct filter *filter,
 		return NULL;
 	p->filter = filter;
 	p->direction = direction;
+	p->latest_notify_fd = -1;
 	p->latency[SPA_DIRECTION_INPUT] = SPA_LATENCY_INFO(SPA_DIRECTION_INPUT);
 	p->latency[SPA_DIRECTION_OUTPUT] = SPA_LATENCY_INFO(SPA_DIRECTION_OUTPUT);
 
@@ -626,6 +629,16 @@ static int impl_port_set_io(void *object, enum spa_direction direction, uint32_t
 			port->latest_io = data;
 		else
 			port->latest_io = NULL;
+		break;
+	case SPA_IO_BuffersLatestNotify:
+		if (data && size >= sizeof(struct spa_io_buffers_latest_notify)) {
+			const struct spa_io_buffers_latest_notify *notify = data;
+
+			port->latest_notify_fd = notify->reserved == 0 && notify->fd >= 0
+				? notify->fd : -1;
+		} else {
+			port->latest_notify_fd = -1;
+		}
 		break;
 	}
 
@@ -2146,6 +2159,17 @@ static int handle_latest_superseded(struct port *p, uint32_t buffer_id,
 	return push_queue(p, &p->dequeued, b);
 }
 
+static inline void signal_latest_notify(struct port *p)
+{
+	uint64_t count = 1;
+
+	if (p->latest_notify_fd >= 0 &&
+	    SPA_UNLIKELY(write(p->latest_notify_fd, &count, sizeof(count)) < 0) &&
+	    errno != EAGAIN && errno != EINTR) {
+		pw_log_trace_fp("%p: latest-buffer notification failed: %m", p->filter);
+	}
+}
+
 SPA_EXPORT
 int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer)
 {
@@ -2175,6 +2199,8 @@ int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer)
 		if (res < 0)
 			return res;
 		SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
+		if (p->direction == SPA_DIRECTION_OUTPUT)
+			signal_latest_notify(p);
 		if (res > 0)
 			return handle_latest_superseded(p, superseded_id, b->id);
 		return 0;
@@ -2206,7 +2232,18 @@ int pw_filter_begin_progressive_buffer(void *port_data, struct pw_buffer *buffer
 		SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_PROGRESSIVE);
 		return res;
 	}
+	signal_latest_notify(p);
 	return res > 0 ? handle_latest_superseded(p, superseded_id, b->id) : 0;
+}
+
+SPA_EXPORT
+int pw_filter_get_buffer_latest_fd(void *port_data)
+{
+	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
+
+	if (SPA_UNLIKELY(p->latest_io == NULL))
+		return -ENOTSUP;
+	return p->latest_notify_fd >= 0 ? p->latest_notify_fd : -ENODEV;
 }
 
 SPA_EXPORT
