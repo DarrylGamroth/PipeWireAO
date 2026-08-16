@@ -15,10 +15,9 @@ AmbientCapabilities=CAP_SYS_NICE
 ExecStart=@PW_PULSE_BINARY@
 Restart=on-failure
 User=pipewire
-Environment=PIPEWIRE_RUNTIME_DIR=%t/pipewire
+Environment=PIPEWIREAO_RUNTIME_DIR=%t/pipewire-ao
 Environment=PULSE_RUNTIME_PATH=%t/pulse
 
 [Install]
 Also=pipewire-pulse.socket
 WantedBy=pipewire.service
-

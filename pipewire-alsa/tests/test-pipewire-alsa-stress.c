@@ -107,7 +107,7 @@ main(int argc, char *argv[])
 	int s;
 
 	/* avoid rtkit in this test */
-	setenv("PIPEWIRE_CONFIG_NAME", "client.conf", false);
+	setenv("PIPEWIREAO_CONFIG_NAME", "client.conf", false);
 
 	while (true) {
 		for (n=0; n < N_THREADS; n++) {

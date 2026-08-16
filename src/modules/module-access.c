@@ -283,7 +283,7 @@ get_server_name(const struct spa_dict *props)
 {
 	const char *name = NULL;
 
-	name = getenv("PIPEWIRE_CORE");
+	name = getenv("PIPEWIREAO_CORE");
 	if (name == NULL && props != NULL)
 		name = spa_dict_lookup(props, PW_KEY_CORE_NAME);
 	if (name == NULL)
