@@ -69,7 +69,7 @@ static int get_envconf_path(char *path, size_t size, const char *prefix, const c
 {
 	const char *dir;
 
-	dir = getenv("PIPEWIRE_CONFIG_DIR");
+	dir = getenv("PIPEWIREAO_CONFIG_DIR");
 	if (dir != NULL) {
 		const char *paths[] = { dir, prefix, name, NULL };
 		if (make_path(path, size, paths) == 0 &&
@@ -210,7 +210,7 @@ no_config:
 static int get_envstate_path(char *path, size_t size, const char *prefix, const char *name)
 {
 	const char *dir;
-	dir = getenv("PIPEWIRE_STATE_DIR");
+	dir = getenv("PIPEWIREAO_STATE_DIR");
 	if (dir != NULL) {
 		const char *paths[] = { dir, prefix, name, NULL };
 		if (make_path(path, size, paths) == 0 &&
@@ -1220,11 +1220,11 @@ int pw_conf_load_conf_for_context(struct pw_properties *props, struct pw_propert
 	const char *conf_prefix, *conf_name;
 	int res;
 
-	conf_prefix = getenv("PIPEWIRE_CONFIG_PREFIX");
+	conf_prefix = getenv("PIPEWIREAO_CONFIG_PREFIX");
 	if (conf_prefix == NULL)
 		conf_prefix = pw_properties_get(props, PW_KEY_CONFIG_PREFIX);
 
-	conf_name = getenv("PIPEWIRE_CONFIG_NAME");
+	conf_name = getenv("PIPEWIREAO_CONFIG_NAME");
 	if ((res = try_load_conf(conf_prefix, conf_name, conf)) < 0) {
 		conf_name = pw_properties_get(props, PW_KEY_CONFIG_NAME);
 		if (spa_streq(conf_name, "client-rt.conf")) {

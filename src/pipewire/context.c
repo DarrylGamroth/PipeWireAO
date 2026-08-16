@@ -475,7 +475,7 @@ struct pw_context *pw_context_new(struct pw_loop *main_loop,
 	res = pw_context_conf_update_props(this, "context.properties", properties);
 	pw_log_info("%p: parsed %d context.properties items", this, res);
 
-	if ((str = getenv("PIPEWIRE_CORE"))) {
+	if ((str = getenv("PIPEWIREAO_CORE"))) {
 		pw_log_info("using core.name from environment: %s", str);
 		pw_properties_set(properties, PW_KEY_CORE_NAME, str);
 	}
@@ -494,7 +494,7 @@ struct pw_context *pw_context_new(struct pw_loop *main_loop,
 		impl->cpu_count = spa_cpu_get_count(cpu);
 	}
 
-	if (getenv("PIPEWIRE_DEBUG") == NULL &&
+	if (getenv("PIPEWIREAO_DEBUG") == NULL &&
 			(str = pw_properties_get(properties, "log.level")) != NULL) {
 		if (pw_log_set_level_string(str) < 0)
 			pw_log_warn("%p: invalid log.level in context properties", this);

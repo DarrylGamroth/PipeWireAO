@@ -33,7 +33,7 @@ get_remote(const struct spa_dict *props)
 {
 	const char *name;
 
-	name = getenv("PIPEWIRE_REMOTE");
+	name = getenv("PIPEWIREAO_REMOTE");
 	if ((name == NULL || name[0] == '\0') && props)
 		name = spa_dict_lookup(props, PW_KEY_REMOTE_NAME);
 	if (name == NULL || name[0] == '\0')
@@ -46,7 +46,7 @@ get_runtime_dir(void)
 {
 	const char *runtime_dir;
 
-	runtime_dir = getenv("PIPEWIRE_RUNTIME_DIR");
+	runtime_dir = getenv("PIPEWIREAO_RUNTIME_DIR");
 	if (runtime_dir == NULL)
 		runtime_dir = getenv("XDG_RUNTIME_DIR");
 	if (runtime_dir == NULL)

@@ -278,7 +278,7 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "can't create pipe: %m\n");
 		return -1;
 	}
-	setenv("PIPEWIRE_REMOTE", socket_path, 1);
+	setenv("PIPEWIREAO_REMOTE", socket_path, 1);
 
 	data.create_result = 0;
 	data.pending_create = pw_security_context_create(data.sec,
