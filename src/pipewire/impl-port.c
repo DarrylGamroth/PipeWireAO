@@ -323,6 +323,12 @@ static int mix_port_set_io(void *object,
 			pw_direction_as_string(direction), port_id, data, size);
 
 	switch (id) {
+	case SPA_IO_BuffersLatestNotify:
+		res = spa_node_port_set_io(this->node->node, this->direction,
+				this->port_id, id, data, size);
+		if (res < 0)
+			return res;
+		break;
 	case SPA_IO_BuffersLatest:
 		if (data == NULL || size < sizeof(struct spa_io_buffers_latest)) {
 			pw_loop_locked(this->node->data_loop,
