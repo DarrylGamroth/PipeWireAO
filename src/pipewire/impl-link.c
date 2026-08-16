@@ -53,6 +53,10 @@ struct impl {
 
 	struct spa_io_async_buffers io;
 	struct pw_memblock *latest_mem;
+	struct spa_system *latest_notify_system;
+	struct spa_io_buffers_latest_notify latest_notify;
+	int latest_notify_fd;
+	bool use_latest_notify;
 	uint32_t io_type;
 };
 
@@ -842,7 +846,17 @@ int pw_impl_link_activate(struct pw_impl_link *this)
 	if ((res = port_set_io(this, &impl->input, io_type, this->io, io_size)) < 0)
 		goto error;
 	if ((res = port_set_io(this, &impl->output, io_type, this->io, io_size)) < 0)
-		goto error_clean;
+		goto error_clean_all;
+	if (impl->use_latest_notify) {
+		if ((res = port_set_io(this, &impl->input,
+				SPA_IO_BuffersLatestNotify,
+				&impl->latest_notify, sizeof(impl->latest_notify))) < 0)
+			goto error_clean_all;
+		if ((res = port_set_io(this, &impl->output,
+				SPA_IO_BuffersLatestNotify,
+				&impl->latest_notify, sizeof(impl->latest_notify))) < 0)
+			goto error_clean_all;
+	}
 
 	impl->activated = true;
 	pw_log_debug("(%s) activated", this->name);
@@ -850,7 +864,12 @@ int pw_impl_link_activate(struct pw_impl_link *this)
 
 	return 0;
 
-error_clean:
+error_clean_all:
+	if (impl->use_latest_notify) {
+		port_set_io(this, &impl->output, SPA_IO_BuffersLatestNotify, NULL, 0);
+		port_set_io(this, &impl->input, SPA_IO_BuffersLatestNotify, NULL, 0);
+	}
+	port_set_io(this, &impl->output, io_type, NULL, 0);
 	port_set_io(this, &impl->input, io_type, NULL, 0);
 error:
 	pw_log_error("%p: can't activate link: %s", this, spa_strerror(res));
@@ -1025,6 +1044,10 @@ int pw_impl_link_deactivate(struct pw_impl_link *this)
 	if (!impl->activated)
 		return 0;
 
+	if (impl->use_latest_notify) {
+		port_set_io(this, &impl->output, SPA_IO_BuffersLatestNotify, NULL, 0);
+		port_set_io(this, &impl->input, SPA_IO_BuffersLatestNotify, NULL, 0);
+	}
 	port_set_io(this, &impl->output, impl->io_type, NULL, 0);
 	port_set_io(this, &impl->input, impl->io_type, NULL, 0);
 
@@ -1548,6 +1571,7 @@ struct pw_impl_link *pw_context_create_link(struct pw_context *context,
 	impl = calloc(1, sizeof(struct impl) + user_data_size);
 	if (impl == NULL)
 		goto error_no_mem;
+	impl->latest_notify_fd = -1;
 
 	impl->input.busy_id = SPA_ID_INVALID;
 	impl->output.busy_id = SPA_ID_INVALID;
@@ -1587,6 +1611,21 @@ struct pw_impl_link *pw_context_create_link(struct pw_context *context,
 		goto error_free;
 	}
 	if (this->buffer_latest) {
+		const struct pw_properties *input_props = pw_impl_port_get_properties(input);
+		const char *wait_policy = pw_properties_get(input_props,
+				PW_KEY_PORT_BUFFER_LATEST_WAIT);
+
+		if (wait_policy == NULL)
+			wait_policy = "busy-spin";
+		if (spa_streq(wait_policy, "eventfd") || spa_streq(wait_policy, "hybrid"))
+			impl->use_latest_notify = true;
+		else if (!spa_streq(wait_policy, "busy-spin")) {
+			res = -EINVAL;
+			pw_log_error("unsupported buffer latest wait policy '%s'", wait_policy);
+			goto error_free;
+		}
+		pw_properties_set(properties, PW_KEY_LINK_BUFFER_LATEST_WAIT, wait_policy);
+
 		impl->latest_mem = pw_mempool_alloc(pw_context_get_mempool(context),
 				PW_MEMBLOCK_FLAG_READWRITE |
 				PW_MEMBLOCK_FLAG_SEAL |
@@ -1596,6 +1635,20 @@ struct pw_impl_link *pw_context_create_link(struct pw_context *context,
 			res = -errno;
 			pw_log_error("can't allocate buffer latest io: %m");
 			goto error_free;
+		}
+		if (impl->use_latest_notify) {
+			impl->latest_notify_system = output_node->data_loop->system;
+			impl->latest_notify_fd = spa_system_eventfd_create(
+					impl->latest_notify_system,
+					SPA_FD_CLOEXEC | SPA_FD_NONBLOCK);
+			if (impl->latest_notify_fd < 0) {
+				res = impl->latest_notify_fd;
+				pw_log_error("can't allocate buffer latest eventfd: %s",
+						spa_strerror(res));
+				goto error_free;
+			}
+			impl->latest_notify.fd = impl->latest_notify_fd;
+			impl->latest_notify.reserved = 0;
 		}
 	}
 
@@ -1707,6 +1760,8 @@ error_input_mix:
 	pw_impl_port_release_mix(output, &this->rt.out_mix);
 	goto error_free;
 error_free:
+	if (impl->latest_notify_fd >= 0)
+		spa_system_close(impl->latest_notify_system, impl->latest_notify_fd);
 	if (impl->latest_mem != NULL)
 		pw_memblock_unref(impl->latest_mem);
 	free(impl);
@@ -1842,6 +1897,8 @@ void pw_impl_link_destroy(struct pw_impl_link *link)
 	free(link->name);
 	free(link->info.format);
 	free((char *) link->info.error);
+	if (impl->latest_notify_fd >= 0)
+		spa_system_close(impl->latest_notify_system, impl->latest_notify_fd);
 	if (impl->latest_mem != NULL)
 		pw_memblock_unref(impl->latest_mem);
 	free(impl);

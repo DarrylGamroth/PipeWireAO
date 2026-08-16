@@ -41,6 +41,7 @@ struct mix {
 	struct pw_impl_port *port;
 	struct pw_impl_port_mix mix;
 	struct pw_array buffers;
+	int latest_notify_fd;
 };
 
 struct node_data {
@@ -138,6 +139,7 @@ static void mix_init(struct mix *mix, struct pw_impl_port *port,
 	mix->port = port;
 	mix->mix.id = mix_id;
 	mix->mix.peer_id = peer_id;
+	mix->latest_notify_fd = -1;
 	if (mix_id != SPA_ID_INVALID)
 		pw_impl_port_init_mix(port, &mix->mix);
 	pw_array_init(&mix->buffers, 32);
@@ -766,7 +768,38 @@ client_node_port_set_io(void *_data,
 
 	mix = find_mix(data, direction, port_id, mix_id);
 	if (mix == NULL) {
+		if (id == SPA_IO_BuffersLatestNotify && memid != SPA_ID_INVALID)
+			spa_system_close(data->data_system, (int)memid);
 		res = -ENOENT;
+		goto exit;
+	}
+	if (id == SPA_IO_BuffersLatestNotify) {
+		struct spa_io_buffers_latest_notify notify;
+		int old_fd = mix->latest_notify_fd;
+		int new_fd = memid == SPA_ID_INVALID ? -1 : (int)memid;
+		void *notify_data = NULL;
+		size_t notify_size = 0;
+
+		if (new_fd >= 0) {
+			notify = (struct spa_io_buffers_latest_notify) {
+				.fd = new_fd,
+			};
+			notify_data = &notify;
+			notify_size = sizeof(notify);
+		}
+		res = spa_node_port_set_io(mix->port->mix,
+				direction, mix->mix.port.port_id, id,
+				notify_data, notify_size);
+		if (res == -ENOTSUP)
+			res = 0;
+		if (res < 0) {
+			if (new_fd >= 0)
+				spa_system_close(data->data_system, new_fd);
+			goto exit;
+		}
+		mix->latest_notify_fd = new_fd;
+		if (old_fd >= 0)
+			spa_system_close(data->data_system, old_fd);
 		goto exit;
 	}
 
@@ -891,6 +924,13 @@ static void clear_mix(struct node_data *data, struct mix *mix)
 {
 	pw_log_debug("port %p: mix clear %d.%d", mix->port, mix->port->port_id, mix->mix.id);
 
+	if (mix->mix.id != SPA_ID_INVALID)
+		spa_node_port_set_io(mix->port->mix, mix->mix.port.direction,
+				mix->mix.port.port_id, SPA_IO_BuffersLatestNotify, NULL, 0);
+	if (mix->latest_notify_fd >= 0) {
+		spa_system_close(data->data_system, mix->latest_notify_fd);
+		mix->latest_notify_fd = -1;
+	}
 	if (mix->mix.id != SPA_ID_INVALID)
 		spa_node_port_set_io(mix->port->mix, mix->mix.port.direction,
 				mix->mix.port.port_id, SPA_IO_BuffersLatest, NULL, 0);
