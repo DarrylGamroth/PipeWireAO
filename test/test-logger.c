@@ -119,10 +119,10 @@ test_log_levels(enum spa_log_level level)
 	bool above_level_found = false;
 	bool below_level_found = false;
 	bool current_level_found = false;
-	char *oldenv = getenv("PIPEWIRE_LOG");
+	char *oldenv = getenv("PIPEWIREAO_LOG");
 
 	pwtest_mkstemp(fname);
-	setenv("PIPEWIRE_LOG", fname, 1);
+	setenv("PIPEWIREAO_LOG", fname, 1);
 
 	pw_init(0, NULL);
 
@@ -164,9 +164,9 @@ test_log_levels(enum spa_log_level level)
 	pw_deinit();
 
 	if (oldenv)
-		setenv("PIPEWIRE_LOG", oldenv, 1);
+		setenv("PIPEWIREAO_LOG", oldenv, 1);
 	else
-		unsetenv("PIPEWIRE_LOG");
+		unsetenv("PIPEWIREAO_LOG");
 }
 
 PWTEST(logger_levels)
@@ -174,18 +174,18 @@ PWTEST(logger_levels)
 	enum spa_log_level level = pwtest_get_iteration(current_test);
 	enum spa_log_level default_level = pw_log_level;
 	struct spa_log *default_logger = pw_log_get();
-	char *oldenv = getenv("PIPEWIRE_DEBUG");
+	char *oldenv = getenv("PIPEWIREAO_DEBUG");
 
 	if (oldenv)
 		oldenv = strdup(oldenv);
-	unsetenv("PIPEWIRE_DEBUG");
+	unsetenv("PIPEWIREAO_DEBUG");
 
 	pw_log_set_level(level);
 
 	test_log_levels(level);
 
 	if (oldenv) {
-		setenv("PIPEWIRE_DEBUG", oldenv, 1);
+		setenv("PIPEWIREAO_DEBUG", oldenv, 1);
 		free(oldenv);
 	}
 
@@ -201,24 +201,24 @@ PWTEST(logger_debug_env)
 	enum spa_log_level default_level = pw_log_level;
 	struct spa_log *default_logger = pw_log_get();
 	char lvl[2] = {0};
-	char *oldenv = getenv("PIPEWIRE_DEBUG");
+	char *oldenv = getenv("PIPEWIREAO_DEBUG");
 
 	if (oldenv)
 		oldenv = strdup(oldenv);
 
 	spa_scnprintf(lvl, sizeof(lvl), "%d", level);
-	setenv("PIPEWIRE_DEBUG", lvl, 1);
+	setenv("PIPEWIREAO_DEBUG", lvl, 1);
 
-	/* Disable logging, let PIPEWIRE_DEBUG set the level */
+	/* Disable logging, let PIPEWIREAO_DEBUG set the level */
 	pw_log_set_level(SPA_LOG_LEVEL_NONE);
 
 	test_log_levels(level);
 
 	if (oldenv) {
-		setenv("PIPEWIRE_DEBUG", oldenv, 1);
+		setenv("PIPEWIREAO_DEBUG", oldenv, 1);
 		free(oldenv);
 	} else {
-		unsetenv("PIPEWIRE_DEBUG");
+		unsetenv("PIPEWIREAO_DEBUG");
 	}
 
 	pw_log_set(default_logger);
@@ -233,7 +233,7 @@ PWTEST(logger_debug_env_alpha)
 	enum spa_log_level default_level = pw_log_level;
 	struct spa_log *default_logger = pw_log_get();
 	const char *lvl = NULL;
-	char *oldenv = getenv("PIPEWIRE_DEBUG");
+	char *oldenv = getenv("PIPEWIREAO_DEBUG");
 
 	if (oldenv)
 		oldenv = strdup(oldenv);
@@ -249,18 +249,18 @@ PWTEST(logger_debug_env_alpha)
 			pwtest_fail_if_reached();
 			break;
 	}
-	setenv("PIPEWIRE_DEBUG", lvl, 1);
+	setenv("PIPEWIREAO_DEBUG", lvl, 1);
 
-	/* Disable logging, let PIPEWIRE_DEBUG set the level */
+	/* Disable logging, let PIPEWIREAO_DEBUG set the level */
 	pw_log_set_level(SPA_LOG_LEVEL_NONE);
 
 	test_log_levels(level);
 
 	if (oldenv) {
-		setenv("PIPEWIRE_DEBUG", oldenv, 1);
+		setenv("PIPEWIREAO_DEBUG", oldenv, 1);
 		free(oldenv);
 	} else {
-		unsetenv("PIPEWIRE_DEBUG");
+		unsetenv("PIPEWIREAO_DEBUG");
 	}
 
 	pw_log_set(default_logger);
@@ -274,7 +274,7 @@ PWTEST(logger_debug_env_topic_all)
 	enum spa_log_level level = pwtest_get_iteration(current_test);
 	enum spa_log_level default_level = pw_log_level;
 	struct spa_log *default_logger = pw_log_get();
-	char *oldenv = getenv("PIPEWIRE_DEBUG");
+	char *oldenv = getenv("PIPEWIREAO_DEBUG");
 	char lvlstr[32];
 	const char *lvl = "X";
 
@@ -295,18 +295,18 @@ PWTEST(logger_debug_env_topic_all)
 
 	/* Check that the * glob works to enable all topics */
 	spa_scnprintf(lvlstr, sizeof(lvlstr), "*:%s", lvl);
-	setenv("PIPEWIRE_DEBUG", lvlstr, 1);
+	setenv("PIPEWIREAO_DEBUG", lvlstr, 1);
 
-	/* Disable logging, let PIPEWIRE_DEBUG set the level */
+	/* Disable logging, let PIPEWIREAO_DEBUG set the level */
 	pw_log_set_level(SPA_LOG_LEVEL_NONE);
 
 	test_log_levels(level);
 
 	if (oldenv) {
-		setenv("PIPEWIRE_DEBUG", oldenv, 1);
+		setenv("PIPEWIREAO_DEBUG", oldenv, 1);
 		free(oldenv);
 	} else {
-		unsetenv("PIPEWIRE_DEBUG");
+		unsetenv("PIPEWIREAO_DEBUG");
 	}
 
 	pw_log_set(default_logger);
@@ -319,7 +319,7 @@ PWTEST(logger_debug_env_invalid)
 {
 	enum spa_log_level default_level = pw_log_level;
 	struct spa_log *default_logger = pw_log_get();
-	char *oldenv = getenv("PIPEWIRE_DEBUG");
+	char *oldenv = getenv("PIPEWIREAO_DEBUG");
 	char fname[PATH_MAX];
 	char buf[1024] = {0};
 	int fd;
@@ -350,7 +350,7 @@ PWTEST(logger_debug_env_invalid)
 	setlinebuf(stderr);
 	pwtest_errno_ok(rc);
 
-	setenv("PIPEWIRE_DEBUG", envvars[which], 1);
+	setenv("PIPEWIREAO_DEBUG", envvars[which], 1);
 	pw_init(0, NULL);
 
 	fsync(STDERR_FILENO);
@@ -366,10 +366,10 @@ PWTEST(logger_debug_env_invalid)
 	pwtest_bool_true(error_message_found);
 
 	if (oldenv) {
-		setenv("PIPEWIRE_DEBUG", oldenv, 1);
+		setenv("PIPEWIREAO_DEBUG", oldenv, 1);
 		free(oldenv);
 	} else {
-		unsetenv("PIPEWIRE_DEBUG");
+		unsetenv("PIPEWIREAO_DEBUG");
 	}
 
 	pw_log_set(default_logger);

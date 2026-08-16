@@ -350,7 +350,7 @@ pwtest_spa_plugin_try_load_interface(struct pwtest_spa_plugin *plugin,
 				     const char *interface_name,
 				     const struct spa_dict *info)
 {
-	char *libdir = getenv("SPA_PLUGIN_DIR");
+	char *libdir = getenv("PIPEWIREAO_SPA_PLUGIN_DIR");
 	char path[PATH_MAX];
 	void *hnd, *iface;
 	spa_handle_factory_enum_func_t enum_func;
@@ -708,15 +708,15 @@ static pid_t start_pwdaemon(struct pwtest_test *t, int stderr_fd, int log_fd)
 	int r;
 
 	spa_scnprintf(pw_remote, sizeof(pw_remote), "pwtest-pw-%u\n", count++);
-	replace_env(t, "PIPEWIRE_REMOTE", pw_remote);
+	replace_env(t, "PIPEWIREAO_REMOTE", pw_remote);
 
 	pid = fork();
 	if (pid == 0) {
 		/* child */
 		setpgid(0, 0);
 
-		setenv("PIPEWIRE_CORE", pw_remote, 1);
-		setenv("PIPEWIRE_DEBUG", "4", 0);
+		setenv("PIPEWIREAO_CORE", pw_remote, 1);
+		setenv("PIPEWIREAO_DEBUG", "4", 0);
 		setenv("WIREPLUMBER_DEBUG", "4", 0);
 
 		r = dup2(stderr_fd, STDERR_FILENO);
@@ -771,13 +771,13 @@ static void set_test_env(struct pwtest_context *ctx, struct pwtest_test *t)
 	replace_env(t, "XDG_RUNTIME_DIR", xdg_runtime_dir);
 	replace_env(t, "TMPDIR", xdg_runtime_dir);
 
-	replace_env(t, "SPA_PLUGIN_DIR", BUILD_ROOT "/spa/plugins");
+	replace_env(t, "PIPEWIREAO_SPA_PLUGIN_DIR", BUILD_ROOT "/spa/plugins");
 	replace_env(t, "SPA_DATA_DIR", SOURCE_ROOT "/spa/plugins");
-	replace_env(t, "PIPEWIRE_CONFIG_DIR", BUILD_ROOT "/src/daemon");
-	replace_env(t, "PIPEWIRE_MODULE_DIR", BUILD_ROOT "/src/modules");
+	replace_env(t, "PIPEWIREAO_CONFIG_DIR", BUILD_ROOT "/src/daemon");
+	replace_env(t, "PIPEWIREAO_MODULE_DIR", BUILD_ROOT "/src/modules");
 	replace_env(t, "ACP_PATHS_DIR", SOURCE_ROOT "/spa/plugins/alsa/mixer/paths");
 	replace_env(t, "ACP_PROFILES_DIR", SOURCE_ROOT "/spa/plugins/alsa/mixer/profile-sets");
-	replace_env(t, "PIPEWIRE_LOG_SYSTEMD", "false");
+	replace_env(t, "PIPEWIREAO_LOG_SYSTEMD", "false");
 	replace_env(t, "PWTEST_DATA_DIR", SOURCE_ROOT "/test/data");
 	replace_env(t, "LD_LIBRARY_PATH", BUILD_ROOT "/src/pipewire:" BUILD_ROOT "pipewire-jack/src");
 }
@@ -1050,7 +1050,7 @@ static void run_test(struct pwtest_context *ctx, struct pwtest_suite *c, struct 
 			goto error;
 		}
 	} else {
-		replace_env(t, "PIPEWIRE_REMOTE", "test-has-no-daemon");
+		replace_env(t, "PIPEWIREAO_REMOTE", "test-has-no-daemon");
 	}
 
 	if (ctx->no_fork) {

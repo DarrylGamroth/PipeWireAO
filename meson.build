@@ -623,10 +623,10 @@ devenv = environment()
 builddir = meson.project_build_root()
 srcdir = meson.project_source_root()
 
-devenv.set('PIPEWIRE_CONFIG_DIR', pipewire_dep.get_variable('confdatadir'))
-devenv.set('PIPEWIRE_MODULE_DIR', pipewire_dep.get_variable('moduledir'))
+devenv.set('PIPEWIREAO_CONFIG_DIR', pipewire_dep.get_variable('confdatadir'))
+devenv.set('PIPEWIREAO_MODULE_DIR', pipewire_dep.get_variable('moduledir'))
 
-devenv.set('SPA_PLUGIN_DIR', spa_dep.get_variable('plugindir'))
+devenv.set('PIPEWIREAO_SPA_PLUGIN_DIR', spa_dep.get_variable('plugindir'))
 devenv.set('SPA_DATA_DIR', spa_dep.get_variable('datadir'))
 
 devenv.set('ACP_PATHS_DIR', srcdir / 'spa' / 'plugins' / 'alsa' / 'mixer' / 'paths')
@@ -636,7 +636,7 @@ devenv.prepend('GST_PLUGIN_PATH', builddir / 'src'/ 'gst')
 devenv.prepend('ALSA_PLUGIN_DIR', builddir / 'pipewire-alsa' / 'alsa-plugins')
 devenv.prepend('LD_LIBRARY_PATH', builddir / 'pipewire-jack' / 'src')
 
-devenv.set('PIPEWIRE_LOG_SYSTEMD', 'false')
+devenv.set('PIPEWIREAO_LOG_SYSTEMD', 'false')
 devenv.set('PW_UNINSTALLED', '1')
 devenv.set('PW_BUILDDIR', meson.project_build_root())
 
