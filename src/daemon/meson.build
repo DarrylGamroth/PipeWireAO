@@ -7,8 +7,8 @@ conf_config.set('VERSION', '"@0@"'.format(pipewire_version))
 conf_config.set('PIPEWIRE_CONFIG_DIR', pipewire_configdir)
 conf_config.set('session_manager_path', pipewire_bindir / 'pipewire-media-session')
 conf_config.set('session_manager_args', '')
-conf_config.set('pipewire_path', pipewire_bindir / 'pipewire')
-conf_config.set('pipewire_pulse_path', pipewire_bindir / 'pipewire-pulse')
+conf_config.set('pipewire_path', pipewire_bindir / pipewire_daemon_name)
+conf_config.set('pipewire_pulse_path', pipewire_bindir / pipewire_daemon_name)
 conf_config.set('sm_comment', '#')
 conf_config.set('pulse_comment', '#')
 conf_config.set('rtprio_server', get_option('rtprio-server'))
@@ -16,9 +16,9 @@ conf_config.set('rtprio_client', get_option('rtprio-client'))
 
 conf_config_uninstalled = conf_config
 conf_config_uninstalled.set('pipewire_path',
-  meson.project_build_root() / 'src' / 'daemon' / 'pipewire')
+  meson.project_build_root() / 'src' / 'daemon' / pipewire_daemon_name)
 conf_config_uninstalled.set('pipewire_pulse_path',
-  meson.project_build_root() / 'src' / 'daemon' / 'pipewire-pulse')
+  meson.project_build_root() / 'src' / 'daemon' / pipewire_daemon_name)
 conf_config_uninstalled.set('pulse_comment', '')
 
 build_ms = 'media-session' in get_option('session-managers')
@@ -101,7 +101,7 @@ foreach c : conf_avail_folders
   subdir(c)
 endforeach
 
-pipewire_exec = executable('pipewire',
+pipewire_exec = executable(pipewire_daemon_name,
   pipewire_daemon_sources,
   install: true,
   include_directories : [ configinc ],
@@ -110,15 +110,7 @@ pipewire_exec = executable('pipewire',
 
 ln = find_program('ln')
 
-pipewire_aliases = [
-  'pipewire-pulse',
-  'pipewire-avb',
-  'pipewire-aes67',
-]
-
-if build_vk
- pipewire_aliases += 'pipewire-vulkan'
-endif
+pipewire_aliases = []
 
 foreach alias : pipewire_aliases
   custom_target(
@@ -136,11 +128,11 @@ foreach alias : pipewire_aliases
   )
 endforeach
 
-custom_target('pipewire-uninstalled',
+custom_target('pipewire-ao-uninstalled',
   build_by_default: true,
   install: false,
   input: pipewire_exec,
-  output: 'pipewire-uninstalled',
+  output: 'pipewire-ao-uninstalled',
   command: [ln, '-fs', meson.project_build_root() + '/@INPUT@', '@OUTPUT@'],
 )
 
