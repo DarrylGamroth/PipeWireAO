@@ -43,7 +43,7 @@ void pw_log_set_level(enum spa_log_level level);
 
 /**
  * Configure the logging level using a string
- * in PIPEWIRE_DEBUG format.
+ * in PIPEWIREAO_DEBUG format.
  *
  * \since 1.1.0
  */

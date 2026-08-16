@@ -1331,7 +1331,7 @@ static int snd_pcm_pipewire_open(snd_pcm_t **pcmp,
 				stream == SND_PCM_STREAM_PLAYBACK ?
 				"Playback" : "Capture");
 
-	str = getenv("PIPEWIRE_ALSA");
+	str = getenv("PIPEWIREAO_ALSA");
 	if (str != NULL)
 		pw_properties_update_string(pw->props, str, strlen(str));
 
@@ -1341,7 +1341,7 @@ static int snd_pcm_pipewire_open(snd_pcm_t **pcmp,
 		goto error;
 	}
 
-	str = getenv("PIPEWIRE_NODE");
+	str = getenv("PIPEWIREAO_NODE");
 	if (str != NULL && str[0])
 		pw_properties_set(pw->props, PW_KEY_TARGET_OBJECT, str);
 

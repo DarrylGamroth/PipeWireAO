@@ -672,7 +672,7 @@ static void registry_event_global(void *data, uint32_t id,
 		    !spa_atou32(str, &serial, 10))
 			return;
 
-		if ((str = getenv("PIPEWIRE_V4L2_TARGET")) != NULL
+	if ((str = getenv("PIPEWIREAO_V4L2_TARGET")) != NULL
 				&& spa_atou32(str, &req_serial, 10)
 				&& req_serial != serial)
 			return;

@@ -96,30 +96,30 @@ PW_LOG_TOPIC(mod_topic_connection, "conn." NAME);
  *
  * The name of the core is obtained as:
  *
- * - PIPEWIRE_CORE : the environment variable with the name of the core
+ * - PIPEWIREAO_CORE : the environment variable with the name of the core
  * - \ref PW_KEY_CORE_NAME : in the context properties
  * - a name based on the process id
  *
  * The context will also become a server if:
  *
- * - PIPEWIRE_DAEMON : the environment is true
+ * - PIPEWIREAO_DAEMON : the environment is true
  * - \ref PW_KEY_CORE_DAEMON : in the context properties is true
  *
  * The socket will be located in the directory obtained by looking at the
  * following environment variables:
  *
- * - PIPEWIRE_RUNTIME_DIR
+ * - PIPEWIREAO_RUNTIME_DIR
  * - XDG_RUNTIME_DIR
  * - USERPROFILE
  *
  * The socket address will be written into the notification file descriptor
  * if the following environment variable is set:
  *
- * - PIPEWIRE_NOTIFICATION_FD
+ * - PIPEWIREAO_NOTIFICATION_FD
  *
  * When a client connect, the connection will be made to:
  *
- * - PIPEWIRE_REMOTE : the environment with the remote name
+ * - PIPEWIREAO_REMOTE : the environment with the remote name
  * - \ref PW_KEY_REMOTE_NAME : the property in the context.
  * - The default remote named "pipewire-0"
  *
@@ -759,7 +759,7 @@ get_runtime_dir(void)
 {
 	const char *runtime_dir;
 
-	runtime_dir = getenv("PIPEWIRE_RUNTIME_DIR");
+	runtime_dir = getenv("PIPEWIREAO_RUNTIME_DIR");
 	if (runtime_dir == NULL)
 		runtime_dir = getenv("XDG_RUNTIME_DIR");
 	if (runtime_dir == NULL)
@@ -782,7 +782,7 @@ static int init_socket_name(struct server *s, const char *name)
 
 	if (runtime_dir == NULL && !path_is_absolute) {
 		pw_log_error("server %p: name %s is not an absolute path and no runtime dir found. "
-				"Set one of PIPEWIRE_RUNTIME_DIR, XDG_RUNTIME_DIR or "
+				"Set one of PIPEWIREAO_RUNTIME_DIR, XDG_RUNTIME_DIR or "
 				"USERPROFILE in the environment", s, name);
 		return -ENOENT;
 	}
@@ -884,7 +884,7 @@ static int write_socket_address(struct server *s)
 	long v;
 	int fd, res;
 	char *endptr;
-	const char *env = getenv("PIPEWIRE_NOTIFICATION_FD");
+	const char *env = getenv("PIPEWIREAO_NOTIFICATION_FD");
 
 	if (env == NULL || env[0] == '\0')
 		return 0;
@@ -914,7 +914,7 @@ static int write_socket_address(struct server *s)
 exit_close:
 	close(fd);
 exit:
-	unsetenv("PIPEWIRE_NOTIFICATION_FD");
+	unsetenv("PIPEWIREAO_NOTIFICATION_FD");
 	return res;
 }
 
@@ -1450,7 +1450,7 @@ get_server_name(const struct spa_dict *props)
 {
 	const char *name = NULL;
 
-	name = getenv("PIPEWIRE_CORE");
+	name = getenv("PIPEWIREAO_CORE");
 	if (name == NULL && props != NULL)
 		name = spa_dict_lookup(props, PW_KEY_CORE_NAME);
 	if (name == NULL)
@@ -1702,7 +1702,7 @@ static int need_server(struct pw_context *context, const struct spa_dict *props)
 {
 	const char *val = NULL;
 
-	val = getenv("PIPEWIRE_DAEMON");
+	val = getenv("PIPEWIREAO_DAEMON");
 	if (val == NULL && props != NULL)
 		val = spa_dict_lookup(props, PW_KEY_CORE_DAEMON);
 	if (val && pw_properties_parse_bool(val))
