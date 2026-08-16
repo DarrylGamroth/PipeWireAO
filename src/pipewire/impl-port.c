@@ -194,8 +194,8 @@ next:
 		case 2:
 			param = spa_pod_builder_add_object(&b,
 				SPA_TYPE_OBJECT_ParamIO, id,
-				SPA_PARAM_IO_id,   SPA_POD_Id(SPA_IO_BuffersQueue),
-				SPA_PARAM_IO_size, SPA_POD_Int(sizeof(struct spa_io_buffers_queue)));
+				SPA_PARAM_IO_id,   SPA_POD_Id(SPA_IO_BuffersLatest),
+				SPA_PARAM_IO_size, SPA_POD_Int(sizeof(struct spa_io_buffers_latest)));
 			break;
 		default:
 			return 0;
@@ -271,15 +271,15 @@ static int port_set_io(void *object,
 		return -ENOENT;
 
 	switch (id) {
-	case SPA_IO_BuffersQueue:
-		if (data == NULL || size < sizeof(struct spa_io_buffers_queue)) {
+	case SPA_IO_BuffersLatest:
+		if (data == NULL || size < sizeof(struct spa_io_buffers_latest)) {
 			pw_loop_locked(this->node->data_loop,
 			       do_remove_mix, SPA_ID_INVALID, NULL, 0, mix);
 			mix->io_data = mix->io[0] = mix->io[1] = NULL;
 			res = spa_node_port_set_io(this->node->node, this->direction,
 					this->port_id, id, NULL, 0);
 		} else {
-			/* Queue-mode workers own publication; the graph mixer must not
+			/* Latest-mode workers own publication; the graph mixer must not
 			 * interpret this area as struct spa_io_buffers. */
 			pw_loop_locked(this->node->data_loop,
 			       do_remove_mix, SPA_ID_INVALID, NULL, 0, mix);
@@ -791,9 +791,9 @@ static int check_param_io(void *data, int seq, uint32_t id,
 	case SPA_IO_Buffers:
 		SPA_FLAG_SET(port->flags, PW_IMPL_PORT_FLAG_BUFFERS);
 		break;
-	case SPA_IO_BuffersQueue:
+	case SPA_IO_BuffersLatest:
 		SPA_FLAG_SET(port->flags, PW_IMPL_PORT_FLAG_BUFFERS |
-			PW_IMPL_PORT_FLAG_BUFFERS_QUEUE);
+			PW_IMPL_PORT_FLAG_BUFFERS_LATEST);
 		break;
 	default:
 		break;
@@ -896,7 +896,7 @@ static void check_params(struct pw_impl_port *port)
 
 	port->flags &= ~(PW_IMPL_PORT_FLAG_CONTROL |
 			PW_IMPL_PORT_FLAG_ASYNC |
-			PW_IMPL_PORT_FLAG_BUFFERS_QUEUE |
+			PW_IMPL_PORT_FLAG_BUFFERS_LATEST |
 			PW_IMPL_PORT_FLAG_BUFFERS);
 
 	pw_impl_port_for_each_param(port, 0, SPA_PARAM_IO, 0, 0, NULL, check_param_io, port);

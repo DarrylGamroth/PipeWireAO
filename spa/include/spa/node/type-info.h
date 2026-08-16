@@ -35,7 +35,7 @@ static const struct spa_type_info spa_type_io[] = {
 	{ SPA_IO_RateMatch, SPA_TYPE_Int, SPA_TYPE_INFO_IO_BASE "RateMatch", NULL },
 	{ SPA_IO_Memory, SPA_TYPE_Int, SPA_TYPE_INFO_IO_BASE "Memory", NULL },
 	{ SPA_IO_AsyncBuffers, SPA_TYPE_Int, SPA_TYPE_INFO_IO_BASE "AsyncBuffers", NULL },
-	{ SPA_IO_BuffersQueue, SPA_TYPE_Int, SPA_TYPE_INFO_IO_BASE "BuffersQueue", NULL },
+	{ SPA_IO_BuffersLatest, SPA_TYPE_Int, SPA_TYPE_INFO_IO_BASE "BuffersLatest", NULL },
 	{ 0, 0, NULL, NULL },
 };
 
