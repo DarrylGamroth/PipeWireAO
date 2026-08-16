@@ -85,7 +85,7 @@ extern "C" {
 /* core */
 #define PW_KEY_CORE_NAME		"core.name"		/**< The name of the core. Default is
 								  *  `pipewire-<username>-<pid>`, overwritten
-								  *  by env(PIPEWIRE_CORE) */
+								  *  by env(PIPEWIREAO_CORE) */
 #define PW_KEY_CORE_VERSION		"core.version"		/**< The version of the core. */
 #define PW_KEY_CORE_DAEMON		"core.daemon"		/**< If the core is listening for connections. */
 
@@ -104,7 +104,7 @@ extern "C" {
 /* remote keys */
 #define PW_KEY_REMOTE_NAME		"remote.name"		/**< The name of the remote to connect to,
  *  default pipewire-ao, overwritten by
-								  *  env(PIPEWIRE_REMOTE). May also be
+								  *  env(PIPEWIREAO_REMOTE). May also be
 								  *  a SPA-JSON array of sockets, to be tried
 								  *  in order. The "internal" remote name and
 								  *  "generic" intention connects to the local

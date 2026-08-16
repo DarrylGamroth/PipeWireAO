@@ -52,26 +52,26 @@ backend. PipeWire provides support for all 3 backends. Depending on how
 your distribution has configured things this should just work automatically
 or with the provided scripts shown below.
 
-PipeWire can use environment variables to control the behaviour of
+PipeWireAO can use environment variables to control the behaviour of
 applications:
 
-* `PIPEWIRE_DEBUG=<level>`         to increase the debug level (or use one of
+* `PIPEWIREAO_DEBUG=<level>`       to increase the debug level (or use one of
                                    `XEWIDT` for none, error, warnings, info,
                                    debug, or trace, respectively).
-* `PIPEWIRE_LOG=<filename>`        to redirect log to filename
-* `PIPEWIRE_LOG_SYSTEMD=false`     to disable logging to systemd journal
-* `PIPEWIRE_LATENCY=<num/denom>`   to configure latency as a fraction. 10/1000
+* `PIPEWIREAO_LOG=<filename>`      to redirect log to filename
+* `PIPEWIREAO_LOG_SYSTEMD=false`   to disable logging to systemd journal
+* `PIPEWIREAO_LATENCY=<num/denom>` to configure latency as a fraction. 10/1000
                                    configures a 10ms latency. Usually this is
 				   expressed as a fraction of the samplerate,
 				   like 256/48000, which uses 256 samples at a
 				   samplerate of 48KHz for a latency of 5.33ms.
 				   This function does not attempt to configure
 				   the samplerate.
-* `PIPEWIRE_RATE=<num/denom>`      to configure a rate for the graph.
-* `PIPEWIRE_QUANTUM=<num/denom>`   to configure latency as a fraction and a
+* `PIPEWIREAO_RATE=<num/denom>`    to configure a rate for the graph.
+* `PIPEWIREAO_QUANTUM=<num/denom>` to configure latency as a fraction and a
                    samplerate. This function will force the graph samplerate to
                    `denom` and force the specified `num` as the buffer size.
-* `PIPEWIRE_NODE=<id>`             to request a link to the specified node. The
+* `PIPEWIREAO_NODE=<id>`           to request a link to the specified node. The
                     id can be a node.name or object.serial of the target node.
 
 ### Using tools
@@ -102,10 +102,10 @@ effect and can be omitted.
 
 JACK applications will automatically use the buffer-size chosen by the
 server. You can force a maximum buffer size (latency) by setting the
-`PIPEWIRE_LATENCY` environment variable like so:
+`PIPEWIREAO_LATENCY` environment variable like so:
 
 ```
-PIPEWIRE_LATENCY=128/48000 jack_simple_client
+PIPEWIREAO_LATENCY=128/48000 jack_simple_client
 ```
 Requests the `jack_simple_client` to run with a buffer of 128 or
 less samples.

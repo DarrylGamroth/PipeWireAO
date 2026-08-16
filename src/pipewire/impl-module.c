@@ -159,13 +159,13 @@ pw_context_load_module(struct pw_context *context,
 
 	pw_log_info("%p: name:%s args:%s", context, name, args);
 
-	module_dir = getenv("PIPEWIRE_MODULE_DIR");
+	module_dir = getenv("PIPEWIREAO_MODULE_DIR");
 	if (module_dir == NULL) {
 		module_dir = MODULEDIR;
 		pw_log_debug("moduledir set to: %s", module_dir);
 	}
 	else {
-		pw_log_debug("PIPEWIRE_MODULE_DIR set to: %s", module_dir);
+		pw_log_debug("PIPEWIREAO_MODULE_DIR set to: %s", module_dir);
 	}
 
 	while ((p = pw_split_walk(module_dir, ":", &len, &state))) {

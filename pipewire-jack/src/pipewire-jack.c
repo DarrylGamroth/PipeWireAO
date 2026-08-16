@@ -4281,8 +4281,8 @@ jack_client_t * jack_client_open (const char *client_name,
 	const struct pw_properties *props;
 	va_list ap;
         jack_status_t status;
-        if (getenv("PIPEWIRE_NOJACK") != NULL ||
-            getenv("PIPEWIRE_INTERNAL") != NULL ||
+        if (getenv("PIPEWIREAO_NOJACK") != NULL ||
+            getenv("PIPEWIREAO_INTERNAL") != NULL ||
 	    spa_strstartswith(pw_get_library_version(), "0.2"))
 		goto disabled;
 
@@ -4430,9 +4430,9 @@ jack_client_t * jack_client_open (const char *client_name,
 			&client->registry_listener,
 			&registry_events, client);
 
-	if ((str = getenv("PIPEWIRE_PROPS")) != NULL)
+	if ((str = getenv("PIPEWIREAO_PROPS")) != NULL)
 		pw_properties_update_string(client->props, str, strlen(str));
-	if ((str = getenv("PIPEWIRE_QUANTUM")) != NULL) {
+	if ((str = getenv("PIPEWIREAO_QUANTUM")) != NULL) {
 		struct spa_fraction q;
 		if (sscanf(str, "%u/%u", &q.num, &q.denom) == 2 && q.denom != 0) {
 			pw_properties_setf(client->props, PW_KEY_NODE_FORCE_RATE,
@@ -4440,14 +4440,14 @@ jack_client_t * jack_client_open (const char *client_name,
 			pw_properties_setf(client->props, PW_KEY_NODE_FORCE_QUANTUM,
 					"%u", q.num);
 		} else {
-			pw_log_warn("invalid PIPEWIRE_QUANTUM: %s", str);
+			pw_log_warn("invalid PIPEWIREAO_QUANTUM: %s", str);
 		}
 	}
-	if ((str = getenv("PIPEWIRE_LATENCY")) != NULL)
+	if ((str = getenv("PIPEWIREAO_LATENCY")) != NULL)
 		pw_properties_set(client->props, PW_KEY_NODE_LATENCY, str);
-	if ((str = getenv("PIPEWIRE_RATE")) != NULL)
+	if ((str = getenv("PIPEWIREAO_RATE")) != NULL)
 		pw_properties_set(client->props, PW_KEY_NODE_RATE, str);
-	if ((str = getenv("PIPEWIRE_LINK_PASSIVE")) != NULL)
+	if ((str = getenv("PIPEWIREAO_LINK_PASSIVE")) != NULL)
 		pw_properties_set(client->props, "jack.passive-links", str);
 
 	if ((str = pw_properties_get(client->props, PW_KEY_NODE_LATENCY)) != NULL) {
@@ -6950,7 +6950,7 @@ const char ** jack_get_ports (jack_client_t *client,
 
 	return_val_if_fail(c != NULL, NULL);
 
-	str = getenv("PIPEWIRE_NODE");
+	str = getenv("PIPEWIREAO_NODE");
 
 	if (port_name_pattern && port_name_pattern[0]) {
 		if ((r = regcomp(&port_regex, port_name_pattern, REG_EXTENDED | REG_NOSUB)) != 0) {
