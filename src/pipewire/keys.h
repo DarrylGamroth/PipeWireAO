@@ -103,7 +103,7 @@ extern "C" {
 
 /* remote keys */
 #define PW_KEY_REMOTE_NAME		"remote.name"		/**< The name of the remote to connect to,
-								  *  default pipewire-0, overwritten by
+ *  default pipewire-ao, overwritten by
 								  *  env(PIPEWIRE_REMOTE). May also be
 								  *  a SPA-JSON array of sockets, to be tried
 								  *  in order. The "internal" remote name and

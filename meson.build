@@ -1,4 +1,4 @@
-project('pipewire', ['c' ],
+project('pipewire-ao', ['c' ],
   version : '1.7.0',
   license : [ 'MIT', 'LGPL-2.1-or-later', 'GPL-2.0-only' ],
   meson_version : '>= 0.61.1',
@@ -37,8 +37,9 @@ libjackversion = '@0@.@1@.@2@'.format(soversion, jack_version_major, jack_versio
 # and pipewire's "1000*major + 100*minor + micro" as minor version
 jackversion = '@0@.@1@.@2@'.format(jack_version_major, jack_version_minor, 0)
 
-pipewire_name = 'pipewire-@0@'.format(apiversion)
-spa_name = 'spa-@0@'.format(spaversion)
+pipewire_name = 'pipewire-ao-@0@'.format(apiversion)
+spa_name = 'spa-ao-@0@'.format(spaversion)
+pipewire_daemon_name = 'pipewire-ao'
 
 prefix = get_option('prefix')
 pipewire_bindir = prefix / get_option('bindir')
@@ -48,8 +49,8 @@ pipewire_libexecdir = prefix / get_option('libexecdir')
 pipewire_localedir = prefix / get_option('localedir')
 pipewire_sysconfdir = prefix / get_option('sysconfdir')
 
-pipewire_configdir = pipewire_sysconfdir / 'pipewire'
-pipewire_confdatadir = pipewire_datadir / 'pipewire'
+pipewire_configdir = pipewire_sysconfdir / 'pipewire-ao'
+pipewire_confdatadir = pipewire_datadir / 'pipewire-ao'
 modules_install_dir = pipewire_libdir / pipewire_name
 
 cc = meson.get_compiler('c')
@@ -72,7 +73,7 @@ endif
 spa_plugindir = pipewire_libdir / spa_name
 spa_datadir = pipewire_datadir / spa_name
 
-alsadatadir = pipewire_datadir / 'alsa-card-profile' / 'mixer'
+alsadatadir = pipewire_confdatadir / 'alsa-card-profile' / 'mixer'
 
 pipewire_headers_dir = pipewire_name / 'pipewire'
 

@@ -25,7 +25,7 @@ option('installed_tests',
 option('gstreamer',
        description: 'Build GStreamer plugins',
        type: 'feature',
-       value: 'auto')
+       value: 'disabled')
 option('gstreamer-device-provider',
        description: 'Build GStreamer device provider plugin',
        type: 'feature',
@@ -58,15 +58,15 @@ option('selinux',
 option('pipewire-alsa',
        description: 'Enable pipewire-alsa integration',
        type: 'feature',
-       value: 'auto')
+       value: 'disabled')
 option('pipewire-jack',
        description: 'Enable pipewire-jack integration',
        type: 'feature',
-       value: 'enabled')
+       value: 'disabled')
 option('pipewire-v4l2',
        description: 'Enable pipewire-v4l2 integration',
        type: 'feature',
-       value: 'enabled')
+       value: 'disabled')
 option('jack-devel',
        description: 'Install jack development files',
        type: 'boolean',
@@ -84,7 +84,7 @@ option('spa-plugins',
 option('alsa',
        description: 'Enable alsa spa plugin integration',
        type: 'feature',
-       value: 'auto')
+       value: 'disabled')
 option('audiomixer',
        description: 'Enable audiomixer spa plugin integration',
        type: 'feature',
@@ -273,7 +273,7 @@ option('libusb',
 option('session-managers',
        description : 'Session managers to build (can be [] for none or an absolute path)',
        type : 'array',
-       value : ['wireplumber'])
+       value : [])
 option('raop',
        description: 'Enable module for Remote Audio Output Protocol',
        type: 'feature',

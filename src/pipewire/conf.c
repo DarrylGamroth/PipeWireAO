@@ -99,7 +99,7 @@ static int get_homeconf_path(char *path, size_t size, const char *prefix, const 
 			dir = result ? result->pw_dir : NULL;
 	}
 	if (dir != NULL) {
-		const char *paths[] = { dir, ".config", "pipewire", prefix, name, NULL };
+		const char *paths[] = { dir, ".config", "pipewire-ao", prefix, name, NULL };
 		if (make_path(path, size, paths) == 0 &&
 		    access(path, R_OK) == 0)
 			return 1;
@@ -247,7 +247,7 @@ static int get_homestate_path(char *path, size_t size, const char *prefix, const
 	}
 	if (dir != NULL) {
 		/* fallback for old XDG_CONFIG_HOME */
-		const char *paths[] = { dir, ".config", "pipewire", prefix, name, NULL };
+		const char *paths[] = { dir, ".config", "pipewire-ao", prefix, name, NULL };
 		if (make_path(path, size, paths) == 0 &&
 		    access(path, R_OK) == 0)
 			return 1;
