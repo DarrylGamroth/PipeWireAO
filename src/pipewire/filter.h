@@ -262,6 +262,18 @@ int pw_filter_begin_progressive_buffer(void *port_data, struct pw_buffer *buffer
  */
 int pw_filter_end_progressive_buffer(void *port_data, struct pw_buffer *buffer);
 
+/**
+ * Get the borrowed advisory notification fd for a latest-buffer port. RT safe.
+ *
+ * The descriptor is owned by the filter and remains valid only while the port
+ * is connected. Callers must not close it. A readable descriptor is only a
+ * hint: consumers must always retry \ref pw_filter_dequeue_buffer because
+ * notifications can coalesce or be stale. Returns -ENOTSUP when the port is
+ * not using SPA_IO_BuffersLatest and -ENODEV when its selected wait policy has
+ * no notification descriptor.
+ */
+int pw_filter_get_buffer_latest_fd(void *port_data);
+
 /** Get a data pointer to the buffer data. RT safe. */
 void *pw_filter_get_dsp_buffer(void *port_data, uint32_t n_samples);
 
