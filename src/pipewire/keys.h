@@ -273,6 +273,8 @@ extern "C" {
 								  *  link and the target will receive data
 								  *  in the next cycle */
 #define PW_KEY_LINK_ASYNC		"link.async"		/**< the link is using async io */
+#define PW_KEY_LINK_BUFFER_QUEUE	"link.buffer-queue"	/**< the link exchanges completed buffers
+							  *  independently of graph cycles */
 
 /** device properties */
 #define PW_KEY_DEVICE_ID		"device.id"		/**< device id */

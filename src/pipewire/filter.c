@@ -85,6 +85,7 @@ struct port {
 	struct spa_param_info params[N_PORT_PARAMS];
 
 	struct spa_io_buffers *io;
+	struct spa_io_buffers_queue *queue_io;
 
 	struct buffer buffers[MAX_BUFFERS];
 	uint32_t n_buffers;
@@ -617,6 +618,12 @@ static int impl_port_set_io(void *object, enum spa_direction direction, uint32_t
 		else
 			port->io = NULL;
 		break;
+	case SPA_IO_BuffersQueue:
+		if (data && size >= sizeof(struct spa_io_buffers_queue))
+			port->queue_io = data;
+		else
+			port->queue_io = NULL;
+		break;
 	}
 
 	pw_filter_emit_io_changed(&impl->this, port->user_data, id, data, size);
@@ -1024,7 +1031,7 @@ static int impl_node_process(void *object)
 	spa_list_for_each(p, &impl->port_list, link) {
 		struct spa_io_buffers *io = p->io;
 
-		if (SPA_UNLIKELY(io == NULL ||
+		if (SPA_UNLIKELY(p->queue_io != NULL || io == NULL ||
 		    io->buffer_id >= p->n_buffers))
 			continue;
 
@@ -1054,7 +1061,7 @@ static int impl_node_process(void *object)
 	spa_list_for_each(p, &impl->port_list, link) {
 		struct spa_io_buffers *io = p->io;
 
-		if (SPA_UNLIKELY(io == NULL))
+		if (SPA_UNLIKELY(p->queue_io != NULL || io == NULL))
 			continue;
 
 		if (p->direction == SPA_DIRECTION_INPUT) {
@@ -1746,6 +1753,12 @@ static void add_port_params(struct filter *impl, struct port *port)
 			SPA_TYPE_OBJECT_ParamIO, SPA_PARAM_IO,
 			SPA_PARAM_IO_id,   SPA_POD_Id(SPA_IO_Buffers),
 			SPA_PARAM_IO_size, SPA_POD_Int(sizeof(struct spa_io_buffers))));
+	spa_pod_builder_init(&b, buffer, sizeof(buffer));
+	add_param(impl, port, SPA_PARAM_IO, PARAM_FLAG_LOCKED,
+		spa_pod_builder_add_object(&b,
+			SPA_TYPE_OBJECT_ParamIO, SPA_PARAM_IO,
+			SPA_PARAM_IO_id,   SPA_POD_Id(SPA_IO_BuffersQueue),
+			SPA_PARAM_IO_size, SPA_POD_Int(sizeof(struct spa_io_buffers_queue))));
 }
 
 static void add_audio_dsp_port_params(struct filter *impl, struct port *port)
@@ -2024,9 +2037,30 @@ struct pw_buffer *pw_filter_dequeue_buffer(void *port_data)
 {
 	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
 	struct buffer *b;
+	uint32_t id;
 	int res;
 
-	if (SPA_UNLIKELY((b = pop_queue(p, &p->dequeued)) == NULL)) {
+	b = pop_queue(p, &p->dequeued);
+	if (b == NULL && p->queue_io != NULL) {
+		res = p->direction == SPA_DIRECTION_INPUT
+			? spa_io_buffers_queue_pop_ready(p->queue_io, &id)
+			: spa_io_buffers_queue_pop_recycle(p->queue_io, &id);
+		if (res == 0) {
+			if (SPA_UNLIKELY(id >= p->n_buffers)) {
+				errno = EPROTO;
+				return NULL;
+			}
+			b = &p->buffers[id];
+			if (SPA_UNLIKELY(SPA_FLAG_IS_SET(b->flags,
+					BUFFER_FLAG_DEQUEUED))) {
+				errno = EPROTO;
+				return NULL;
+			}
+		} else {
+			errno = -res;
+		}
+	}
+	if (SPA_UNLIKELY(b == NULL)) {
 		res = -errno;
 		pw_log_trace_fp("%p: no more buffers: %m", p->filter);
 		errno = -res;
@@ -2048,9 +2082,17 @@ int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer)
 		pw_log_warn("%p: tried to queue cleared buffer %d", p->filter, b->id);
 		return -EINVAL;
 	}
-	SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
-
 	pw_log_trace_fp("%p: queue buffer %d", p->filter, b->id);
+	if (p->queue_io != NULL) {
+		int res = p->direction == SPA_DIRECTION_OUTPUT
+			? spa_io_buffers_queue_push_ready(p->queue_io, b->id)
+			: spa_io_buffers_queue_push_recycle(p->queue_io, b->id);
+		if (res < 0)
+			return res;
+		SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
+		return 0;
+	}
+	SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
 	return push_queue(p, &p->queued, b);
 }
 
