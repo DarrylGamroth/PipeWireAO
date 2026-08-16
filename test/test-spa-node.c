@@ -48,6 +48,7 @@ PWTEST(node_io_abi_sizes)
 	fprintf(stderr, "%zd\n", sizeof(struct spa_io_position));
 	fprintf(stderr, "%zd\n", sizeof(struct spa_io_rate_match));
 	fprintf(stderr, "%zd\n", sizeof(struct spa_io_buffers_latest));
+	fprintf(stderr, "%zd\n", sizeof(struct spa_io_buffers_latest_notify));
 
 	fprintf(stderr, "%zd\n", sizeof(struct spa_node_info));
 	fprintf(stderr, "%zd\n", sizeof(struct spa_port_info));
@@ -75,6 +76,8 @@ PWTEST(node_io_abi)
 	pwtest_int_eq(SPA_IO_Memory, 9);
 	pwtest_int_eq(SPA_IO_AsyncBuffers, 10);
 	pwtest_int_eq(SPA_IO_BuffersLatest, 11);
+	pwtest_int_eq(SPA_IO_BuffersLatestNotify, 12);
+	pwtest_int_eq(sizeof(struct spa_io_buffers_latest_notify), 8U);
 
 	/* position state */
 	pwtest_int_eq(SPA_IO_POSITION_STATE_STOPPED, 0);

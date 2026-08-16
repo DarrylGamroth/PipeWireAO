@@ -725,7 +725,18 @@ static int do_port_set_io(struct impl *impl,
 		return -EINVAL;
 	}
 
-	if (data) {
+	if (id == SPA_IO_BuffersLatestNotify) {
+		const struct spa_io_buffers_latest_notify *notify = data;
+
+		if (notify != NULL &&
+		    (size < sizeof(*notify) || notify->fd < 0)) {
+			pw_memmap_free(old);
+			return -EINVAL;
+		}
+		memid = notify == NULL ? SPA_ID_INVALID : (uint32_t)notify->fd;
+		mem_offset = 0;
+		mem_size = notify == NULL ? 0 : sizeof(*notify);
+	} else if (data) {
 		mm = pw_mempool_import_map(impl->client_pool,
 				impl->context_pool, data, size, tag);
 		if (mm == NULL)

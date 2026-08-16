@@ -45,6 +45,7 @@ enum spa_io_type {
 	SPA_IO_Memory,		/**< memory pointer, struct spa_io_memory (currently not used in PipeWire) */
 	SPA_IO_AsyncBuffers,	/**< async area to exchange buffers, struct spa_io_async_buffers */
 	SPA_IO_BuffersLatest,	/**< latest complete buffer, struct spa_io_buffers_latest */
+	SPA_IO_BuffersLatestNotify, /**< process-local advisory fd, struct spa_io_buffers_latest_notify */
 };
 
 /**
@@ -429,6 +430,20 @@ struct spa_io_buffers_latest {
 SPA_STATIC_ASSERT((SPA_IO_BUFFERS_LATEST_CAPACITY &
 		(SPA_IO_BUFFERS_LATEST_CAPACITY - 1u)) == 0u,
 		"buffer recycle capacity must be a power of two");
+
+/**
+ * Process-local advisory notification for SPA_IO_BuffersLatest.
+ *
+ * The host must broker fd into each process; the numeric descriptor is never
+ * stored in shared memory. The output writes one non-blocking event after a
+ * successful publication. The input may drain or wait on the descriptor, but
+ * must always recheck struct spa_io_buffers_latest because notifications may
+ * coalesce or be stale.
+ */
+struct spa_io_buffers_latest_notify {
+	int32_t fd;
+	uint32_t reserved;
+};
 
 /** Publish a complete buffer and return one superseded ID when present. */
 static inline int spa_io_buffers_latest_publish(struct spa_io_buffers_latest *latest,
