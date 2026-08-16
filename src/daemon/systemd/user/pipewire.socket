@@ -1,11 +1,10 @@
 [Unit]
-Description=PipeWire Multimedia System Sockets
+Description=PipeWireAO Socket
 ConditionUser=!root
 
 [Socket]
 Priority=6
-ListenStream=%t/pipewire-0
-ListenStream=%t/pipewire-0-manager
+ListenStream=%t/pipewire-ao
 
 [Install]
 WantedBy=sockets.target

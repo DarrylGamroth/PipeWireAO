@@ -1,4 +1,21 @@
-# PipeWire
+# PipeWireAO
+
+PipeWireAO is a maintained adaptive-optics fork of
+[PipeWire](https://pipewire.org). It retains PipeWire's format and metadata
+negotiation, fixed buffer pools, `memfd` and DMA-BUF fd brokering, mapping,
+discovery, and lifecycle infrastructure. Strict AO links add
+graph-independent, lossy latest-buffer ownership with selectable busy-spin,
+`eventfd`, or hybrid receiver waiting and optional progressive-prefix leases.
+
+PipeWireAO is designed to coexist with a system PipeWire installation. It uses
+the `libpipewire-ao-0.3` and `libspa-ao-0.2` library and pkg-config identities,
+the `pipewire-ao` daemon and default socket, `pwao-*` tools, and separate
+header, module, SPA plugin, configuration, and service paths. It retains the
+`pw_` C symbol namespace for source compatibility. Desktop audio compatibility
+layers and a session manager are disabled by default because they are outside
+the AO runtime profile.
+
+## Upstream foundation
 
 [PipeWire](https://pipewire.org) is a server and user space API to
 deal with multimedia pipelines. This includes:
