@@ -1,9 +1,9 @@
 [Unit]
-Description=PipeWire Multimedia System Socket
+Description=PipeWireAO Socket
 
 [Socket]
 Priority=6
-ListenStream=%t/pipewire/pipewire-0
+ListenStream=%t/pipewire-ao/pipewire-ao
 SocketUser=pipewire
 SocketGroup=pipewire
 SocketMode=0660

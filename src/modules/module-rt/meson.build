@@ -5,7 +5,7 @@ rlimits_data.set('RTPRIO', get_option('rlimits-rtprio'))
 rlimits_data.set('NICE', get_option('rlimits-nice'))
 rlimits_data.set('MEMLOCK', get_option('rlimits-memlock'))
 configure_file(input: '25-pw-rlimits.conf.in',
-  output: '25-pw-rlimits.conf',
+  output: '25-pwao-rlimits.conf',
   install: rlimits_install,
   install_dir: get_option('sysconfdir') / 'security' / 'limits.d',
   configuration: rlimits_data)
@@ -16,7 +16,7 @@ pam_defaults_install = get_option('pam-defaults-install')
 pam_defaults_data = configuration_data()
 pam_defaults_data.set('PAM_MEMLOCK', get_option('pam-memlock-default'))
 configure_file(input: '20-pw-defaults.conf.in',
-  output: '20-pw-defaults.conf',
+  output: '20-pwao-defaults.conf',
   install: pam_defaults_install,
   install_dir: get_option('sysconfdir') / 'security' / 'limits.d',
   configuration: pam_defaults_data)

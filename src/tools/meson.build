@@ -12,21 +12,21 @@ tools_sources = [
 ]
 
 foreach t : tools_sources
-  executable(t.get(0),
+  executable('pwao-' + t.get(0).substring(3),
     t.get(1),
     install: true,
     dependencies : [pipewire_dep, mathlib],
   )
 endforeach
 
-executable('pw-cli',
+executable('pwao-cli',
   'pw-cli.c',
   install: true,
   dependencies: [pipewire_dep, readline_dep]
 )
 
 if ncurses_dep.found()
-  executable('pw-top',
+  executable('pwao-top',
     'pw-top.c',
     install: true,
     dependencies : [pipewire_dep, ncurses_dep],
@@ -54,19 +54,9 @@ if get_option('pw-cat').allowed() and sndfile_dep.found()
     'dsffile.c',
   ]
 
-  pwcat_aliases = [
-    'pw-play',
-    'pw-record',
-    'pw-midiplay',
-    'pw-midirecord',
-    'pw-midi2play',
-    'pw-midi2record',
-    'pw-dsdplay',
-    'pw-encplay',
-    'pw-sysex',
-  ]
+  pwcat_aliases = []
 
-  pw_cat = executable('pw-cat',
+  pw_cat = executable('pwao-cat',
     pwcat_sources,
     install: true,
     dependencies : [pwcat_deps, pipewire_dep, mathlib],
@@ -96,7 +86,7 @@ if build_pw_cat
 endif
 
 if sndfile_dep.found()
-  executable('pw-audioconvert',
+  executable('pwao-audioconvert',
     'pw-audioconvert.c',
     install: true,
     dependencies : [pipewire_dep, sndfile_dep, mathlib],
@@ -150,7 +140,7 @@ if build_avb_virtual
     '../modules/module-avb/srp.c',
     '../modules/module-avb/stream.c',
   ]
-  executable('pw-avb-virtual',
+  executable('pwao-avb-virtual',
     avb_tool_sources,
     install: true,
     include_directories: [configinc, avb_tool_inc],
@@ -159,7 +149,7 @@ if build_avb_virtual
 endif
 
 if dbus_dep.found()
-  executable('pw-reserve',
+  executable('pwao-reserve',
     'reserve.h',
     'reserve.c',
     'pw-reserve.c',
