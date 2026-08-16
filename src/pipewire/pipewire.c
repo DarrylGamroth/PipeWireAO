@@ -246,7 +246,7 @@ static struct spa_handle *load_spa_handle(const char *lib,
 	res = -ENOENT;
 
 	if (sup->plugin_dir == NULL) {
-		pw_log_error("load lib: plugin directory undefined, set SPA_PLUGIN_DIR");
+		pw_log_error("load lib: plugin directory undefined, set PIPEWIREAO_SPA_PLUGIN_DIR");
 		goto error_out;
 	}
 	while ((p = pw_split_walk(sup->plugin_dir, ":", &len, &state))) {
@@ -529,22 +529,22 @@ void pw_init(int *argc, char **argv[])
 	support->in_valgrind = RUNNING_ON_VALGRIND;
 
 	support->do_dlclose = true;
-	if ((str = getenv("PIPEWIRE_DLCLOSE")) != NULL)
+	if ((str = getenv("PIPEWIREAO_DLCLOSE")) != NULL)
 		support->do_dlclose = pw_properties_parse_bool(str);
 
 	if (getenv("NO_COLOR") != NULL)
 		support->no_color = true;
 
-	if ((str = getenv("PIPEWIRE_NO_CONFIG")) != NULL)
+	if ((str = getenv("PIPEWIREAO_NO_CONFIG")) != NULL)
 		support->no_config = pw_properties_parse_bool(str);
 
 	init_i18n(support);
 
-	if ((str = getenv("SPA_PLUGIN_DIR")) == NULL)
+	if ((str = getenv("PIPEWIREAO_SPA_PLUGIN_DIR")) == NULL)
 		str = PLUGINDIR;
 	support->plugin_dir = str;
 
-	if ((str = getenv("SPA_SUPPORT_LIB")) == NULL)
+	if ((str = getenv("PIPEWIREAO_SPA_SUPPORT_LIB")) == NULL)
 		str = SUPPORTLIB;
 	support->support_lib = str;
 
@@ -554,19 +554,19 @@ void pw_init(int *argc, char **argv[])
 	if (pw_log_is_default()) {
 		n_items = 0;
 		if (!support->no_color) {
-			if ((str = getenv("PIPEWIRE_LOG_COLOR")) == NULL)
+			if ((str = getenv("PIPEWIREAO_LOG_COLOR")) == NULL)
 				str = "true";
 			items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_LOG_COLORS, str);
 		}
-		if ((str = getenv("PIPEWIRE_LOG_TIMESTAMP")) != NULL)
+		if ((str = getenv("PIPEWIREAO_LOG_TIMESTAMP")) != NULL)
 			items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_LOG_TIMESTAMP, str);
 		else
 			items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_LOG_TIMESTAMP, "local");
-		if ((str = getenv("PIPEWIRE_LOG_LINE")) == NULL || spa_atob(str))
+		if ((str = getenv("PIPEWIREAO_LOG_LINE")) == NULL || spa_atob(str))
 			items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_LOG_LINE, "true");
 		snprintf(level, sizeof(level), "%d", pw_log_level);
 		items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_LOG_LEVEL, level);
-		if ((str = getenv("PIPEWIRE_LOG")) != NULL)
+		if ((str = getenv("PIPEWIREAO_LOG")) != NULL)
 			items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_LOG_FILE, str);
 		info = SPA_DICT_INIT(items, n_items);
 
@@ -575,14 +575,14 @@ void pw_init(int *argc, char **argv[])
 			pw_log_set(log);
 
 #ifdef HAVE_SYSTEMD
-		if ((str = getenv("PIPEWIRE_LOG_SYSTEMD")) == NULL || spa_atob(str)) {
+		if ((str = getenv("PIPEWIREAO_LOG_SYSTEMD")) == NULL || spa_atob(str)) {
 			log = load_journal_logger(support, &info);
 			if (log)
 				pw_log_set(log);
 		}
 #endif
 
-		str = getenv("PIPEWIRE_DEBUG");
+		str = getenv("PIPEWIREAO_DEBUG");
 		if (str && *str)
 			pw_log_set_level_string(str);
 	} else {
@@ -593,9 +593,9 @@ void pw_init(int *argc, char **argv[])
 	pw_log_init();
 
 	n_items = 0;
-	if ((str = getenv("PIPEWIRE_CPU")))
+	if ((str = getenv("PIPEWIREAO_CPU")))
 		items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_CPU_FORCE, str);
-	if ((str = getenv("PIPEWIRE_VM")))
+	if ((str = getenv("PIPEWIREAO_VM")))
 		items[n_items++] = SPA_DICT_ITEM_INIT(SPA_KEY_CPU_VM_TYPE, str);
 	info = SPA_DICT_INIT(items, n_items);
 
@@ -655,7 +655,7 @@ done:
  * \param name the name of the category to check
  * \return true if enabled
  *
- * Debugging categories can be enabled by using the PIPEWIRE_DEBUG
+ * Debugging categories can be enabled by using the PIPEWIREAO_DEBUG
  * environment variable
  */
 SPA_EXPORT

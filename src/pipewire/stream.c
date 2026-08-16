@@ -2142,15 +2142,15 @@ pw_stream_connect(struct pw_stream *stream,
 	pw_context_conf_section_match_rules(impl->context, "stream.rules",
 			&stream->properties->dict, execute_match, &match);
 
-	if ((str = getenv("PIPEWIRE_NODE")) != NULL)
+	if ((str = getenv("PIPEWIREAO_NODE")) != NULL)
 		pw_properties_set(stream->properties, PW_KEY_TARGET_OBJECT, str);
-	if ((str = getenv("PIPEWIRE_AUTOCONNECT")) != NULL)
+	if ((str = getenv("PIPEWIREAO_AUTOCONNECT")) != NULL)
 		pw_properties_set(stream->properties,
 				PW_KEY_NODE_AUTOCONNECT, spa_atob(str) ? "true" : "false");
 
-	if ((str = getenv("PIPEWIRE_PROPS")) != NULL)
+	if ((str = getenv("PIPEWIREAO_PROPS")) != NULL)
 		pw_properties_update_string(stream->properties, str, strlen(str));
-	if ((str = getenv("PIPEWIRE_QUANTUM")) != NULL) {
+	if ((str = getenv("PIPEWIREAO_QUANTUM")) != NULL) {
 		struct spa_fraction q;
 		if (sscanf(str, "%u/%u", &q.num, &q.denom) == 2 && q.denom != 0) {
 			pw_properties_setf(stream->properties, PW_KEY_NODE_FORCE_RATE,
@@ -2159,9 +2159,9 @@ pw_stream_connect(struct pw_stream *stream,
 					"%u", q.num);
 		}
 	}
-	if ((str = getenv("PIPEWIRE_LATENCY")) != NULL)
+	if ((str = getenv("PIPEWIREAO_LATENCY")) != NULL)
 		pw_properties_set(stream->properties, PW_KEY_NODE_LATENCY, str);
-	if ((str = getenv("PIPEWIRE_RATE")) != NULL)
+	if ((str = getenv("PIPEWIREAO_RATE")) != NULL)
 		pw_properties_set(stream->properties, PW_KEY_NODE_RATE, str);
 
 	if ((str = pw_properties_get(stream->properties, "mem.warn-mlock")) != NULL)

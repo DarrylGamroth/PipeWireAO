@@ -56,8 +56,8 @@ int main(int argc, char *argv[])
 	enum spa_log_level level;
 	struct spa_error_location loc;
 
-	if (setenv("PIPEWIRE_INTERNAL", "1", 1) < 0)
-		fprintf(stderr, "can't set PIPEWIRE_INTERNAL env: %m");
+	if (setenv("PIPEWIREAO_INTERNAL", "1", 1) < 0)
+		fprintf(stderr, "can't set PIPEWIREAO_INTERNAL env: %m");
 
 	snprintf(path, sizeof(path), "%s.conf", argv[0]);
 	config_name = basename(path);
