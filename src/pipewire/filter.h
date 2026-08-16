@@ -237,6 +237,31 @@ struct pw_buffer *pw_filter_dequeue_buffer(void *port_data);
 /** Submit a buffer for playback or recycle a buffer for capture. RT safe. */
 int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer);
 
+/**
+ * Announce an output buffer on a graph-independent latest-buffer port while
+ * retaining its producer lease. RT safe.
+ *
+ * The caller must initialize and publish its application-defined active state
+ * before this call. It may continue to write only storage that the negotiated
+ * progressive protocol still grants to the producer. The buffer must later be
+ * passed exactly once to \ref pw_filter_end_progressive_buffer, not to
+ * \ref pw_filter_queue_buffer.
+ *
+ * This operation is supported only on an output port configured with
+ * SPA_IO_BuffersLatest.
+ */
+int pw_filter_begin_progressive_buffer(void *port_data, struct pw_buffer *buffer);
+
+/**
+ * End the producer lease of an announced progressive output buffer. RT safe.
+ *
+ * Before this call, the producer must stop writing and publish its negotiated
+ * terminal state. PipeWire makes the allocation reusable only after the input
+ * consumer has also returned its lease. Consumer return and this call may
+ * occur in either order.
+ */
+int pw_filter_end_progressive_buffer(void *port_data, struct pw_buffer *buffer);
+
 /** Get a data pointer to the buffer data. RT safe. */
 void *pw_filter_get_dsp_buffer(void *port_data, uint32_t n_samples);
 
