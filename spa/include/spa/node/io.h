@@ -7,6 +7,7 @@
 
 #include <errno.h>
 
+#include <spa/utils/atomic.h>
 #include <spa/utils/defs.h>
 #include <spa/utils/ringbuffer.h>
 #include <spa/pod/pod.h>
@@ -43,7 +44,7 @@ enum spa_io_type {
 	SPA_IO_RateMatch,	/**< rate matching between nodes, struct spa_io_rate_match */
 	SPA_IO_Memory,		/**< memory pointer, struct spa_io_memory (currently not used in PipeWire) */
 	SPA_IO_AsyncBuffers,	/**< async area to exchange buffers, struct spa_io_async_buffers */
-	SPA_IO_BuffersQueue,	/**< transport queue, struct spa_io_buffers_queue */
+	SPA_IO_BuffersLatest,	/**< latest complete buffer, struct spa_io_buffers_latest */
 };
 
 /**
@@ -395,94 +396,117 @@ struct spa_io_async_buffers {
 };
 
 /**
- * Queue of complete buffers independent of graph cycles.
+ * Latest complete buffer independent of graph cycles.
  *
- * The output port is the single writer of ready_ids and the input port is
- * its single reader. The input port is the single writer of recycle_ids and
- * the output port is its single reader. Buffer contents written before a ready
- * queue update are visible after the corresponding dequeue. Buffer reads
- * performed before a recycle queue update complete before the output port may
- * reuse that buffer.
+ * The output port publishes a complete buffer by atomically exchanging its ID
+ * into ready_id. The input port claims the latest ID by atomically exchanging
+ * ready_id with SPA_ID_INVALID. The output may reclaim and supersede an
+ * unclaimed ID, but it must not reuse an ID claimed by the input until that ID
+ * appears on the recycle ring.
  *
- * The host negotiates and configures the buffers referenced by these IDs in
- * the normal way. This area changes only buffer readiness and recycling; it
- * does not allocate payload storage or define a graph scheduling policy.
+ * This gives the handoff latest-value semantics: an output never waits for an
+ * input, and an input never receives a backlog of obsolete buffers. The input
+ * must hold at most one claimed buffer at a time. If every buffer is claimed,
+ * the output has no safe buffer and must drop new work instead of blocking.
+ *
+ * The host negotiates and configures the referenced buffers in the normal
+ * way. This area changes only buffer ownership; it does not allocate payload
+ * storage or define a graph scheduling policy.
  */
-#define SPA_IO_BUFFERS_QUEUE_CAPACITY	64u
-struct spa_io_buffers_queue {
-	struct spa_ringbuffer ready;
+#define SPA_IO_BUFFERS_LATEST_CAPACITY	64u
+struct spa_io_buffers_latest {
+	uint32_t ready_id;
+	uint32_t superseded;	/**< output-owned count of unclaimed buffers replaced */
 	struct spa_ringbuffer recycle;
-	uint32_t ready_ids[SPA_IO_BUFFERS_QUEUE_CAPACITY];
-	uint32_t recycle_ids[SPA_IO_BUFFERS_QUEUE_CAPACITY];
+	uint32_t recycle_ids[SPA_IO_BUFFERS_LATEST_CAPACITY];
 };
 
-#define SPA_IO_BUFFERS_QUEUE_INIT ((struct spa_io_buffers_queue) { \
-	.ready = SPA_RINGBUFFER_INIT(), \
+#define SPA_IO_BUFFERS_LATEST_INIT ((struct spa_io_buffers_latest) { \
+	.ready_id = SPA_ID_INVALID, \
 	.recycle = SPA_RINGBUFFER_INIT(), \
 })
 
-SPA_STATIC_ASSERT((SPA_IO_BUFFERS_QUEUE_CAPACITY &
-		(SPA_IO_BUFFERS_QUEUE_CAPACITY - 1u)) == 0u,
-		"buffer queue capacity must be a power of two");
+SPA_STATIC_ASSERT((SPA_IO_BUFFERS_LATEST_CAPACITY &
+		(SPA_IO_BUFFERS_LATEST_CAPACITY - 1u)) == 0u,
+		"buffer recycle capacity must be a power of two");
 
-static inline int spa_io_buffers_queue_push(struct spa_ringbuffer *ring,
-		uint32_t ids[SPA_IO_BUFFERS_QUEUE_CAPACITY], uint32_t buffer_id)
+/** Publish a complete buffer and return one superseded ID when present. */
+static inline int spa_io_buffers_latest_publish(struct spa_io_buffers_latest *latest,
+		uint32_t buffer_id, uint32_t *superseded_id)
 {
-	uint32_t index;
-	int32_t filled = spa_ringbuffer_get_write_index(ring, &index);
+	uint32_t old;
 
-	if (filled < 0)
-		return -EIO;
-	if ((uint32_t)filled >= SPA_IO_BUFFERS_QUEUE_CAPACITY)
-		return -ENOSPC;
-	ids[index & (SPA_IO_BUFFERS_QUEUE_CAPACITY - 1u)] = buffer_id;
-	spa_ringbuffer_write_update(ring, index + 1u);
+	if (buffer_id == SPA_ID_INVALID)
+		return -EINVAL;
+
+	old = SPA_ATOMIC_XCHG(latest->ready_id, buffer_id);
+	if (old == SPA_ID_INVALID)
+		return 0;
+
+	SPA_ATOMIC_INC(latest->superseded);
+	if (superseded_id != NULL)
+		*superseded_id = old;
+	return 1;
+}
+
+/** Claim the latest complete input buffer. */
+static inline int spa_io_buffers_latest_acquire(struct spa_io_buffers_latest *latest,
+		uint32_t *buffer_id)
+{
+	uint32_t id = SPA_ATOMIC_XCHG(latest->ready_id, SPA_ID_INVALID);
+
+	if (id == SPA_ID_INVALID)
+		return -EPIPE;
+	*buffer_id = id;
 	return 0;
 }
 
-static inline int spa_io_buffers_queue_pop(struct spa_ringbuffer *ring,
-		uint32_t ids[SPA_IO_BUFFERS_QUEUE_CAPACITY], uint32_t *buffer_id)
+/** Reclaim an unclaimed output buffer so that it may be overwritten. */
+static inline int spa_io_buffers_latest_withdraw(struct spa_io_buffers_latest *latest,
+		uint32_t *buffer_id)
+{
+	int res = spa_io_buffers_latest_acquire(latest, buffer_id);
+
+	if (res == 0)
+		SPA_ATOMIC_INC(latest->superseded);
+	return res;
+}
+
+static inline int spa_io_buffers_latest_push_recycle(
+		struct spa_io_buffers_latest *latest, uint32_t buffer_id)
 {
 	uint32_t index;
-	int32_t available = spa_ringbuffer_get_read_index(ring, &index);
+	int32_t filled;
+
+	if (buffer_id == SPA_ID_INVALID)
+		return -EINVAL;
+	filled = spa_ringbuffer_get_write_index(&latest->recycle, &index);
+
+	if (filled < 0)
+		return -EIO;
+	if ((uint32_t)filled >= SPA_IO_BUFFERS_LATEST_CAPACITY)
+		return -ENOSPC;
+	latest->recycle_ids[index & (SPA_IO_BUFFERS_LATEST_CAPACITY - 1u)] = buffer_id;
+	spa_ringbuffer_write_update(&latest->recycle, index + 1u);
+	return 0;
+}
+
+/** Acquire one returned output buffer. */
+static inline int spa_io_buffers_latest_pop_recycle(
+		struct spa_io_buffers_latest *latest, uint32_t *buffer_id)
+{
+	uint32_t index;
+	int32_t available = spa_ringbuffer_get_read_index(&latest->recycle, &index);
 
 	if (available < 0)
 		return -EIO;
 	if (available == 0)
 		return -EPIPE;
-	if ((uint32_t)available > SPA_IO_BUFFERS_QUEUE_CAPACITY)
+	if ((uint32_t)available > SPA_IO_BUFFERS_LATEST_CAPACITY)
 		return -ENOSPC;
-	*buffer_id = ids[index & (SPA_IO_BUFFERS_QUEUE_CAPACITY - 1u)];
-	spa_ringbuffer_read_update(ring, index + 1u);
+	*buffer_id = latest->recycle_ids[index & (SPA_IO_BUFFERS_LATEST_CAPACITY - 1u)];
+	spa_ringbuffer_read_update(&latest->recycle, index + 1u);
 	return 0;
-}
-
-/** Publish one complete output buffer. */
-static inline int spa_io_buffers_queue_push_ready(struct spa_io_buffers_queue *queue,
-		uint32_t buffer_id)
-{
-	return spa_io_buffers_queue_push(&queue->ready, queue->ready_ids, buffer_id);
-}
-
-/** Acquire one complete input buffer. */
-static inline int spa_io_buffers_queue_pop_ready(struct spa_io_buffers_queue *queue,
-		uint32_t *buffer_id)
-{
-	return spa_io_buffers_queue_pop(&queue->ready, queue->ready_ids, buffer_id);
-}
-
-/** Return one consumed input buffer for producer reuse. */
-static inline int spa_io_buffers_queue_push_recycle(struct spa_io_buffers_queue *queue,
-		uint32_t buffer_id)
-{
-	return spa_io_buffers_queue_push(&queue->recycle, queue->recycle_ids, buffer_id);
-}
-
-/** Acquire one returned output buffer. */
-static inline int spa_io_buffers_queue_pop_recycle(struct spa_io_buffers_queue *queue,
-		uint32_t *buffer_id)
-{
-	return spa_io_buffers_queue_pop(&queue->recycle, queue->recycle_ids, buffer_id);
 }
 
 /**
