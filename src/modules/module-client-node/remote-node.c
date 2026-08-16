@@ -893,6 +893,9 @@ static void clear_mix(struct node_data *data, struct mix *mix)
 
 	if (mix->mix.id != SPA_ID_INVALID)
 		spa_node_port_set_io(mix->port->mix, mix->mix.port.direction,
+				mix->mix.port.port_id, SPA_IO_BuffersQueue, NULL, 0);
+	if (mix->mix.id != SPA_ID_INVALID)
+		spa_node_port_set_io(mix->port->mix, mix->mix.port.direction,
 				mix->mix.port.port_id, SPA_IO_Buffers, NULL, 0);
 
 	spa_list_remove(&mix->link);

@@ -28,7 +28,7 @@ PW_LOG_TOPIC_EXTERN(mod_topic);
 
 /** \cond */
 
-#define AREA_SLOT	(sizeof(struct spa_io_async_buffers))
+#define AREA_SLOT	(sizeof(struct spa_io_buffers_queue))
 #define AREA_SIZE	(4096u / AREA_SLOT)
 
 #define CHECK_FREE_PORT(impl,d,p)	(p <= pw_map_get_size(&impl->ports[d]) && !CHECK_PORT(impl,d,p))
@@ -1644,6 +1644,9 @@ static int impl_mix_port_set_io(void *object,
 		return -EINVAL;
 
 	switch (id) {
+	case SPA_IO_BuffersQueue:
+		mix->io[0] = mix->io[1] = NULL;
+		break;
 	case SPA_IO_Buffers:
 		if (data && size >= sizeof(struct spa_io_buffers))
 			mix->io[0] = mix->io[1] = data;
