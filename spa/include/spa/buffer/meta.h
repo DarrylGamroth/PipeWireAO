@@ -37,6 +37,7 @@ enum spa_meta_type {
 	SPA_META_Busy,			/**< don't write to buffer when count > 0 */
 	SPA_META_VideoTransform,	/**< struct spa_meta_transform */
 	SPA_META_SyncTimeline,		/**< struct spa_meta_sync_timeline */
+	SPA_META_Progressive,		/**< struct spa_meta_progressive */
 	_SPA_META_LAST,			/**< not part of ABI/API */
 
 	SPA_META_START_custom		= 0x200,
@@ -203,6 +204,140 @@ struct spa_meta_sync_timeline {
 	uint64_t release_point;			/**< the timeline release point, this timeline point should
 						  *  be signaled when the data is no longer accessed. */
 };
+
+/** Version 1 progressive metadata ABI. */
+#define SPA_META_PROGRESSIVE_VERSION		1u
+#define SPA_META_PROGRESSIVE_SIZE		48u
+#define SPA_META_FEATURE_PROGRESSIVE_VERSION_1	(1u << 0)
+
+#define SPA_META_PROGRESSIVE_COMMITTED_MASK	UINT64_C(0x00000000ffffffff)
+#define SPA_META_PROGRESSIVE_STATE_MASK		UINT64_C(0x0000000300000000)
+#define SPA_META_PROGRESSIVE_STATE_SHIFT	32u
+#define SPA_META_PROGRESSIVE_RESERVED_MASK	UINT64_C(0xfffffffc00000000)
+
+#define SPA_META_PROGRESSIVE_FLAG_INCOMPLETE	(1u << 0)
+#define SPA_META_PROGRESSIVE_FLAG_INVALID_LAYOUT	(1u << 1)
+#define SPA_META_PROGRESSIVE_FLAG_CANCELLED	(1u << 2)
+#define SPA_META_PROGRESSIVE_FLAG_DEVICE_ERROR	(1u << 3)
+#define SPA_META_PROGRESSIVE_FLAG_CORRUPTED	(1u << 4)
+#define SPA_META_PROGRESSIVE_FLAG_PROTOCOL_ERROR	(1u << 5)
+#define SPA_META_PROGRESSIVE_FLAG_ALL		((1u << 6) - 1u)
+
+enum spa_meta_progressive_state {
+	SPA_META_PROGRESSIVE_STATE_PREPARED,
+	SPA_META_PROGRESSIVE_STATE_ACTIVE,
+	SPA_META_PROGRESSIVE_STATE_COMPLETE,
+	SPA_META_PROGRESSIVE_STATE_ABORTED,
+};
+
+/**
+ * Progressive payload publication state shared by producer and consumer.
+ *
+ * All fields other than snapshot are immutable while a producer or consumer
+ * lease is active. The producer release-stores snapshot after making each new
+ * payload prefix immutable; the consumer acquire-loads it before reading that
+ * prefix.
+ */
+struct SPA_ALIGNED(8) spa_meta_progressive {
+	uint32_t version;
+	uint32_t abi_size;
+	uint32_t data_index;
+	uint32_t payload_offset;
+	uint32_t payload_size;
+	uint32_t commit_granularity;
+	uint32_t terminal_flags;
+	uint32_t reserved0;
+	uint64_t snapshot;
+	uint64_t reserved1;
+};
+
+SPA_API_META uint64_t spa_meta_progressive_snapshot_encode(uint32_t committed,
+		enum spa_meta_progressive_state state)
+{
+	return (uint64_t) committed | ((uint64_t) state << SPA_META_PROGRESSIVE_STATE_SHIFT);
+}
+
+SPA_API_META bool spa_meta_progressive_snapshot_decode(uint64_t snapshot,
+		uint32_t *committed, enum spa_meta_progressive_state *state)
+{
+	if (snapshot & SPA_META_PROGRESSIVE_RESERVED_MASK)
+		return false;
+	if (committed != NULL)
+		*committed = (uint32_t) (snapshot & SPA_META_PROGRESSIVE_COMMITTED_MASK);
+	if (state != NULL)
+		*state = (enum spa_meta_progressive_state)
+			((snapshot & SPA_META_PROGRESSIVE_STATE_MASK) >>
+			 SPA_META_PROGRESSIVE_STATE_SHIFT);
+	return true;
+}
+
+SPA_API_META uint64_t spa_meta_progressive_load_acquire(
+		const struct spa_meta_progressive *meta)
+{
+	return __atomic_load_n(&meta->snapshot, __ATOMIC_ACQUIRE);
+}
+
+SPA_API_META void spa_meta_progressive_store_release(
+		struct spa_meta_progressive *meta, uint64_t snapshot)
+{
+	__atomic_store_n(&meta->snapshot, snapshot, __ATOMIC_RELEASE);
+}
+
+/** Initialize a reusable Version 1 progressive metadata allocation. */
+SPA_API_META bool spa_meta_progressive_init(struct spa_meta_progressive *meta,
+		uint32_t data_index, uint32_t payload_offset, uint32_t payload_size,
+		uint32_t commit_granularity)
+{
+	if (meta == NULL || !SPA_IS_ALIGNED(meta, 8) || payload_size == 0 ||
+	    commit_granularity == 0 || commit_granularity > payload_size)
+		return false;
+
+	meta->version = SPA_META_PROGRESSIVE_VERSION;
+	meta->abi_size = SPA_META_PROGRESSIVE_SIZE;
+	meta->data_index = data_index;
+	meta->payload_offset = payload_offset;
+	meta->payload_size = payload_size;
+	meta->commit_granularity = commit_granularity;
+	meta->terminal_flags = 0;
+	meta->reserved0 = 0;
+	meta->reserved1 = 0;
+	spa_meta_progressive_store_release(meta,
+			spa_meta_progressive_snapshot_encode(0,
+				SPA_META_PROGRESSIVE_STATE_PREPARED));
+	return true;
+}
+
+/** Validate a mapped Version 1 progressive metadata allocation. */
+SPA_API_META bool spa_meta_progressive_is_valid(const struct spa_meta *meta)
+{
+	const struct spa_meta_progressive *progressive;
+	enum spa_meta_progressive_state state;
+	uint32_t committed;
+	uint64_t snapshot;
+
+	if (meta == NULL || meta->type != SPA_META_Progressive ||
+	    meta->data == NULL || meta->size < sizeof(struct spa_meta_progressive) ||
+	    !SPA_IS_ALIGNED(meta->data, 8))
+		return false;
+
+	progressive = (const struct spa_meta_progressive *) meta->data;
+	snapshot = spa_meta_progressive_load_acquire(progressive);
+	if (progressive->version != SPA_META_PROGRESSIVE_VERSION ||
+	    progressive->abi_size != SPA_META_PROGRESSIVE_SIZE ||
+	    progressive->reserved0 != 0 || progressive->reserved1 != 0 ||
+	    progressive->payload_size == 0 || progressive->commit_granularity == 0 ||
+	    progressive->commit_granularity > progressive->payload_size)
+		return false;
+
+	if (!spa_meta_progressive_snapshot_decode(snapshot, &committed, &state) ||
+	    committed > progressive->payload_size)
+		return false;
+	if ((state == SPA_META_PROGRESSIVE_STATE_COMPLETE ||
+	     state == SPA_META_PROGRESSIVE_STATE_ABORTED) &&
+	    (progressive->terminal_flags & ~SPA_META_PROGRESSIVE_FLAG_ALL) != 0)
+		return false;
+	return true;
+}
 
 /**
  * \}
