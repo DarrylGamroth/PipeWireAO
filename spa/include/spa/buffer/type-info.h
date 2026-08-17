@@ -78,6 +78,7 @@ static const struct spa_type_info spa_type_meta_type[] = {
 	{ SPA_META_Busy, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "Busy", NULL },
 	{ SPA_META_VideoTransform, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "VideoTransform", NULL },
 	{ SPA_META_SyncTimeline, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "SyncTimeline", NULL },
+	{ SPA_META_Progressive, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "Progressive", NULL },
 	{ 0, 0, NULL, NULL },
 };
 

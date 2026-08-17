@@ -85,6 +85,24 @@ enum spa_media_subtype {
 	SPA_MEDIA_SUBTYPE_START_Application	= 0x60000,
 	SPA_MEDIA_SUBTYPE_control,		/**< control stream, data contains
 						  *  spa_pod_sequence with control info. */
+	SPA_MEDIA_SUBTYPE_ndarray,		/**< packed N-dimensional typed elements */
+};
+
+/** scalar representation of ndarray elements */
+enum spa_element_type {
+	SPA_ELEMENT_TYPE_UNKNOWN,
+	SPA_ELEMENT_TYPE_F16_LE,		/**< IEEE 754 binary16, little-endian */
+	SPA_ELEMENT_TYPE_F32_LE,		/**< IEEE 754 binary32, little-endian */
+	SPA_ELEMENT_TYPE_F64_LE,		/**< IEEE 754 binary64, little-endian */
+	SPA_ELEMENT_TYPE_U8,			/**< unsigned 8-bit integer */
+	SPA_ELEMENT_TYPE_U32_LE,		/**< unsigned 32-bit integer, little-endian */
+};
+
+/** contiguous storage order of ndarray elements */
+enum spa_ndarray_layout {
+	SPA_NDARRAY_LAYOUT_UNKNOWN,
+	SPA_NDARRAY_LAYOUT_ROW_MAJOR,		/**< the last logical axis is contiguous */
+	SPA_NDARRAY_LAYOUT_COLUMN_MAJOR,	/**< the first logical axis is contiguous */
 };
 
 /** properties for audio SPA_TYPE_OBJECT_Format */
@@ -156,6 +174,13 @@ enum spa_format {
 	SPA_FORMAT_START_Application = 0x60000,
 	SPA_FORMAT_CONTROL_types,		/**< possible control types (flags choice Int,
 						  *  mask of enum spa_control_type) */
+
+	/* NdArray format keys */
+	SPA_FORMAT_START_NdArray = 0x61000,
+	SPA_FORMAT_NDARRAY_elementType,		/**< element type (Id enum spa_element_type) */
+	SPA_FORMAT_NDARRAY_shape,		/**< positive logical dimensions (Array of Int) */
+	SPA_FORMAT_NDARRAY_layout,		/**< storage order (Id enum spa_ndarray_layout) */
+	SPA_FORMAT_NDARRAY_rate,		/**< optional sample rate (Fraction) */
 };
 
 #define SPA_KEY_FORMAT_DSP		"format.dsp"		/**< a predefined DSP format,
