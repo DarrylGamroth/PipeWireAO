@@ -124,6 +124,38 @@ PWTEST(audio_format_sizes)
 
 PWTEST(ndarray_format_abi)
 {
+	static const struct {
+		enum spa_element_type type;
+		uint32_t size;
+	} element_types[] = {
+		{ SPA_ELEMENT_TYPE_BOOL8, 1 },
+		{ SPA_ELEMENT_TYPE_I8, 1 },
+		{ SPA_ELEMENT_TYPE_U8, 1 },
+		{ SPA_ELEMENT_TYPE_I16_LE, 2 },
+		{ SPA_ELEMENT_TYPE_U16_LE, 2 },
+		{ SPA_ELEMENT_TYPE_I32_LE, 4 },
+		{ SPA_ELEMENT_TYPE_U32_LE, 4 },
+		{ SPA_ELEMENT_TYPE_I64_LE, 8 },
+		{ SPA_ELEMENT_TYPE_U64_LE, 8 },
+		{ SPA_ELEMENT_TYPE_I128_LE, 16 },
+		{ SPA_ELEMENT_TYPE_U128_LE, 16 },
+		{ SPA_ELEMENT_TYPE_F8_E4M3FN, 1 },
+		{ SPA_ELEMENT_TYPE_F8_E4M3FNUZ, 1 },
+		{ SPA_ELEMENT_TYPE_F8_E5M2, 1 },
+		{ SPA_ELEMENT_TYPE_F8_E5M2FNUZ, 1 },
+		{ SPA_ELEMENT_TYPE_F16_LE, 2 },
+		{ SPA_ELEMENT_TYPE_BF16_LE, 2 },
+		{ SPA_ELEMENT_TYPE_F32_LE, 4 },
+		{ SPA_ELEMENT_TYPE_F64_LE, 8 },
+		{ SPA_ELEMENT_TYPE_F128_LE, 16 },
+		{ SPA_ELEMENT_TYPE_COMPLEX_F16_LE, 4 },
+		{ SPA_ELEMENT_TYPE_COMPLEX_BF16_LE, 4 },
+		{ SPA_ELEMENT_TYPE_COMPLEX_F32_LE, 8 },
+		{ SPA_ELEMENT_TYPE_COMPLEX_F64_LE, 16 },
+		{ SPA_ELEMENT_TYPE_COMPLEX_F128_LE, 32 },
+	};
+	uint32_t i;
+
 	pwtest_int_eq(SPA_MEDIA_SUBTYPE_ndarray, 0x60002);
 	pwtest_int_eq(SPA_FORMAT_NDARRAY_elementType, 0x61001);
 	pwtest_int_eq(SPA_FORMAT_NDARRAY_shape, 0x61002);
@@ -131,6 +163,14 @@ PWTEST(ndarray_format_abi)
 	pwtest_int_eq(SPA_FORMAT_NDARRAY_rate, 0x61004);
 	pwtest_int_eq(SPA_NDARRAY_LAYOUT_ROW_MAJOR, 1);
 	pwtest_int_eq(SPA_NDARRAY_LAYOUT_COLUMN_MAJOR, 2);
+	pwtest_int_eq(SPA_ELEMENT_TYPE_BOOL8, 1);
+	pwtest_int_eq(SPA_ELEMENT_TYPE_COMPLEX_F128_LE, 25);
+	pwtest_int_eq(SPA_ELEMENT_TYPE_START_CUSTOM, 0x10000);
+	pwtest_int_eq(spa_element_type_size(SPA_ELEMENT_TYPE_UNKNOWN), 0U);
+	pwtest_int_eq(spa_element_type_size(SPA_ELEMENT_TYPE_START_CUSTOM), 0U);
+	for (i = 0; i < SPA_N_ELEMENTS(element_types); i++)
+		pwtest_int_eq(spa_element_type_size(element_types[i].type),
+				element_types[i].size);
 
 	return PWTEST_PASS;
 }
