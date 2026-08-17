@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
@@ -42,6 +43,7 @@ struct buffer {
 #define BUFFER_FLAG_PROGRESSIVE	(1 << 3)
 #define BUFFER_FLAG_RECYCLED	(1 << 4)
 #define BUFFER_FLAG_SUPERSEDED	(1 << 5)
+#define BUFFER_FLAG_LATEST_REUSABLE	(1 << 6)
 	uint32_t flags;
 };
 
@@ -91,6 +93,8 @@ struct port {
 	struct spa_io_buffers *io;
 	struct spa_io_buffers_latest *latest_io;
 	int latest_notify_fd;
+	uint32_t latest_scan_hint;
+	struct pw_filter_buffer_latest_stats latest_stats;
 
 	struct buffer buffers[MAX_BUFFERS];
 	uint32_t n_buffers;
@@ -398,6 +402,30 @@ static inline void clear_queue(struct port *port, struct queue *queue)
 	spa_ringbuffer_init(&queue->ring);
 }
 
+static void set_latest_output_mode(struct port *port, bool active)
+{
+	uint32_t i;
+
+	if (port->direction != SPA_DIRECTION_OUTPUT)
+		return;
+
+	clear_queue(port, &port->dequeued);
+	port->latest_scan_hint = 0;
+	memset(&port->latest_stats, 0, sizeof(port->latest_stats));
+
+	for (i = 0; i < port->n_buffers; i++) {
+		struct buffer *b = &port->buffers[i];
+
+		SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_LATEST_REUSABLE |
+				BUFFER_FLAG_RECYCLED | BUFFER_FLAG_SUPERSEDED |
+				BUFFER_FLAG_PROGRESSIVE | BUFFER_FLAG_DEQUEUED);
+		if (active)
+			SPA_FLAG_SET(b->flags, BUFFER_FLAG_LATEST_REUSABLE);
+		else
+			push_queue(port, &port->dequeued, b);
+	}
+}
+
 static bool filter_set_state(struct pw_filter *filter, enum pw_filter_state state,
 		int res, const char *error)
 {
@@ -625,10 +653,15 @@ static int impl_port_set_io(void *object, enum spa_direction direction, uint32_t
 			port->io = NULL;
 		break;
 	case SPA_IO_BuffersLatest:
-		if (data && size >= sizeof(struct spa_io_buffers_latest))
+		if (data && size >= sizeof(struct spa_io_buffers_latest)) {
+			if (port->latest_io == NULL)
+				set_latest_output_mode(port, true);
 			port->latest_io = data;
-		else
+		} else {
+			if (port->latest_io != NULL)
+				set_latest_output_mode(port, false);
 			port->latest_io = NULL;
+		}
 		break;
 	case SPA_IO_BuffersLatestNotify:
 		if (data && size >= sizeof(struct spa_io_buffers_latest_notify)) {
@@ -969,6 +1002,8 @@ static int impl_port_use_buffers(void *object,
 				buffers[i]->n_datas, size);
 	}
 	port->n_buffers = n_buffers;
+	port->latest_scan_hint = 0;
+	memset(&port->latest_stats, 0, sizeof(port->latest_stats));
 
 	for (i = 0; i < n_buffers; i++) {
 		struct buffer *b = &port->buffers[i];
@@ -977,7 +1012,10 @@ static int impl_port_use_buffers(void *object,
 
 		if (port->direction == SPA_DIRECTION_OUTPUT) {
 			pw_log_trace("%p: recycle buffer %d", filter, b->id);
-			push_queue(port, &port->dequeued, b);
+			if (port->latest_io != NULL)
+				SPA_FLAG_SET(b->flags, BUFFER_FLAG_LATEST_REUSABLE);
+			else
+				push_queue(port, &port->dequeued, b);
 		}
 
 		SPA_FLAG_SET(b->flags, BUFFER_FLAG_ADDED);
@@ -2049,86 +2087,169 @@ struct pw_loop *pw_filter_get_data_loop(struct pw_filter *filter)
 }
 
 SPA_EXPORT
+int pw_filter_get_buffer_latest_stats(void *port_data,
+		struct pw_filter_buffer_latest_stats *stats)
+{
+	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
+
+	if (SPA_UNLIKELY(stats == NULL))
+		return -EINVAL;
+	if (SPA_UNLIKELY(p->latest_io == NULL ||
+			p->direction != SPA_DIRECTION_OUTPUT))
+		return -ENOTSUP;
+
+	*stats = p->latest_stats;
+	return 0;
+}
+
+static int recycle_latest_output(struct port *p)
+{
+	uint32_t attempts;
+
+	for (attempts = 0; attempts < p->n_buffers; attempts++) {
+		struct buffer *b;
+		uint32_t id;
+		int res;
+
+		res = spa_io_buffers_latest_pop_recycle(p->latest_io, &id);
+		if (res == -EPIPE)
+			return 0;
+		if (res < 0)
+			return res;
+		p->latest_stats.recycle_returns++;
+		if (SPA_UNLIKELY(id >= p->n_buffers))
+			return -EPROTO;
+
+		b = &p->buffers[id];
+		if (SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED)) {
+			if (SPA_UNLIKELY(!SPA_FLAG_IS_SET(b->flags,
+					BUFFER_FLAG_PROGRESSIVE) ||
+					SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_RECYCLED)))
+				return -EPROTO;
+			SPA_FLAG_SET(b->flags, BUFFER_FLAG_RECYCLED);
+		} else {
+			if (SPA_UNLIKELY(SPA_FLAG_IS_SET(b->flags,
+					BUFFER_FLAG_LATEST_REUSABLE)))
+				return -EPROTO;
+			SPA_FLAG_SET(b->flags, BUFFER_FLAG_LATEST_REUSABLE);
+		}
+	}
+	return 0;
+}
+
+static int scan_latest_output(struct port *p, struct buffer **buffer)
+{
+	uint32_t i, id, probes = 0;
+
+	if (p->n_buffers == 0)
+		return -EPIPE;
+
+	id = p->latest_scan_hint < p->n_buffers ? p->latest_scan_hint : 0;
+	for (i = 0; i < p->n_buffers; i++) {
+		struct buffer *b = &p->buffers[id];
+
+		probes++;
+		p->latest_stats.buffer_probes++;
+		if (SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_LATEST_REUSABLE)) {
+			if (SPA_UNLIKELY(SPA_FLAG_IS_SET(b->flags,
+					BUFFER_FLAG_DEQUEUED)))
+				return -EPROTO;
+			SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_LATEST_REUSABLE);
+			p->latest_scan_hint = ++id == p->n_buffers ? 0 : id;
+			p->latest_stats.max_buffer_probes = SPA_MAX(
+					p->latest_stats.max_buffer_probes, probes);
+			*buffer = b;
+			return 0;
+		}
+		if (++id == p->n_buffers)
+			id = 0;
+	}
+	p->latest_stats.max_buffer_probes = SPA_MAX(
+			p->latest_stats.max_buffer_probes, probes);
+	return -EPIPE;
+}
+
+SPA_EXPORT
 struct pw_buffer *pw_filter_dequeue_buffer(void *port_data)
 {
 	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
 	struct buffer *b;
 	uint32_t id;
-	int res;
+	int res = -EPIPE;
 
-	b = pop_queue(p, &p->dequeued);
-	if (b == NULL && p->latest_io != NULL) {
-		if (p->direction == SPA_DIRECTION_INPUT) {
-			res = spa_io_buffers_latest_acquire(p->latest_io, &id);
-		} else {
-			uint32_t attempts = 0;
+	b = NULL;
+	if (p->latest_io != NULL && p->direction == SPA_DIRECTION_OUTPUT) {
+		p->latest_stats.dequeue_attempts++;
+		if ((res = recycle_latest_output(p)) < 0)
+			goto latest_error;
+		if ((res = scan_latest_output(p, &b)) == 0)
+			goto latest_done;
+		if (res != -EPIPE)
+			goto latest_error;
 
-			for (;;) {
-				res = spa_io_buffers_latest_pop_recycle(p->latest_io, &id);
-				if (res == -EPIPE)
-					break;
-				if (res < 0)
-					goto latest_error;
-				if (SPA_UNLIKELY(id >= p->n_buffers)) {
-					res = -EPROTO;
-					goto latest_error;
-				}
-				b = &p->buffers[id];
-				if (!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED))
-					goto latest_done;
-				if (SPA_UNLIKELY(!SPA_FLAG_IS_SET(b->flags,
-						BUFFER_FLAG_PROGRESSIVE))) {
-					res = -EPROTO;
-					goto latest_error;
-				}
-				SPA_FLAG_SET(b->flags, BUFFER_FLAG_RECYCLED);
-				b = NULL;
-				if (SPA_UNLIKELY(++attempts > p->n_buffers)) {
-					res = -EPROTO;
-					goto latest_error;
-				}
+		res = spa_io_buffers_latest_withdraw(p->latest_io, &id);
+		if (res == 0 && SPA_LIKELY(id < p->n_buffers)) {
+			b = &p->buffers[id];
+			if (SPA_UNLIKELY(SPA_FLAG_IS_SET(b->flags,
+					BUFFER_FLAG_LATEST_REUSABLE))) {
+				res = -EPROTO;
+				goto latest_error;
 			}
-			res = spa_io_buffers_latest_withdraw(p->latest_io, &id);
-			if (res == 0 && SPA_LIKELY(id < p->n_buffers)) {
+			if (SPA_UNLIKELY(SPA_FLAG_IS_SET(b->flags,
+					BUFFER_FLAG_DEQUEUED))) {
+				uint32_t superseded_id;
+
+				if (!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_PROGRESSIVE)) {
+					res = -EPROTO;
+					goto latest_error;
+				}
+				res = spa_io_buffers_latest_publish(p->latest_io, id,
+						&superseded_id);
+				if (SPA_UNLIKELY(res != 0)) {
+					res = -EPROTO;
+					goto latest_error;
+				}
+				b = NULL;
+				res = -EBUSY;
+			} else {
+				p->latest_stats.ready_reclaims++;
+				p->latest_scan_hint = ++id == p->n_buffers ? 0 : id;
+			}
+		} else if (res == -EPIPE) {
+			p->latest_stats.pool_exhaustions++;
+		} else if (res == 0) {
+			res = -EPROTO;
+		}
+		if (b == NULL)
+			goto latest_error;
+		goto latest_done;
+	} else {
+		b = pop_queue(p, &p->dequeued);
+		if (b == NULL && p->latest_io != NULL) {
+			res = spa_io_buffers_latest_acquire(p->latest_io, &id);
+			if (res == 0) {
+				if (SPA_UNLIKELY(id >= p->n_buffers)) {
+					errno = EPROTO;
+					return NULL;
+				}
 				b = &p->buffers[id];
 				if (SPA_UNLIKELY(SPA_FLAG_IS_SET(b->flags,
 						BUFFER_FLAG_DEQUEUED))) {
-					uint32_t superseded_id;
-
-					if (!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_PROGRESSIVE)) {
-						res = -EPROTO;
-						goto latest_error;
-					}
-					res = spa_io_buffers_latest_publish(p->latest_io, id,
-							&superseded_id);
-					if (SPA_UNLIKELY(res != 0)) {
-						res = -EPROTO;
-						goto latest_error;
-					}
-					b = NULL;
-					res = -EBUSY;
+					errno = EPROTO;
+					return NULL;
 				}
-			} else if (res == 0) {
-				res = -EPROTO;
-			}
+			} else
+				goto latest_error;
 		}
-		if (res == 0) {
-			if (SPA_UNLIKELY(id >= p->n_buffers)) {
-				errno = EPROTO;
-				return NULL;
-			}
-			b = &p->buffers[id];
-			if (SPA_UNLIKELY(SPA_FLAG_IS_SET(b->flags,
-					BUFFER_FLAG_DEQUEUED))) {
-				errno = EPROTO;
-				return NULL;
-			}
-		} else {
-		latest_error:
-			errno = -res;
-		}
-	latest_done:;
+		if (b != NULL)
+			goto latest_done;
 	}
+latest_error:
+	b = NULL;
+	if (res == -EBUSY)
+		p->latest_stats.pool_exhaustions++;
+	errno = -res;
+latest_done:
 	if (SPA_UNLIKELY(b == NULL)) {
 		res = -errno;
 		pw_log_trace_fp("%p: no more buffers: %m", p->filter);
@@ -2156,7 +2277,11 @@ static int handle_latest_superseded(struct port *p, uint32_t buffer_id,
 		SPA_FLAG_SET(b->flags, BUFFER_FLAG_SUPERSEDED);
 		return 0;
 	}
-	return push_queue(p, &p->dequeued, b);
+	if (SPA_UNLIKELY(SPA_FLAG_IS_SET(b->flags,
+			BUFFER_FLAG_LATEST_REUSABLE)))
+		return -EPROTO;
+	SPA_FLAG_SET(b->flags, BUFFER_FLAG_LATEST_REUSABLE);
+	return 0;
 }
 
 static inline void signal_latest_notify(struct port *p)
@@ -2266,7 +2391,13 @@ int pw_filter_end_progressive_buffer(void *port_data, struct pw_buffer *buffer)
 	SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED | BUFFER_FLAG_PROGRESSIVE |
 			BUFFER_FLAG_RECYCLED | BUFFER_FLAG_SUPERSEDED);
 
-	return reusable ? push_queue(p, &p->dequeued, b) : 0;
+	if (reusable) {
+		if (SPA_UNLIKELY(SPA_FLAG_IS_SET(b->flags,
+				BUFFER_FLAG_LATEST_REUSABLE)))
+			return -EPROTO;
+		SPA_FLAG_SET(b->flags, BUFFER_FLAG_LATEST_REUSABLE);
+	}
+	return 0;
 }
 
 SPA_EXPORT
