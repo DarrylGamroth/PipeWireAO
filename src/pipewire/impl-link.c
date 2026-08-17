@@ -1534,6 +1534,21 @@ static bool port_has_buffer_latest_link(struct pw_impl_port *port)
 	return false;
 }
 
+static uint32_t port_count_buffer_latest_links(struct pw_impl_port *port)
+{
+	struct pw_impl_link *link;
+	uint32_t count = 0;
+
+	if (port->direction == PW_DIRECTION_OUTPUT) {
+		spa_list_for_each(link, &port->links, output_link)
+			count += link->buffer_latest;
+	} else {
+		spa_list_for_each(link, &port->links, input_link)
+			count += link->buffer_latest;
+	}
+	return count;
+}
+
 SPA_EXPORT
 struct pw_impl_link *pw_context_create_link(struct pw_context *context,
 			    struct pw_impl_port *output,
@@ -1596,11 +1611,32 @@ struct pw_impl_link *pw_context_create_link(struct pw_context *context,
 	this->input = input;
 	this->buffer_latest = pw_properties_get_bool(properties,
 			PW_KEY_LINK_BUFFER_LATEST, false);
-	if ((this->buffer_latest && (output->n_mix != 0 || input->n_mix != 0)) ||
-	    port_has_buffer_latest_link(output) ||
-	    port_has_buffer_latest_link(input)) {
+	if (this->buffer_latest &&
+	    (input->n_mix != 0 ||
+	     (output->n_mix != 0 && !port_has_buffer_latest_link(output)))) {
 		res = -EBUSY;
-		pw_log_error("buffer latest io requires exclusive ports");
+		pw_log_error("buffer latest io requires an exclusive input and an unmixed output");
+		goto error_free;
+	}
+	if (!this->buffer_latest &&
+	    (port_has_buffer_latest_link(output) ||
+	     port_has_buffer_latest_link(input))) {
+		res = -EBUSY;
+		pw_log_error("ordinary and buffer latest links cannot share a port");
+		goto error_free;
+	}
+	if (this->buffer_latest && port_has_buffer_latest_link(output) &&
+	    !SPA_FLAG_IS_SET(output->flags,
+		    PW_IMPL_PORT_FLAG_BUFFERS_LATEST_FANOUT)) {
+		res = -ENOTSUP;
+		pw_log_error("buffer latest output does not support fan-out");
+		goto error_free;
+	}
+	if (this->buffer_latest &&
+	    port_count_buffer_latest_links(output) >=
+		    SPA_IO_BUFFERS_LATEST_MAX_LINKS) {
+		res = -ENOSPC;
+		pw_log_error("buffer latest output reached its subscriber limit");
 		goto error_free;
 	}
 	if (this->buffer_latest &&

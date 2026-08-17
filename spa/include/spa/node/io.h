@@ -46,6 +46,7 @@ enum spa_io_type {
 	SPA_IO_AsyncBuffers,	/**< async area to exchange buffers, struct spa_io_async_buffers */
 	SPA_IO_BuffersLatest,	/**< latest complete buffer, struct spa_io_buffers_latest */
 	SPA_IO_BuffersLatestNotify, /**< process-local advisory fd, struct spa_io_buffers_latest_notify */
+	SPA_IO_BuffersLatestLink, /**< process-local per-mix latest link, struct spa_io_buffers_latest_link */
 };
 
 /**
@@ -420,6 +421,7 @@ struct spa_io_async_buffers {
  * index. Those independently written indices occupy separate cache lines.
  */
 #define SPA_IO_BUFFERS_LATEST_CAPACITY	64u
+#define SPA_IO_BUFFERS_LATEST_MAX_LINKS	64u
 
 struct SPA_ALIGNED(SPA_CACHE_LINE_SIZE) spa_io_buffers_latest_ready {
 	uint32_t id;
@@ -463,6 +465,31 @@ SPA_STATIC_ASSERT((offsetof(struct spa_io_buffers_latest, recycle) +
  */
 struct spa_io_buffers_latest_notify {
 	int32_t fd;
+	uint32_t reserved;
+};
+
+/**
+ * Process-local view of one graph-independent latest-buffer link.
+ *
+ * PipeWire hosts use this descriptor when forwarding a link-local shared
+ * control area to a node port. The descriptor itself is never placed in
+ * shared memory or sent over the native protocol: each process reconstructs
+ * it after mapping SPA_IO_BuffersLatest and importing the optional eventfd.
+ * The id is the host's mix identifier and is unique for the lifetime of the
+ * link on that node port.
+ *
+ * A node supporting fan-out copies this descriptor into fixed process-local
+ * state. Passing a descriptor without ACTIVE retires that id. The node must
+ * not return from retirement until no worker can dereference the old io
+ * pointer or notification fd; this lets the host unmap or close them safely.
+ */
+#define SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE	(1u << 0)
+
+struct spa_io_buffers_latest_link {
+	uint32_t id;
+	uint32_t flags;
+	struct spa_io_buffers_latest *io;
+	int32_t notify_fd;
 	uint32_t reserved;
 };
 
