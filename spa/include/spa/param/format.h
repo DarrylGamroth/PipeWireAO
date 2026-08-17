@@ -88,15 +88,83 @@ enum spa_media_subtype {
 	SPA_MEDIA_SUBTYPE_ndarray,		/**< packed N-dimensional typed elements */
 };
 
-/** scalar representation of ndarray elements */
+/**
+ * Scalar representation of ndarray elements.
+ *
+ * Multi-byte values are little-endian. Complex elements contain the real
+ * component followed by the imaginary component. The core set is append-only;
+ * application-defined fixed-width scalar types start at START_CUSTOM.
+ */
 enum spa_element_type {
 	SPA_ELEMENT_TYPE_UNKNOWN,
+	SPA_ELEMENT_TYPE_BOOL8,			/**< Boolean byte; only 0 and 1 are valid */
+	SPA_ELEMENT_TYPE_I8,			/**< signed 8-bit integer */
+	SPA_ELEMENT_TYPE_U8,			/**< unsigned 8-bit integer */
+	SPA_ELEMENT_TYPE_I16_LE,		/**< signed 16-bit integer, little-endian */
+	SPA_ELEMENT_TYPE_U16_LE,		/**< unsigned 16-bit integer, little-endian */
+	SPA_ELEMENT_TYPE_I32_LE,		/**< signed 32-bit integer, little-endian */
+	SPA_ELEMENT_TYPE_U32_LE,		/**< unsigned 32-bit integer, little-endian */
+	SPA_ELEMENT_TYPE_I64_LE,		/**< signed 64-bit integer, little-endian */
+	SPA_ELEMENT_TYPE_U64_LE,		/**< unsigned 64-bit integer, little-endian */
+	SPA_ELEMENT_TYPE_I128_LE,		/**< signed 128-bit integer, little-endian */
+	SPA_ELEMENT_TYPE_U128_LE,		/**< unsigned 128-bit integer, little-endian */
+	SPA_ELEMENT_TYPE_F8_E4M3FN,		/**< 8-bit E4M3 finite-numbers format */
+	SPA_ELEMENT_TYPE_F8_E4M3FNUZ,		/**< 8-bit E4M3 finite, unsigned-zero format */
+	SPA_ELEMENT_TYPE_F8_E5M2,		/**< 8-bit E5M2 format */
+	SPA_ELEMENT_TYPE_F8_E5M2FNUZ,		/**< 8-bit E5M2 finite, unsigned-zero format */
 	SPA_ELEMENT_TYPE_F16_LE,		/**< IEEE 754 binary16, little-endian */
+	SPA_ELEMENT_TYPE_BF16_LE,		/**< bfloat16, little-endian */
 	SPA_ELEMENT_TYPE_F32_LE,		/**< IEEE 754 binary32, little-endian */
 	SPA_ELEMENT_TYPE_F64_LE,		/**< IEEE 754 binary64, little-endian */
-	SPA_ELEMENT_TYPE_U8,			/**< unsigned 8-bit integer */
-	SPA_ELEMENT_TYPE_U32_LE,		/**< unsigned 32-bit integer, little-endian */
+	SPA_ELEMENT_TYPE_F128_LE,		/**< IEEE 754 binary128, little-endian */
+	SPA_ELEMENT_TYPE_COMPLEX_F16_LE,	/**< two IEEE binary16 components */
+	SPA_ELEMENT_TYPE_COMPLEX_BF16_LE,	/**< two bfloat16 components */
+	SPA_ELEMENT_TYPE_COMPLEX_F32_LE,	/**< two IEEE binary32 components */
+	SPA_ELEMENT_TYPE_COMPLEX_F64_LE,	/**< two IEEE binary64 components */
+	SPA_ELEMENT_TYPE_COMPLEX_F128_LE,	/**< two IEEE binary128 components */
+
+	SPA_ELEMENT_TYPE_START_CUSTOM = 0x10000,
 };
+
+/** Packed size of one core element, or zero for unknown/custom values. */
+static inline uint32_t spa_element_type_size(enum spa_element_type type)
+{
+	switch (type) {
+	case SPA_ELEMENT_TYPE_BOOL8:
+	case SPA_ELEMENT_TYPE_I8:
+	case SPA_ELEMENT_TYPE_U8:
+	case SPA_ELEMENT_TYPE_F8_E4M3FN:
+	case SPA_ELEMENT_TYPE_F8_E4M3FNUZ:
+	case SPA_ELEMENT_TYPE_F8_E5M2:
+	case SPA_ELEMENT_TYPE_F8_E5M2FNUZ:
+		return 1;
+	case SPA_ELEMENT_TYPE_I16_LE:
+	case SPA_ELEMENT_TYPE_U16_LE:
+	case SPA_ELEMENT_TYPE_F16_LE:
+	case SPA_ELEMENT_TYPE_BF16_LE:
+		return 2;
+	case SPA_ELEMENT_TYPE_I32_LE:
+	case SPA_ELEMENT_TYPE_U32_LE:
+	case SPA_ELEMENT_TYPE_F32_LE:
+	case SPA_ELEMENT_TYPE_COMPLEX_F16_LE:
+	case SPA_ELEMENT_TYPE_COMPLEX_BF16_LE:
+		return 4;
+	case SPA_ELEMENT_TYPE_I64_LE:
+	case SPA_ELEMENT_TYPE_U64_LE:
+	case SPA_ELEMENT_TYPE_F64_LE:
+	case SPA_ELEMENT_TYPE_COMPLEX_F32_LE:
+		return 8;
+	case SPA_ELEMENT_TYPE_I128_LE:
+	case SPA_ELEMENT_TYPE_U128_LE:
+	case SPA_ELEMENT_TYPE_F128_LE:
+	case SPA_ELEMENT_TYPE_COMPLEX_F64_LE:
+		return 16;
+	case SPA_ELEMENT_TYPE_COMPLEX_F128_LE:
+		return 32;
+	default:
+		return 0;
+	}
+}
 
 /** contiguous storage order of ndarray elements */
 enum spa_ndarray_layout {
