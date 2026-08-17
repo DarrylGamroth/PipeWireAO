@@ -863,6 +863,8 @@ struct pw_impl_port_mix {
 	} port;
 	struct spa_io_buffers *io[2];
 	void *io_data;
+	struct spa_io_buffers_latest *latest_io;
+	int latest_notify_fd;
 	uint32_t id;
 	uint32_t peer_id;
 	bool have_buffers;
@@ -925,6 +927,7 @@ struct pw_impl_port {
 #define PW_IMPL_PORT_FLAG_NO_MIXER		(1<<3)		/**< don't try to add mixer to port */
 #define PW_IMPL_PORT_FLAG_ASYNC			(1<<4)		/**< port support async io */
 #define PW_IMPL_PORT_FLAG_BUFFERS_LATEST		(1<<5)		/**< port supports buffer latest io */
+#define PW_IMPL_PORT_FLAG_BUFFERS_LATEST_FANOUT	(1<<6)		/**< port accepts per-mix latest io */
 	uint32_t flags;
 	uint64_t spa_flags;
 

@@ -41,6 +41,7 @@ struct mix {
 	struct pw_impl_port *port;
 	struct pw_impl_port_mix mix;
 	struct pw_array buffers;
+	struct spa_io_buffers_latest *latest_io;
 	int latest_notify_fd;
 };
 
@@ -160,6 +161,21 @@ static struct mix *find_mix(struct node_data *data,
 		}
 	}
 	return NULL;
+}
+
+static int set_latest_link_io(struct node_data *data, struct mix *mix,
+		enum spa_direction direction, uint32_t port_id,
+		struct spa_io_buffers_latest *io, int notify_fd)
+{
+	struct spa_io_buffers_latest_link link = {
+		.id = mix->mix.id,
+		.flags = io != NULL ? SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE : 0,
+		.io = io,
+		.notify_fd = notify_fd,
+	};
+
+	return spa_node_port_set_io(data->node->node, direction, port_id,
+			SPA_IO_BuffersLatestLink, &link, sizeof(link));
 }
 
 static struct mix *create_mix(struct node_data *data, struct pw_impl_port *port,
@@ -774,24 +790,11 @@ client_node_port_set_io(void *_data,
 		goto exit;
 	}
 	if (id == SPA_IO_BuffersLatestNotify) {
-		struct spa_io_buffers_latest_notify notify;
 		int old_fd = mix->latest_notify_fd;
 		int new_fd = memid == SPA_ID_INVALID ? -1 : (int)memid;
-		void *notify_data = NULL;
-		size_t notify_size = 0;
 
-		if (new_fd >= 0) {
-			notify = (struct spa_io_buffers_latest_notify) {
-				.fd = new_fd,
-			};
-			notify_data = &notify;
-			notify_size = sizeof(notify);
-		}
-		/* Latest-buffer notifications belong to the exported node port,
-		 * not to an optional media mixer inserted in front of that port. */
-		res = spa_node_port_set_io(data->node->node,
-				direction, port_id, id,
-				notify_data, notify_size);
+		res = set_latest_link_io(data, mix, direction, port_id,
+				mix->latest_io, new_fd);
 		if (res == -ENOTSUP)
 			res = 0;
 		if (res < 0) {
@@ -825,12 +828,15 @@ client_node_port_set_io(void *_data,
 	pw_log_debug("port %p: set io:%s new:%p old:%p", mix->port,
 			spa_debug_type_find_name(spa_type_io, id), ptr, mix->mix.io);
 
-	if (id == SPA_IO_BuffersLatest)
-		res = spa_node_port_set_io(data->node->node,
-				direction, port_id, id, ptr, size);
-	else
+	if (id == SPA_IO_BuffersLatest) {
+		res = set_latest_link_io(data, mix, direction, port_id,
+				ptr, mix->latest_notify_fd);
+		if (res >= 0)
+			mix->latest_io = ptr;
+	} else {
 		res = spa_node_port_set_io(mix->port->mix,
 				direction, mix->mix.port.port_id, id, ptr, size);
+	}
 	if (res < 0) {
 		if (res == -ENOTSUP)
 			res = 0;
@@ -931,16 +937,15 @@ static void clear_mix(struct node_data *data, struct mix *mix)
 {
 	pw_log_debug("port %p: mix clear %d.%d", mix->port, mix->port->port_id, mix->mix.id);
 
-	if (mix->mix.id != SPA_ID_INVALID)
-		spa_node_port_set_io(mix->port->mix, mix->mix.port.direction,
-				mix->mix.port.port_id, SPA_IO_BuffersLatestNotify, NULL, 0);
+	if (mix->mix.id != SPA_ID_INVALID) {
+		mix->latest_io = NULL;
+		set_latest_link_io(data, mix, mix->port->direction,
+				mix->port->port_id, NULL, -1);
+	}
 	if (mix->latest_notify_fd >= 0) {
 		spa_system_close(data->data_system, mix->latest_notify_fd);
 		mix->latest_notify_fd = -1;
 	}
-	if (mix->mix.id != SPA_ID_INVALID)
-		spa_node_port_set_io(mix->port->mix, mix->mix.port.direction,
-				mix->mix.port.port_id, SPA_IO_BuffersLatest, NULL, 0);
 	if (mix->mix.id != SPA_ID_INVALID)
 		spa_node_port_set_io(mix->port->mix, mix->mix.port.direction,
 				mix->mix.port.port_id, SPA_IO_Buffers, NULL, 0);
