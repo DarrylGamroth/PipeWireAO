@@ -90,6 +90,30 @@ static const struct spa_type_info spa_type_media_subtype[] = {
 	{ SPA_MEDIA_SUBTYPE_midi, SPA_TYPE_Int, SPA_TYPE_INFO_MEDIA_SUBTYPE_BASE "midi", NULL },
 	/* application subtypes */
 	{ SPA_MEDIA_SUBTYPE_control, SPA_TYPE_Int, SPA_TYPE_INFO_MEDIA_SUBTYPE_BASE "control", NULL },
+	{ SPA_MEDIA_SUBTYPE_ndarray, SPA_TYPE_Int, SPA_TYPE_INFO_MEDIA_SUBTYPE_BASE "ndarray", NULL },
+	{ 0, 0, NULL, NULL },
+};
+
+#define SPA_TYPE_INFO_ElementType		SPA_TYPE_INFO_ENUM_BASE "ElementType"
+#define SPA_TYPE_INFO_ELEMENT_TYPE_BASE		SPA_TYPE_INFO_ElementType ":"
+
+static const struct spa_type_info spa_type_element_type[] = {
+	{ SPA_ELEMENT_TYPE_UNKNOWN, SPA_TYPE_Int, SPA_TYPE_INFO_ELEMENT_TYPE_BASE "UNKNOWN", NULL },
+	{ SPA_ELEMENT_TYPE_F16_LE, SPA_TYPE_Int, SPA_TYPE_INFO_ELEMENT_TYPE_BASE "F16_LE", NULL },
+	{ SPA_ELEMENT_TYPE_F32_LE, SPA_TYPE_Int, SPA_TYPE_INFO_ELEMENT_TYPE_BASE "F32_LE", NULL },
+	{ SPA_ELEMENT_TYPE_F64_LE, SPA_TYPE_Int, SPA_TYPE_INFO_ELEMENT_TYPE_BASE "F64_LE", NULL },
+	{ SPA_ELEMENT_TYPE_U8, SPA_TYPE_Int, SPA_TYPE_INFO_ELEMENT_TYPE_BASE "U8", NULL },
+	{ SPA_ELEMENT_TYPE_U32_LE, SPA_TYPE_Int, SPA_TYPE_INFO_ELEMENT_TYPE_BASE "U32_LE", NULL },
+	{ 0, 0, NULL, NULL },
+};
+
+#define SPA_TYPE_INFO_NdArrayLayout		SPA_TYPE_INFO_ENUM_BASE "NdArrayLayout"
+#define SPA_TYPE_INFO_NDARRAY_LAYOUT_BASE	SPA_TYPE_INFO_NdArrayLayout ":"
+
+static const struct spa_type_info spa_type_ndarray_layout[] = {
+	{ SPA_NDARRAY_LAYOUT_UNKNOWN, SPA_TYPE_Int, SPA_TYPE_INFO_NDARRAY_LAYOUT_BASE "UNKNOWN", NULL },
+	{ SPA_NDARRAY_LAYOUT_ROW_MAJOR, SPA_TYPE_Int, SPA_TYPE_INFO_NDARRAY_LAYOUT_BASE "ROW_MAJOR", NULL },
+	{ SPA_NDARRAY_LAYOUT_COLUMN_MAJOR, SPA_TYPE_Int, SPA_TYPE_INFO_NDARRAY_LAYOUT_BASE "COLUMN_MAJOR", NULL },
 	{ 0, 0, NULL, NULL },
 };
 
@@ -115,6 +139,9 @@ static const struct spa_type_info spa_type_media_subtype[] = {
 
 #define SPA_TYPE_INFO_FormatControl		SPA_TYPE_INFO_FORMAT_BASE "Control"
 #define SPA_TYPE_INFO_FORMAT_CONTROL_BASE	SPA_TYPE_INFO_FormatControl ":"
+
+#define SPA_TYPE_INFO_FormatNdArray		SPA_TYPE_INFO_FORMAT_BASE "NdArray"
+#define SPA_TYPE_INFO_FORMAT_NDARRAY_BASE	SPA_TYPE_INFO_FormatNdArray ":"
 
 static const struct spa_type_info spa_type_format[] = {
 	{ SPA_FORMAT_START, SPA_TYPE_Id, SPA_TYPE_INFO_FORMAT_BASE, spa_type_param, },
@@ -181,6 +208,13 @@ static const struct spa_type_info spa_type_format[] = {
 	{ SPA_FORMAT_VIDEO_H264_alignment, SPA_TYPE_Id, SPA_TYPE_INFO_FORMAT_VIDEO_H264_BASE "alignment", NULL },
 
 	{ SPA_FORMAT_CONTROL_types, SPA_TYPE_Id, SPA_TYPE_INFO_FORMAT_CONTROL_BASE "types", spa_type_control },
+
+	{ SPA_FORMAT_NDARRAY_elementType, SPA_TYPE_Id, SPA_TYPE_INFO_FORMAT_NDARRAY_BASE "elementType",
+		spa_type_element_type },
+	{ SPA_FORMAT_NDARRAY_shape, SPA_TYPE_Array, SPA_TYPE_INFO_FORMAT_NDARRAY_BASE "shape", NULL },
+	{ SPA_FORMAT_NDARRAY_layout, SPA_TYPE_Id, SPA_TYPE_INFO_FORMAT_NDARRAY_BASE "layout",
+		spa_type_ndarray_layout },
+	{ SPA_FORMAT_NDARRAY_rate, SPA_TYPE_Fraction, SPA_TYPE_INFO_FORMAT_NDARRAY_BASE "rate", NULL },
 
 	{ SPA_FORMAT_VIDEO_deviceId, SPA_TYPE_Bytes, SPA_TYPE_INFO_FORMAT_BASE "deviceId", NULL },
 	{ 0, 0, NULL, NULL },
