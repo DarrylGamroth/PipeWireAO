@@ -25,7 +25,7 @@ PWTEST(node_io_abi_sizes)
 
 	pwtest_int_eq(sizeof(struct spa_io_position), 1688U);
 	pwtest_int_eq(sizeof(struct spa_io_rate_match), 48U);
-	pwtest_int_eq(sizeof(struct spa_io_buffers_latest), 272U);
+	pwtest_int_eq(sizeof(struct spa_io_buffers_latest), 448U);
 
 	spa_assert_se(sizeof(struct spa_node_info) == 48);
 	spa_assert_se(sizeof(struct spa_port_info) == 48);
@@ -78,6 +78,16 @@ PWTEST(node_io_abi)
 	pwtest_int_eq(SPA_IO_BuffersLatest, 11);
 	pwtest_int_eq(SPA_IO_BuffersLatestNotify, 12);
 	pwtest_int_eq(sizeof(struct spa_io_buffers_latest_notify), 8U);
+	pwtest_int_eq(SPA_ALIGNOF(struct spa_io_buffers_latest), SPA_CACHE_LINE_SIZE);
+	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, ready), 0U);
+	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, recycle) +
+		offsetof(struct spa_ringbuffer_shared, readindex),
+		SPA_CACHE_LINE_SIZE);
+	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, recycle) +
+		offsetof(struct spa_ringbuffer_shared, writeindex),
+		2U * SPA_CACHE_LINE_SIZE);
+	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, recycle_ids),
+		3U * SPA_CACHE_LINE_SIZE);
 
 	/* position state */
 	pwtest_int_eq(SPA_IO_POSITION_STATE_STOPPED, 0);
@@ -105,10 +115,10 @@ PWTEST(node_io_buffers_latest)
 	pwtest_int_eq(spa_io_buffers_latest_publish(&latest, 5, NULL), 0);
 	pwtest_int_eq(spa_io_buffers_latest_publish(&latest, 7, &superseded), 1);
 	pwtest_int_eq(superseded, 5U);
-	pwtest_int_eq(SPA_ATOMIC_LOAD(latest.superseded), 1U);
+	pwtest_int_eq(SPA_ATOMIC_LOAD(latest.ready.superseded), 1U);
 	pwtest_int_eq(spa_io_buffers_latest_withdraw(&latest, &id), 0);
 	pwtest_int_eq(id, 7U);
-	pwtest_int_eq(SPA_ATOMIC_LOAD(latest.superseded), 2U);
+	pwtest_int_eq(SPA_ATOMIC_LOAD(latest.ready.superseded), 2U);
 
 	for (i = 0; i < SPA_IO_BUFFERS_LATEST_CAPACITY; i++)
 		pwtest_int_eq(spa_io_buffers_latest_push_recycle(&latest, i), 0);
