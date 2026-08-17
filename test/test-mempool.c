@@ -105,10 +105,74 @@ PWTEST(map_range_overflow)
 	return PWTEST_PASS;
 }
 
+PWTEST(mempool_huge_page_hint_falls_back)
+{
+	const uint32_t huge_page_size = 2U * 1024U * 1024U;
+	const uint32_t requested_size = 4096U;
+	long normal_page_size = sysconf(_SC_PAGESIZE);
+	struct pw_mempool *p;
+	struct pw_memblock *b;
+
+	pwtest_errno_ok(normal_page_size);
+	p = pw_mempool_new(NULL);
+	pwtest_ptr_notnull(p);
+
+	b = pw_mempool_alloc(p,
+			PW_MEMBLOCK_FLAG_READWRITE |
+			PW_MEMBLOCK_FLAG_SEAL |
+			PW_MEMBLOCK_FLAG_MAP |
+			PW_MEMBLOCK_FLAG_HUGE_PAGES_HINT |
+			PW_MEMBLOCK_FLAG_HUGE_2MB_HINT,
+			SPA_DATA_MemFd, requested_size);
+	pwtest_ptr_notnull(b);
+	pwtest_ptr_notnull(b->map);
+	if (SPA_FLAG_IS_SET(b->flags, PW_MEMBLOCK_FLAG_HUGE_PAGES)) {
+		pwtest_int_eq(b->page_size, huge_page_size);
+		pwtest_int_eq(b->size, huge_page_size);
+	} else {
+		pwtest_int_eq(b->page_size, (uint32_t) normal_page_size);
+		pwtest_int_eq(b->size, requested_size);
+	}
+
+	pw_mempool_destroy(p);
+
+	return PWTEST_PASS;
+}
+
+PWTEST(mempool_conflicting_huge_page_hints_fall_back)
+{
+	const uint32_t requested_size = 4096U;
+	long normal_page_size = sysconf(_SC_PAGESIZE);
+	struct pw_mempool *p;
+	struct pw_memblock *b;
+
+	pwtest_errno_ok(normal_page_size);
+	p = pw_mempool_new(NULL);
+	pwtest_ptr_notnull(p);
+
+	b = pw_mempool_alloc(p,
+			PW_MEMBLOCK_FLAG_READWRITE |
+			PW_MEMBLOCK_FLAG_MAP |
+			PW_MEMBLOCK_FLAG_HUGE_PAGES_HINT |
+			PW_MEMBLOCK_FLAG_HUGE_2MB_HINT |
+			PW_MEMBLOCK_FLAG_HUGE_1GB_HINT,
+			SPA_DATA_MemFd, requested_size);
+	pwtest_ptr_notnull(b);
+	pwtest_bool_false(SPA_FLAG_IS_SET(b->flags, PW_MEMBLOCK_FLAG_HUGE_PAGES));
+	pwtest_int_eq(b->page_size, (uint32_t) normal_page_size);
+	pwtest_int_eq(b->size, requested_size);
+
+	pw_mempool_destroy(p);
+
+	return PWTEST_PASS;
+}
+
 PWTEST_SUITE(pw_mempool)
 {
 	pwtest_add(mempool_issue4884, PWTEST_NOARG);
 	pwtest_add(map_range_overflow, PWTEST_NOARG);
+	pwtest_add(mempool_huge_page_hint_falls_back, PWTEST_NOARG);
+	pwtest_add(mempool_conflicting_huge_page_hints_fall_back, PWTEST_NOARG);
 
 	return PWTEST_PASS;
 }

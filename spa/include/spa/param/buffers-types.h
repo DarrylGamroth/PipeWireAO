@@ -48,6 +48,17 @@ static const struct spa_type_info spa_type_param_io[] = {
 #define SPA_TYPE_INFO_PARAM_BlockInfo			SPA_TYPE_INFO_PARAM_BUFFERS_BASE "BlockInfo"
 #define SPA_TYPE_INFO_PARAM_BLOCK_INFO_BASE		SPA_TYPE_INFO_PARAM_BlockInfo ":"
 
+#define SPA_TYPE_INFO_BufferPageSizeHint	SPA_TYPE_INFO_ENUM_BASE "BufferPageSizeHint"
+#define SPA_TYPE_INFO_BUFFER_PAGE_SIZE_HINT_BASE SPA_TYPE_INFO_BufferPageSizeHint ":"
+
+static const struct spa_type_info spa_type_buffer_page_size_hint[] = {
+	{ SPA_BUFFER_PAGE_SIZE_NORMAL, SPA_TYPE_Int, SPA_TYPE_INFO_BUFFER_PAGE_SIZE_HINT_BASE "normal", NULL },
+	{ SPA_BUFFER_PAGE_SIZE_HUGE_DEFAULT, SPA_TYPE_Int, SPA_TYPE_INFO_BUFFER_PAGE_SIZE_HINT_BASE "huge-default", NULL },
+	{ SPA_BUFFER_PAGE_SIZE_HUGE_2MB, SPA_TYPE_Int, SPA_TYPE_INFO_BUFFER_PAGE_SIZE_HINT_BASE "huge-2mb", NULL },
+	{ SPA_BUFFER_PAGE_SIZE_HUGE_1GB, SPA_TYPE_Int, SPA_TYPE_INFO_BUFFER_PAGE_SIZE_HINT_BASE "huge-1gb", NULL },
+	{ 0, 0, NULL, NULL },
+};
+
 static const struct spa_type_info spa_type_param_buffers[] = {
 	{ SPA_PARAM_BUFFERS_START,    SPA_TYPE_Id, SPA_TYPE_INFO_PARAM_BUFFERS_BASE, spa_type_param, },
 	{ SPA_PARAM_BUFFERS_buffers,  SPA_TYPE_Int, SPA_TYPE_INFO_PARAM_BUFFERS_BASE "buffers", NULL },
@@ -57,6 +68,7 @@ static const struct spa_type_info spa_type_param_buffers[] = {
 	{ SPA_PARAM_BUFFERS_align,    SPA_TYPE_Int, SPA_TYPE_INFO_PARAM_BLOCK_INFO_BASE "align", NULL },
 	{ SPA_PARAM_BUFFERS_dataType, SPA_TYPE_Int, SPA_TYPE_INFO_PARAM_BLOCK_INFO_BASE "dataType", NULL },
 	{ SPA_PARAM_BUFFERS_metaType, SPA_TYPE_Int, SPA_TYPE_INFO_PARAM_BLOCK_INFO_BASE "metaType", NULL },
+	{ SPA_PARAM_BUFFERS_pageSizeHint, SPA_TYPE_Id, SPA_TYPE_INFO_PARAM_BUFFERS_BASE "pageSizeHint", spa_type_buffer_page_size_hint },
 	{ 0, 0, NULL, NULL },
 };
 
