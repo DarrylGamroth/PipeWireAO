@@ -234,6 +234,33 @@ struct pw_loop *pw_filter_get_data_loop(struct pw_filter *filter);
  * for input ports. RT safe. */
 struct pw_buffer *pw_filter_dequeue_buffer(void *port_data);
 
+/**
+ * Producer-local accounting for bounded latest-buffer acquisition.
+ *
+ * These counters are written only by the exclusive latest-buffer output
+ * worker. They may be read by that worker after it has stopped publishing;
+ * concurrent control-thread reads are not supported.
+ */
+struct pw_filter_buffer_latest_stats {
+	uint64_t dequeue_attempts;	/**< output acquisition duty cycles */
+	uint64_t recycle_returns;	/**< returned consumer leases examined */
+	uint64_t buffer_probes;		/**< reusable pool slots examined */
+	uint64_t pool_exhaustions;	/**< attempts with no safe allocation */
+	uint64_t ready_reclaims;	/**< unclaimed publications reclaimed */
+	uint32_t max_buffer_probes;	/**< largest single bounded scan */
+	uint32_t reserved;
+};
+
+/**
+ * Snapshot bounded latest-buffer output acquisition accounting. RT safe.
+ *
+ * The caller must own the exclusive latest-buffer output worker and must not
+ * race this operation with publication. Returns -ENOTSUP for ordinary or
+ * input ports.
+ */
+int pw_filter_get_buffer_latest_stats(void *port_data,
+		struct pw_filter_buffer_latest_stats *stats);
+
 /** Submit a buffer for playback or recycle a buffer for capture. RT safe. */
 int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer);
 
