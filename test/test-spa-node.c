@@ -77,7 +77,10 @@ PWTEST(node_io_abi)
 	pwtest_int_eq(SPA_IO_AsyncBuffers, 10);
 	pwtest_int_eq(SPA_IO_BuffersLatest, 11);
 	pwtest_int_eq(SPA_IO_BuffersLatestNotify, 12);
+	pwtest_int_eq(SPA_IO_BuffersLatestLink, 13);
 	pwtest_int_eq(sizeof(struct spa_io_buffers_latest_notify), 8U);
+	pwtest_int_eq(offsetof(struct spa_io_buffers_latest_link, id), 0U);
+	pwtest_int_eq(offsetof(struct spa_io_buffers_latest_link, io), 8U);
 	pwtest_int_eq(SPA_ALIGNOF(struct spa_io_buffers_latest), SPA_CACHE_LINE_SIZE);
 	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, ready), 0U);
 	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, recycle) +
