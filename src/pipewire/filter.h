@@ -247,8 +247,18 @@ struct pw_filter_buffer_latest_stats {
 	uint64_t buffer_probes;		/**< reusable pool slots examined */
 	uint64_t pool_exhaustions;	/**< attempts with no safe allocation */
 	uint64_t ready_reclaims;	/**< unclaimed publications reclaimed */
+	uint64_t ready_withdrawals;	/**< subscriber ready slots withdrawn */
+	uint64_t publications;		/**< output buffers offered to fan-out */
+	uint64_t subscriber_visits;	/**< subscriber mailboxes visited */
+	uint64_t subscriber_deliveries;	/**< subscriber leases created */
+	uint64_t subscriber_supersessions; /**< subscriber-local ready IDs replaced */
+	uint64_t subscriber_retirements; /**< retired slots acknowledged by producer */
+	uint64_t retired_leases;	/**< leases recovered during retirement */
+	uint64_t zero_recipient_publications; /**< offers delivered to no active slot */
 	uint32_t max_buffer_probes;	/**< largest single bounded scan */
-	uint32_t reserved;
+	uint32_t max_recycle_returns;	/**< largest aggregate drain per attempt */
+	uint32_t max_ready_withdrawals; /**< largest reclaim fan-out per attempt */
+	uint32_t max_subscriber_visits; /**< largest publication fan-out */
 };
 
 /**

@@ -37,6 +37,7 @@ static const struct spa_type_info spa_type_io[] = {
 	{ SPA_IO_AsyncBuffers, SPA_TYPE_Int, SPA_TYPE_INFO_IO_BASE "AsyncBuffers", NULL },
 	{ SPA_IO_BuffersLatest, SPA_TYPE_Int, SPA_TYPE_INFO_IO_BASE "BuffersLatest", NULL },
 	{ SPA_IO_BuffersLatestNotify, SPA_TYPE_Int, SPA_TYPE_INFO_IO_BASE "BuffersLatestNotify", NULL },
+	{ SPA_IO_BuffersLatestLink, SPA_TYPE_Int, SPA_TYPE_INFO_IO_BASE "BuffersLatestLink", NULL },
 	{ 0, 0, NULL, NULL },
 };
 

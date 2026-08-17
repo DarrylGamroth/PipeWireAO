@@ -197,6 +197,12 @@ next:
 				SPA_PARAM_IO_id,   SPA_POD_Id(SPA_IO_BuffersLatest),
 				SPA_PARAM_IO_size, SPA_POD_Int(sizeof(struct spa_io_buffers_latest)));
 			break;
+		case 3:
+			param = spa_pod_builder_add_object(&b,
+				SPA_TYPE_OBJECT_ParamIO, id,
+				SPA_PARAM_IO_id,   SPA_POD_Id(SPA_IO_BuffersLatestLink),
+				SPA_PARAM_IO_size, SPA_POD_Int(sizeof(struct spa_io_buffers_latest_link)));
+			break;
 		default:
 			return 0;
 		}
@@ -257,6 +263,22 @@ do_remove_mix(struct spa_loop *loop,
 	return 0;
 }
 
+static int set_latest_link_io(struct pw_impl_port *port,
+		struct pw_impl_port_mix *mix)
+{
+	struct spa_io_buffers_latest_link link = {
+		.id = mix->port.port_id,
+		.flags = mix->latest_io != NULL
+			? SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE : 0,
+		.io = mix->latest_io,
+		.notify_fd = mix->latest_notify_fd,
+	};
+
+	return spa_node_port_set_io(port->node->node, port->direction,
+			port->port_id, SPA_IO_BuffersLatestLink,
+			&link, sizeof(link));
+}
+
 static int port_set_io(void *object,
 		enum spa_direction direction, uint32_t port_id, uint32_t id,
 		void *data, size_t size)
@@ -271,19 +293,35 @@ static int port_set_io(void *object,
 		return -ENOENT;
 
 	switch (id) {
-	case SPA_IO_BuffersLatestNotify:
-		res = spa_node_port_set_io(this->node->node, this->direction,
-				this->port_id, id, data, size);
-		if (res < 0)
+	case SPA_IO_BuffersLatestNotify: {
+		int old_fd = mix->latest_notify_fd;
+
+		if (data != NULL) {
+			const struct spa_io_buffers_latest_notify *notify = data;
+
+			if (size < sizeof(*notify) || notify->reserved != 0 ||
+			    notify->fd < 0)
+				return -EINVAL;
+			mix->latest_notify_fd = notify->fd;
+		} else {
+			mix->latest_notify_fd = -1;
+		}
+		res = set_latest_link_io(this, mix);
+		if (res < 0) {
+			mix->latest_notify_fd = old_fd;
 			return res;
+		}
 		break;
+	}
 	case SPA_IO_BuffersLatest:
+	{
+		struct spa_io_buffers_latest *old_io = mix->latest_io;
+
 		if (data == NULL || size < sizeof(struct spa_io_buffers_latest)) {
 			pw_loop_locked(this->node->data_loop,
 			       do_remove_mix, SPA_ID_INVALID, NULL, 0, mix);
 			mix->io_data = mix->io[0] = mix->io[1] = NULL;
-			res = spa_node_port_set_io(this->node->node, this->direction,
-					this->port_id, id, NULL, 0);
+			mix->latest_io = NULL;
 		} else {
 			/* Latest-mode workers own publication; the graph mixer must not
 			 * interpret this area as struct spa_io_buffers. */
@@ -291,12 +329,15 @@ static int port_set_io(void *object,
 			       do_remove_mix, SPA_ID_INVALID, NULL, 0, mix);
 			mix->io_data = data;
 			mix->io[0] = mix->io[1] = NULL;
-			res = spa_node_port_set_io(this->node->node, this->direction,
-					this->port_id, id, data, size);
+			mix->latest_io = data;
 		}
-		if (res < 0)
+		res = set_latest_link_io(this, mix);
+		if (res < 0) {
+			mix->latest_io = old_io;
 			return res;
+		}
 		break;
+	}
 	case SPA_IO_Buffers:
 	case SPA_IO_AsyncBuffers:
 		if (data == NULL || size == 0) {
@@ -461,6 +502,7 @@ int pw_impl_port_init_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mi
 	mix->port.direction = port->direction;
 	mix->port.port_id = port_id;
 	mix->p = port;
+	mix->latest_notify_fd = -1;
 
 	if ((res = pw_impl_port_call_init_mix(port, mix)) < 0)
 		goto error_remove_port;
@@ -801,6 +843,11 @@ static int check_param_io(void *data, int seq, uint32_t id,
 		SPA_FLAG_SET(port->flags, PW_IMPL_PORT_FLAG_BUFFERS |
 			PW_IMPL_PORT_FLAG_BUFFERS_LATEST);
 		break;
+	case SPA_IO_BuffersLatestLink:
+		SPA_FLAG_SET(port->flags, PW_IMPL_PORT_FLAG_BUFFERS |
+			PW_IMPL_PORT_FLAG_BUFFERS_LATEST |
+			PW_IMPL_PORT_FLAG_BUFFERS_LATEST_FANOUT);
+		break;
 	default:
 		break;
 	}
@@ -902,6 +949,7 @@ static void check_params(struct pw_impl_port *port)
 
 	port->flags &= ~(PW_IMPL_PORT_FLAG_CONTROL |
 			PW_IMPL_PORT_FLAG_ASYNC |
+			PW_IMPL_PORT_FLAG_BUFFERS_LATEST_FANOUT |
 			PW_IMPL_PORT_FLAG_BUFFERS_LATEST |
 			PW_IMPL_PORT_FLAG_BUFFERS);
 
