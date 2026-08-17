@@ -413,23 +413,44 @@ struct spa_io_async_buffers {
  * The host negotiates and configures the referenced buffers in the normal
  * way. This area changes only buffer ownership; it does not allocate payload
  * storage or define a graph scheduling policy.
+ *
+ * The ready handoff is intentionally contended by the output producer and
+ * input consumer. The output also owns superseded. The input alone writes the
+ * recycle producer index, and the output alone writes the recycle consumer
+ * index. Those independently written indices occupy separate cache lines.
  */
 #define SPA_IO_BUFFERS_LATEST_CAPACITY	64u
-struct spa_io_buffers_latest {
-	uint32_t ready_id;
+
+struct SPA_ALIGNED(SPA_CACHE_LINE_SIZE) spa_io_buffers_latest_ready {
+	uint32_t id;
 	uint32_t superseded;	/**< output-owned count of unclaimed buffers replaced */
-	struct spa_ringbuffer recycle;
+	uint8_t padding[SPA_CACHE_LINE_SIZE - 2u * sizeof(uint32_t)];
+};
+
+struct SPA_ALIGNED(SPA_CACHE_LINE_SIZE) spa_io_buffers_latest {
+	struct spa_io_buffers_latest_ready ready;
+	struct spa_ringbuffer_shared recycle;
 	uint32_t recycle_ids[SPA_IO_BUFFERS_LATEST_CAPACITY];
 };
 
 #define SPA_IO_BUFFERS_LATEST_INIT ((struct spa_io_buffers_latest) { \
-	.ready_id = SPA_ID_INVALID, \
-	.recycle = SPA_RINGBUFFER_INIT(), \
+	.ready.id = SPA_ID_INVALID, \
+	.recycle = SPA_RINGBUFFER_SHARED_INIT(), \
 })
 
 SPA_STATIC_ASSERT((SPA_IO_BUFFERS_LATEST_CAPACITY &
 		(SPA_IO_BUFFERS_LATEST_CAPACITY - 1u)) == 0u,
 		"buffer recycle capacity must be a power of two");
+SPA_STATIC_ASSERT(sizeof(struct spa_io_buffers_latest_ready) == SPA_CACHE_LINE_SIZE,
+		"latest ready slot must occupy one cache line");
+SPA_STATIC_ASSERT(offsetof(struct spa_io_buffers_latest, ready) % SPA_CACHE_LINE_SIZE == 0u,
+		"latest ready slot must be cache-line aligned");
+SPA_STATIC_ASSERT((offsetof(struct spa_io_buffers_latest, recycle) +
+		offsetof(struct spa_ringbuffer_shared, readindex)) % SPA_CACHE_LINE_SIZE == 0u,
+		"latest recycle consumer index must be cache-line aligned");
+SPA_STATIC_ASSERT((offsetof(struct spa_io_buffers_latest, recycle) +
+		offsetof(struct spa_ringbuffer_shared, writeindex)) % SPA_CACHE_LINE_SIZE == 0u,
+		"latest recycle producer index must be cache-line aligned");
 
 /**
  * Process-local advisory notification for SPA_IO_BuffersLatest.
@@ -454,11 +475,11 @@ static inline int spa_io_buffers_latest_publish(struct spa_io_buffers_latest *la
 	if (buffer_id == SPA_ID_INVALID)
 		return -EINVAL;
 
-	old = SPA_ATOMIC_XCHG(latest->ready_id, buffer_id);
+	old = SPA_ATOMIC_XCHG(latest->ready.id, buffer_id);
 	if (old == SPA_ID_INVALID)
 		return 0;
 
-	SPA_ATOMIC_INC(latest->superseded);
+	SPA_ATOMIC_INC(latest->ready.superseded);
 	if (superseded_id != NULL)
 		*superseded_id = old;
 	return 1;
@@ -468,7 +489,7 @@ static inline int spa_io_buffers_latest_publish(struct spa_io_buffers_latest *la
 static inline int spa_io_buffers_latest_acquire(struct spa_io_buffers_latest *latest,
 		uint32_t *buffer_id)
 {
-	uint32_t id = SPA_ATOMIC_XCHG(latest->ready_id, SPA_ID_INVALID);
+	uint32_t id = SPA_ATOMIC_XCHG(latest->ready.id, SPA_ID_INVALID);
 
 	if (id == SPA_ID_INVALID)
 		return -EPIPE;
@@ -483,7 +504,7 @@ static inline int spa_io_buffers_latest_withdraw(struct spa_io_buffers_latest *l
 	int res = spa_io_buffers_latest_acquire(latest, buffer_id);
 
 	if (res == 0)
-		SPA_ATOMIC_INC(latest->superseded);
+		SPA_ATOMIC_INC(latest->ready.superseded);
 	return res;
 }
 
@@ -495,14 +516,14 @@ static inline int spa_io_buffers_latest_push_recycle(
 
 	if (buffer_id == SPA_ID_INVALID)
 		return -EINVAL;
-	filled = spa_ringbuffer_get_write_index(&latest->recycle, &index);
+	filled = spa_ringbuffer_shared_get_write_index(&latest->recycle, &index);
 
 	if (filled < 0)
 		return -EIO;
 	if ((uint32_t)filled >= SPA_IO_BUFFERS_LATEST_CAPACITY)
 		return -ENOSPC;
 	latest->recycle_ids[index & (SPA_IO_BUFFERS_LATEST_CAPACITY - 1u)] = buffer_id;
-	spa_ringbuffer_write_update(&latest->recycle, index + 1u);
+	spa_ringbuffer_shared_write_update(&latest->recycle, index + 1u);
 	return 0;
 }
 
@@ -511,7 +532,9 @@ static inline int spa_io_buffers_latest_pop_recycle(
 		struct spa_io_buffers_latest *latest, uint32_t *buffer_id)
 {
 	uint32_t index;
-	int32_t available = spa_ringbuffer_get_read_index(&latest->recycle, &index);
+	int32_t available;
+
+	available = spa_ringbuffer_shared_get_read_index(&latest->recycle, &index);
 
 	if (available < 0)
 		return -EIO;
@@ -520,7 +543,7 @@ static inline int spa_io_buffers_latest_pop_recycle(
 	if ((uint32_t)available > SPA_IO_BUFFERS_LATEST_CAPACITY)
 		return -ENOSPC;
 	*buffer_id = latest->recycle_ids[index & (SPA_IO_BUFFERS_LATEST_CAPACITY - 1u)];
-	spa_ringbuffer_read_update(&latest->recycle, index + 1u);
+	spa_ringbuffer_shared_read_update(&latest->recycle, index + 1u);
 	return 0;
 }
 
