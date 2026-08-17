@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <sys/syscall.h>
 #include <sys/stat.h>
+#ifdef __linux__
+#include <sys/vfs.h>
+#endif
 
 #include <spa/utils/cleanup.h>
 #include <spa/utils/list.h>
@@ -63,6 +66,18 @@ static inline int memfd_create(const char *name, unsigned int flags)
 #define MFD_HUGETLB 0x0004U
 #endif
 
+#ifndef MFD_HUGE_SHIFT
+#define MFD_HUGE_SHIFT 26
+#endif
+
+#ifndef MFD_HUGE_2MB
+#define MFD_HUGE_2MB (21U << MFD_HUGE_SHIFT)
+#endif
+
+#ifndef MFD_HUGE_1GB
+#define MFD_HUGE_1GB (30U << MFD_HUGE_SHIFT)
+#endif
+
 #ifndef MFD_NOEXEC_SEAL
 #define MFD_NOEXEC_SEAL 0x0008U
 #endif
@@ -82,6 +97,35 @@ static int pw_memfd_create(const char *name, unsigned int flags)
 		res = memfd_create(name, flags & ~MFD_NOEXEC_SEAL);
 
 	return res;
+}
+
+static unsigned int memblock_huge_memfd_flags(enum pw_memblock_flags flags)
+{
+	unsigned int result = MFD_HUGETLB;
+
+	if (flags & PW_MEMBLOCK_FLAG_HUGE_2MB_HINT)
+		result |= MFD_HUGE_2MB;
+	else if (flags & PW_MEMBLOCK_FLAG_HUGE_1GB_HINT)
+		result |= MFD_HUGE_1GB;
+	return result;
+}
+
+static uint32_t memfd_huge_page_size(int fd, enum pw_memblock_flags flags)
+{
+	if (flags & PW_MEMBLOCK_FLAG_HUGE_2MB_HINT)
+		return 2U * 1024U * 1024U;
+	if (flags & PW_MEMBLOCK_FLAG_HUGE_1GB_HINT)
+		return 1024U * 1024U * 1024U;
+#ifdef __linux__
+	{
+		struct statfs stat;
+
+		if (fstatfs(fd, &stat) == 0 && stat.f_bsize > 0 &&
+		    (uint64_t)stat.f_bsize <= UINT32_MAX)
+			return (uint32_t)stat.f_bsize;
+	}
+#endif
+	return 0;
 }
 #endif
 
@@ -529,6 +573,8 @@ struct pw_memblock * pw_mempool_alloc(struct pw_mempool *pool, enum pw_memblock_
 {
 	struct mempool *impl = SPA_CONTAINER_OF(pool, struct mempool, this);
 	struct memblock *b;
+	size_t allocation_size = size;
+	bool try_huge = false;
 	int res;
 
 	b = calloc(1, sizeof(struct memblock));
@@ -540,27 +586,63 @@ struct pw_memblock * pw_mempool_alloc(struct pw_mempool *pool, enum pw_memblock_
 		pw_log_error("%p: alloc failure: only MemFd is supported", pool);
 		goto error_free;
 	}
+	if (size > UINT32_MAX) {
+		res = -EOVERFLOW;
+		pw_log_error("%p: alloc failure: size %zu exceeds memblock ABI", pool, size);
+		goto error_free;
+	}
 
 	b->this.ref = 1;
 	b->this.pool = pool;
-	b->this.flags = flags;
+	b->this.flags = flags & ~PW_MEMBLOCK_FLAG_HUGE_PAGES;
 	b->this.type = type;
-	b->this.size = size;
+	b->this.size = (uint32_t)size;
+	b->this.page_size = impl->pagesize;
 	spa_list_init(&b->mappings);
 	spa_list_init(&b->memmaps);
 	spa_hook_list_init(&b->listener_list);
 
 #ifdef HAVE_MEMFD_CREATE
 	char name[128];
+	unsigned int create_flags;
+
+	try_huge = (flags & (PW_MEMBLOCK_FLAG_HUGE_PAGES_HINT |
+			PW_MEMBLOCK_FLAG_HUGE_2MB_HINT |
+			PW_MEMBLOCK_FLAG_HUGE_1GB_HINT)) != 0;
+	if (SPA_FLAG_IS_SET(flags, PW_MEMBLOCK_FLAG_HUGE_2MB_HINT) &&
+	    SPA_FLAG_IS_SET(flags, PW_MEMBLOCK_FLAG_HUGE_1GB_HINT)) {
+		pw_log_warn("%p: conflicting huge-page hints, using ordinary memfd", pool);
+		try_huge = false;
+	}
+
+retry_memfd:
+	create_flags = MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_NOEXEC_SEAL;
+	if (try_huge)
+		create_flags |= memblock_huge_memfd_flags(flags);
 	snprintf(name, sizeof(name),
 		 "pipewire-memfd:flags=0x%08x,type=%" PRIu32 ",size=%zu",
 		 (unsigned int) flags, type, size);
 
-	b->this.fd = pw_memfd_create(name, MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_NOEXEC_SEAL);
+	b->this.fd = pw_memfd_create(name, create_flags);
 	if (b->this.fd == -1) {
+		if (try_huge)
+			goto fallback_huge;
 		res = -errno;
 		pw_log_error("%p: Failed to create memfd: %m", pool);
 		goto error_free;
+	}
+	if (try_huge) {
+		uint32_t page_size = memfd_huge_page_size(b->this.fd, flags);
+
+		if (page_size == 0 || size > UINT32_MAX - (page_size - 1U))
+			goto fallback_huge_close;
+		allocation_size = SPA_ROUND_UP_N(size, (size_t)page_size);
+		b->this.flags |= PW_MEMBLOCK_FLAG_HUGE_PAGES;
+		b->this.page_size = page_size;
+	} else {
+		allocation_size = size;
+		b->this.flags &= ~PW_MEMBLOCK_FLAG_HUGE_PAGES;
+		b->this.page_size = impl->pagesize;
 	}
 #elif defined(__FreeBSD__) || defined(__MidnightBSD__)
 	b->this.fd = shm_open(SHM_ANON, O_CREAT | O_RDWR | O_CLOEXEC, 0);
@@ -583,9 +665,14 @@ struct pw_memblock * pw_mempool_alloc(struct pw_mempool *pool, enum pw_memblock_
 	}
 	unlink(filename);
 #endif
+	b->this.size = (uint32_t)allocation_size;
 	pw_log_debug("%p: new fd:%d", pool, b->this.fd);
 
-	if (ftruncate(b->this.fd, size) < 0) {
+	if (ftruncate(b->this.fd, allocation_size) < 0) {
+#ifdef HAVE_MEMFD_CREATE
+		if (try_huge)
+			goto fallback_huge_close;
+#endif
 		res = -errno;
 		pw_log_warn("%p: Failed to truncate temporary file: %m", pool);
 		goto error_close;
@@ -594,14 +681,22 @@ struct pw_memblock * pw_mempool_alloc(struct pw_mempool *pool, enum pw_memblock_
 	if (flags & PW_MEMBLOCK_FLAG_SEAL) {
 		unsigned int seals = F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_SEAL;
 		if (fcntl(b->this.fd, F_ADD_SEALS, seals) == -1) {
+#ifdef HAVE_MEMFD_CREATE
+			if (try_huge)
+				goto fallback_huge_close;
+#endif
 			pw_log_warn("%p: Failed to add seals: %m", pool);
 		}
 	}
 #endif
-	if (flags & PW_MEMBLOCK_FLAG_MAP && size > 0) {
+	if (flags & PW_MEMBLOCK_FLAG_MAP && allocation_size > 0) {
 		b->this.map = pw_memblock_map(&b->this,
-				block_flags_to_mem(flags), 0, size, NULL);
+				block_flags_to_mem(flags), 0, (uint32_t)allocation_size, NULL);
 		if (b->this.map == NULL) {
+#ifdef HAVE_MEMFD_CREATE
+			if (try_huge)
+				goto fallback_huge_close;
+#endif
 			res = -errno;
 			pw_log_warn("%p: Failed to map: %m", pool);
 			goto error_close;
@@ -611,13 +706,26 @@ struct pw_memblock * pw_mempool_alloc(struct pw_mempool *pool, enum pw_memblock_
 
 	b->this.id = pw_map_insert_new(&impl->map, b);
 	spa_list_append(&impl->blocks, &b->link);
-	pw_log_debug("%p: block:%p id:%d type:%u flags:%08x size:%zu", pool,
-			&b->this, b->this.id, type, flags, size);
+	pw_log_debug("%p: block:%p id:%d type:%u flags:%08x size:%u page-size:%u", pool,
+			&b->this, b->this.id, type, b->this.flags,
+			b->this.size, b->this.page_size);
 
 	if (!SPA_FLAG_IS_SET(flags, PW_MEMBLOCK_FLAG_DONT_NOTIFY))
 		pw_mempool_emit_added(impl, &b->this);
 
 	return &b->this;
+
+#ifdef HAVE_MEMFD_CREATE
+fallback_huge_close:
+	close(b->this.fd);
+fallback_huge:
+	pw_log_info("%p: huge-page allocation unavailable, retrying ordinary memfd", pool);
+	try_huge = false;
+	allocation_size = size;
+	b->this.flags &= ~PW_MEMBLOCK_FLAG_HUGE_PAGES;
+	b->this.page_size = impl->pagesize;
+	goto retry_memfd;
+#endif
 
 error_close:
 	pw_log_debug("%p: close fd:%d", pool, b->this.fd);

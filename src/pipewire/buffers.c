@@ -37,6 +37,7 @@ static int alloc_buffers(struct pw_mempool *pool,
 			 int32_t *data_strides,
 			 uint32_t *data_aligns,
 			 uint32_t *data_types,
+			 enum spa_buffer_page_size_hint page_size_hint,
 			 uint32_t flags,
 			 struct pw_buffers *allocation)
 {
@@ -88,15 +89,30 @@ static int alloc_buffers(struct pw_mempool *pool,
 	if (SPA_FLAG_IS_SET(flags, PW_BUFFERS_FLAG_SHARED)) {
 		/* For shared data we use MemFd for meta/chunk/data */
 		size_t mem_alloc;
+		enum pw_memblock_flags memblock_flags = PW_MEMBLOCK_FLAG_READWRITE |
+				PW_MEMBLOCK_FLAG_SEAL | PW_MEMBLOCK_FLAG_MAP;
 		if (spa_overflow_mul((size_t)n_buffers, (size_t)info.mem_size, &mem_alloc)) {
 			free(buffers);
 			return -ENOMEM;
 		}
 
-		m = pw_mempool_alloc(pool,
-				PW_MEMBLOCK_FLAG_READWRITE |
-				PW_MEMBLOCK_FLAG_SEAL |
-				PW_MEMBLOCK_FLAG_MAP,
+		switch (page_size_hint) {
+		case SPA_BUFFER_PAGE_SIZE_HUGE_DEFAULT:
+			memblock_flags |= PW_MEMBLOCK_FLAG_HUGE_PAGES_HINT;
+			break;
+		case SPA_BUFFER_PAGE_SIZE_HUGE_2MB:
+			memblock_flags |= PW_MEMBLOCK_FLAG_HUGE_PAGES_HINT |
+					PW_MEMBLOCK_FLAG_HUGE_2MB_HINT;
+			break;
+		case SPA_BUFFER_PAGE_SIZE_HUGE_1GB:
+			memblock_flags |= PW_MEMBLOCK_FLAG_HUGE_PAGES_HINT |
+					PW_MEMBLOCK_FLAG_HUGE_1GB_HINT;
+			break;
+		case SPA_BUFFER_PAGE_SIZE_NORMAL:
+		default:
+			break;
+		}
+		m = pw_mempool_alloc(pool, memblock_flags,
 				SPA_DATA_MemFd,
 				mem_alloc);
 		if (m == NULL) {
@@ -104,6 +120,15 @@ static int alloc_buffers(struct pw_mempool *pool,
 			return -errno;
 		}
 		data = m->map->ptr;
+		if (SPA_FLAG_IS_SET(m->flags, PW_MEMBLOCK_FLAG_HUGE_PAGES)) {
+			for (i = 0; i < n_datas; i++) {
+				SPA_FLAG_SET(datas[i].flags, SPA_DATA_FLAG_HUGE_PAGES);
+				if (m->page_size == 2U * 1024U * 1024U)
+					SPA_FLAG_SET(datas[i].flags, SPA_DATA_FLAG_HUGE_2MB);
+				else if (m->page_size == 1024U * 1024U * 1024U)
+					SPA_FLAG_SET(datas[i].flags, SPA_DATA_FLAG_HUGE_1GB);
+			}
+		}
 	} else {
 		m = NULL;
 		data = NULL;
@@ -215,7 +240,7 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 	struct spa_pod_builder b = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
 	uint32_t i, j, offset, n_params, n_metas;
 	struct spa_meta *metas;
-	uint32_t min_buffers, max_buffers, blocks;
+	uint32_t min_buffers, max_buffers, blocks, page_size_hint;
 	size_t minsize, stride, align;
 	uint32_t *data_sizes;
 	int32_t *data_strides;
@@ -296,11 +321,13 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 	minsize = stride = 0;
 	types = SPA_ID_INVALID; /* bitmask of allowed types */
 	blocks = 1;
+	page_size_hint = SPA_BUFFER_PAGE_SIZE_NORMAL;
 
 	for (i = 0; i < n_params; i++) {
 		uint32_t qmax_buffers = max_buffers,
 		    qminsize = minsize, qstride = stride, qalign = align;
 		uint32_t qtypes = types, qblocks = blocks, qmetas = 0;
+		uint32_t qpage_size_hint = page_size_hint;
 
 		if (!spa_pod_is_object_type (params[i], SPA_TYPE_OBJECT_ParamBuffers))
 			continue;
@@ -313,7 +340,8 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 				SPA_PARAM_BUFFERS_stride,   SPA_POD_OPT_Int(&qstride),
 				SPA_PARAM_BUFFERS_align,    SPA_POD_OPT_Int(&qalign),
 				SPA_PARAM_BUFFERS_dataType, SPA_POD_OPT_Int(&qtypes),
-				SPA_PARAM_BUFFERS_metaType, SPA_POD_OPT_Int(&qmetas)) < 0) {
+				SPA_PARAM_BUFFERS_metaType, SPA_POD_OPT_Int(&qmetas),
+				SPA_PARAM_BUFFERS_pageSizeHint, SPA_POD_OPT_Id(&qpage_size_hint)) < 0) {
 			pw_log_warn("%p: invalid Buffers param", result);
 			continue;
 		}
@@ -321,6 +349,11 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 			SPA_FLAG_CLEAR(qmetas, 1<<metas[j].type);
 		if (qmetas != 0)
 			continue;
+		if (qpage_size_hint > SPA_BUFFER_PAGE_SIZE_HUGE_1GB) {
+			pw_log_warn("%p: unsupported page-size hint %u", result,
+					qpage_size_hint);
+			continue;
+		}
 
 		max_buffers =
 		    qmax_buffers == 0 ? max_buffers : SPA_MIN(qmax_buffers,
@@ -330,6 +363,7 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 		stride = SPA_MAX(stride, qstride);
 		align = SPA_MAX(align, qalign);
 		types = qtypes;
+		page_size_hint = qpage_size_hint;
 
 		pw_log_debug("%p: %d %d %d %d %d %d -> %d %zd %zd %d %zd %d", result,
 				qblocks, qminsize, qstride, qmax_buffers, qalign, qtypes,
@@ -393,6 +427,7 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 				 blocks,
 				 data_sizes, data_strides,
 				 data_aligns, data_types,
+				 page_size_hint,
 				 flags,
 				 result)) < 0) {
 		pw_log_error("%p: can't alloc buffers: %s", result, spa_strerror(res));
