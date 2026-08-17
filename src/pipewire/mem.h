@@ -37,6 +37,10 @@ enum pw_memblock_flags {
 	PW_MEMBLOCK_FLAG_DONT_CLOSE =	(1 << 4),	/**< don't close fd */
 	PW_MEMBLOCK_FLAG_DONT_NOTIFY =	(1 << 5),	/**< don't notify events */
 	PW_MEMBLOCK_FLAG_UNMAPPABLE =	(1 << 6),	/**< the fd can not be mmapped */
+	PW_MEMBLOCK_FLAG_HUGE_PAGES_HINT = (1 << 7),	/**< prefer Linux hugetlb memfd, fall back normally */
+	PW_MEMBLOCK_FLAG_HUGE_2MB_HINT = (1 << 8),	/**< prefer 2 MiB hugetlb pages */
+	PW_MEMBLOCK_FLAG_HUGE_1GB_HINT = (1 << 9),	/**< prefer 1 GiB hugetlb pages */
+	PW_MEMBLOCK_FLAG_HUGE_PAGES =	(1 << 10),	/**< allocation is backed by huge pages */
 
 	PW_MEMBLOCK_FLAG_READWRITE = PW_MEMBLOCK_FLAG_READABLE | PW_MEMBLOCK_FLAG_WRITABLE,
 };
@@ -71,6 +75,7 @@ struct pw_memblock {
 	uint32_t type;			/**< type of the fd, one of enum spa_data_type */
 	int fd;				/**< fd */
 	uint32_t size;			/**< size of memory */
+	uint32_t page_size;		/**< actual backing page size */
 	struct pw_memmap *map;		/**< optional map when PW_MEMBLOCK_FLAG_MAP was given */
 };
 

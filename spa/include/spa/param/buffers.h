@@ -26,6 +26,15 @@ enum spa_param_buffers {
 	SPA_PARAM_BUFFERS_align,	/**< alignment of data block memory (Int) */
 	SPA_PARAM_BUFFERS_dataType,	/**< possible memory types (flags choice Int, mask of enum spa_data_type) */
 	SPA_PARAM_BUFFERS_metaType,	/**< required meta data types (Int, mask of enum spa_meta_type) */
+	SPA_PARAM_BUFFERS_pageSizeHint,	/**< preferred backing page size (Id enum spa_buffer_page_size_hint) */
+};
+
+/** Best-effort backing page size for host-allocated shared memory. */
+enum spa_buffer_page_size_hint {
+	SPA_BUFFER_PAGE_SIZE_NORMAL,		/**< ordinary system pages */
+	SPA_BUFFER_PAGE_SIZE_HUGE_DEFAULT,	/**< system default huge-page size */
+	SPA_BUFFER_PAGE_SIZE_HUGE_2MB,		/**< 2 MiB huge pages */
+	SPA_BUFFER_PAGE_SIZE_HUGE_1GB,		/**< 1 GiB huge pages */
 };
 
 /** properties for SPA_TYPE_OBJECT_ParamMeta */
