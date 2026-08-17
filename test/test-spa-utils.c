@@ -78,6 +78,11 @@ PWTEST(utils_abi)
 
 	/* ringbuffer */
 	pwtest_int_eq(sizeof(struct spa_ringbuffer), 8U);
+	pwtest_int_eq(sizeof(struct spa_ringbuffer_shared), 2U * SPA_CACHE_LINE_SIZE);
+	pwtest_int_eq(SPA_ALIGNOF(struct spa_ringbuffer_shared), SPA_CACHE_LINE_SIZE);
+	pwtest_int_eq(offsetof(struct spa_ringbuffer_shared, readindex), 0U);
+	pwtest_int_eq(offsetof(struct spa_ringbuffer_shared, writeindex),
+		SPA_CACHE_LINE_SIZE);
 
 	/* type */
 	pwtest_int_eq(SPA_TYPE_START, 0);
@@ -476,6 +481,35 @@ PWTEST(utils_ringbuffer)
 
 	/* actual buffer must have wrapped around */
 	pwtest_str_eq_n(buffer, " !!!o pipewire rocks", 20);
+	return PWTEST_PASS;
+}
+
+PWTEST(utils_ringbuffer_shared)
+{
+	struct spa_ringbuffer_shared rb;
+	uint32_t idx;
+	int32_t fill;
+
+	spa_ringbuffer_shared_init(&rb);
+	fill = spa_ringbuffer_shared_get_write_index(&rb, &idx);
+	pwtest_int_eq(idx, 0U);
+	pwtest_int_eq(fill, 0);
+
+	spa_ringbuffer_shared_write_update(&rb, 14);
+	fill = spa_ringbuffer_shared_get_read_index(&rb, &idx);
+	pwtest_int_eq(idx, 0U);
+	pwtest_int_eq(fill, 14);
+
+	spa_ringbuffer_shared_read_update(&rb, 6);
+	fill = spa_ringbuffer_shared_get_write_index(&rb, &idx);
+	pwtest_int_eq(idx, 14U);
+	pwtest_int_eq(fill, 8);
+
+	spa_ringbuffer_shared_set_avail(&rb, 20);
+	fill = spa_ringbuffer_shared_get_read_index(&rb, &idx);
+	pwtest_int_eq(idx, 0U);
+	pwtest_int_eq(fill, 20);
+
 	return PWTEST_PASS;
 }
 
@@ -1009,6 +1043,7 @@ PWTEST_SUITE(spa_utils)
 	pwtest_add(utils_list, PWTEST_NOARG);
 	pwtest_add(utils_hook, PWTEST_NOARG);
 	pwtest_add(utils_ringbuffer, PWTEST_NOARG);
+	pwtest_add(utils_ringbuffer_shared, PWTEST_NOARG);
 	pwtest_add(utils_strtol, PWTEST_NOARG);
 	pwtest_add(utils_strtoul, PWTEST_NOARG);
 	pwtest_add(utils_strtoll, PWTEST_NOARG);

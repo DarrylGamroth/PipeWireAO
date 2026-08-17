@@ -43,6 +43,28 @@ extern "C" {
 #define SPA_CONCAT(a, b) SPA_CONCAT_NOEXPAND(a, b)
 
 /**
+ * Cache-line size used by target-specific shared-memory ABIs.
+ *
+ * This value is deliberately a compile-time ABI property: all processes that
+ * map a shared structure must agree on its layout. A qualified target may
+ * override it through the build configuration.
+ */
+#ifndef SPA_CACHE_LINE_SIZE
+#if defined(__s390x__)
+#define SPA_CACHE_LINE_SIZE 256u
+#elif defined(__aarch64__) || defined(__powerpc64__)
+#define SPA_CACHE_LINE_SIZE 128u
+#else
+#define SPA_CACHE_LINE_SIZE 64u
+#endif
+#endif
+
+#if SPA_CACHE_LINE_SIZE < 64u || \
+	(SPA_CACHE_LINE_SIZE & (SPA_CACHE_LINE_SIZE - 1u)) != 0u
+#error "SPA_CACHE_LINE_SIZE must be a power of two and at least 64 bytes"
+#endif
+
+/**
  * \defgroup spa_utils_defs Miscellaneous
  * Helper macros and functions
  */
