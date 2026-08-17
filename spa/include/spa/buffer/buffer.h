@@ -83,6 +83,9 @@ struct spa_data {
 #define SPA_DATA_FLAG_MAPPABLE	(1u<<3)	/**< data is mappable with simple mmap/munmap. Some memory
 					  *  types are not simply mappable (DmaBuf) unless explicitly
 					  *  specified with this flag. */
+#define SPA_DATA_FLAG_HUGE_PAGES (1u<<4)	/**< storage is backed by huge pages */
+#define SPA_DATA_FLAG_HUGE_2MB	 (1u<<5)	/**< huge-page size is 2 MiB */
+#define SPA_DATA_FLAG_HUGE_1GB	 (1u<<6)	/**< huge-page size is 1 GiB */
 	uint32_t flags;			/**< data flags */
 	int64_t fd;			/**< optional fd for data */
 	uint32_t mapoffset;		/**< offset to map fd at, this is page aligned */
