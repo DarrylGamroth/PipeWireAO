@@ -787,8 +787,10 @@ client_node_port_set_io(void *_data,
 			notify_data = &notify;
 			notify_size = sizeof(notify);
 		}
-		res = spa_node_port_set_io(mix->port->mix,
-				direction, mix->mix.port.port_id, id,
+		/* Latest-buffer notifications belong to the exported node port,
+		 * not to an optional media mixer inserted in front of that port. */
+		res = spa_node_port_set_io(data->node->node,
+				direction, port_id, id,
 				notify_data, notify_size);
 		if (res == -ENOTSUP)
 			res = 0;
@@ -823,8 +825,13 @@ client_node_port_set_io(void *_data,
 	pw_log_debug("port %p: set io:%s new:%p old:%p", mix->port,
 			spa_debug_type_find_name(spa_type_io, id), ptr, mix->mix.io);
 
-	if ((res = spa_node_port_set_io(mix->port->mix,
-			     direction, mix->mix.port.port_id, id, ptr, size)) < 0) {
+	if (id == SPA_IO_BuffersLatest)
+		res = spa_node_port_set_io(data->node->node,
+				direction, port_id, id, ptr, size);
+	else
+		res = spa_node_port_set_io(mix->port->mix,
+				direction, mix->mix.port.port_id, id, ptr, size);
+	if (res < 0) {
 		if (res == -ENOTSUP)
 			res = 0;
 		else
