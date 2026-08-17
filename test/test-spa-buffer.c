@@ -5,6 +5,8 @@
 
 #include "pwtest.h"
 
+#include <dlfcn.h>
+
 #include <spa/buffer/alloc.h>
 #include <spa/buffer/buffer.h>
 #include <spa/buffer/meta.h>
@@ -133,6 +135,18 @@ PWTEST(buffer_progressive_meta)
 	return PWTEST_PASS;
 }
 
+PWTEST(buffer_progressive_meta_exports)
+{
+	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_progressive_snapshot_encode"));
+	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_progressive_snapshot_decode"));
+	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_progressive_load_acquire"));
+	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_progressive_store_release"));
+	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_progressive_init"));
+	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_progressive_is_valid"));
+
+	return PWTEST_PASS;
+}
+
 PWTEST(buffer_alloc)
 {
 	struct spa_buffer **buffers;
@@ -195,6 +209,7 @@ PWTEST_SUITE(spa_buffer)
 	pwtest_add(buffer_abi_types, PWTEST_NOARG);
 	pwtest_add(buffer_abi_sizes, PWTEST_NOARG);
 	pwtest_add(buffer_progressive_meta, PWTEST_NOARG);
+	pwtest_add(buffer_progressive_meta_exports, PWTEST_NOARG);
 	pwtest_add(buffer_alloc, PWTEST_NOARG);
 
 	return PWTEST_PASS;
