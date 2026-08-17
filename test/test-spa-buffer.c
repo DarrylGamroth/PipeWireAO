@@ -31,7 +31,8 @@ PWTEST(buffer_abi_types)
 	pwtest_int_eq(SPA_META_Busy, 7);
 	pwtest_int_eq(SPA_META_VideoTransform, 8);
 	pwtest_int_eq(SPA_META_SyncTimeline, 9);
-	pwtest_int_eq(_SPA_META_LAST, 10);
+	pwtest_int_eq(SPA_META_Progressive, 10);
+	pwtest_int_eq(_SPA_META_LAST, 11);
 
 	return PWTEST_PASS;
 }
@@ -49,6 +50,10 @@ PWTEST(buffer_abi_sizes)
 	pwtest_int_eq(sizeof(struct spa_meta_bitmap), 20U);
 	pwtest_int_eq(sizeof(struct spa_meta_cursor), 28U);
 	pwtest_int_eq(sizeof(struct spa_meta_videotransform), 4U);
+	pwtest_int_eq(sizeof(struct spa_meta_progressive), SPA_META_PROGRESSIVE_SIZE);
+	pwtest_int_eq(_Alignof(struct spa_meta_progressive), 8U);
+	pwtest_int_eq(offsetof(struct spa_meta_progressive, snapshot), 32U);
+	pwtest_int_eq(offsetof(struct spa_meta_progressive, reserved1), 40U);
 
 	return PWTEST_PASS;
 #else
@@ -63,6 +68,58 @@ PWTEST(buffer_abi_sizes)
 	fprintf(stderr, "%zd\n", sizeof(struct spa_meta_videotransform));
 	return PWTEST_SKIP;
 #endif
+}
+
+PWTEST(buffer_progressive_meta)
+{
+	struct spa_meta_progressive progressive;
+	struct spa_meta meta = {
+		.type = SPA_META_Progressive,
+		.size = sizeof(progressive),
+		.data = &progressive,
+	};
+	enum spa_meta_progressive_state state;
+	uint32_t committed;
+	uint64_t snapshot;
+	uint8_t unaligned[sizeof(progressive) + 1];
+
+	pwtest_int_eq(SPA_META_PROGRESSIVE_STATE_PREPARED, 0);
+	pwtest_int_eq(SPA_META_PROGRESSIVE_STATE_ACTIVE, 1);
+	pwtest_int_eq(SPA_META_PROGRESSIVE_STATE_COMPLETE, 2);
+	pwtest_int_eq(SPA_META_PROGRESSIVE_STATE_ABORTED, 3);
+	pwtest_bool_true(spa_meta_progressive_init(&progressive, 1, 128, 4096, 256));
+	pwtest_bool_false(spa_meta_progressive_init(&progressive, 1, 128, 0, 256));
+	pwtest_bool_false(spa_meta_progressive_init(&progressive, 1, 128, 4096, 0));
+	pwtest_bool_true(spa_meta_progressive_init(&progressive, 1, 128, 4096, 256));
+
+	snapshot = spa_meta_progressive_snapshot_encode(1024,
+			SPA_META_PROGRESSIVE_STATE_ACTIVE);
+	spa_meta_progressive_store_release(&progressive, snapshot);
+	pwtest_int_eq(spa_meta_progressive_load_acquire(&progressive), snapshot);
+	pwtest_bool_true(spa_meta_progressive_snapshot_decode(snapshot, &committed, &state));
+	pwtest_int_eq(committed, 1024U);
+	pwtest_int_eq((uint32_t) state,
+			(uint32_t) SPA_META_PROGRESSIVE_STATE_ACTIVE);
+	pwtest_bool_true(spa_meta_progressive_is_valid(&meta));
+
+	pwtest_bool_false(spa_meta_progressive_snapshot_decode(
+			SPA_META_PROGRESSIVE_RESERVED_MASK, NULL, NULL));
+	spa_meta_progressive_store_release(&progressive,
+			SPA_META_PROGRESSIVE_RESERVED_MASK);
+	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
+
+	spa_meta_progressive_store_release(&progressive, snapshot);
+	progressive.reserved0 = 1;
+	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
+	progressive.reserved0 = 0;
+
+	meta.size = sizeof(progressive) - 1;
+	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
+	meta.size = sizeof(progressive);
+	meta.data = &unaligned[1];
+	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
+
+	return PWTEST_PASS;
 }
 
 PWTEST(buffer_alloc)
@@ -126,6 +183,7 @@ PWTEST_SUITE(spa_buffer)
 {
 	pwtest_add(buffer_abi_types, PWTEST_NOARG);
 	pwtest_add(buffer_abi_sizes, PWTEST_NOARG);
+	pwtest_add(buffer_progressive_meta, PWTEST_NOARG);
 	pwtest_add(buffer_alloc, PWTEST_NOARG);
 
 	return PWTEST_PASS;
