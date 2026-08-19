@@ -48,18 +48,18 @@ struct buffer {
 	uint64_t latest_leases;
 };
 
-struct SPA_ALIGNED(SPA_CACHE_LINE_SIZE) latest_link {
+struct latest_link {
+	struct spa_io_buffers_latest *io;
 	uint32_t state;
 	uint32_t readers;
 	uint32_t id;
-	struct spa_io_buffers_latest *io;
 	int notify_fd;
+	uint8_t padding[SPA_CACHE_LINE_SIZE - sizeof(void *) -
+			3u * sizeof(uint32_t) - sizeof(int)];
 };
 
 SPA_STATIC_ASSERT(sizeof(struct latest_link) == SPA_CACHE_LINE_SIZE,
 		"latest link state must occupy one cache line");
-SPA_STATIC_ASSERT(SPA_ALIGNOF(struct latest_link) == SPA_CACHE_LINE_SIZE,
-		"latest link state must be cache-line aligned");
 
 #define LATEST_LINK_EMPTY	0u
 #define LATEST_LINK_INSTALLING	1u
@@ -112,7 +112,7 @@ struct port {
 	struct spa_param_info params[N_PORT_PARAMS];
 
 	struct spa_io_buffers *io;
-	struct latest_link latest_links[MAX_LATEST_LINKS];
+	struct latest_link *latest_links;
 	uint64_t latest_active_mask;
 	uint64_t latest_retired_mask;
 	uint32_t latest_mode;
@@ -361,19 +361,26 @@ static void clear_params(struct filter *impl, struct port *port, uint32_t id)
 }
 
 static struct port *alloc_port(struct filter *filter,
-		enum spa_direction direction, uint32_t user_data_size)
+		enum spa_direction direction, size_t user_data_size)
 {
 	struct port *p;
+	size_t allocation_size;
 	uint32_t i;
-	int res;
 
-	res = posix_memalign((void **)&p, SPA_CACHE_LINE_SIZE,
-			sizeof(struct port) + user_data_size);
-	if (res != 0) {
-		errno = res;
+	if (SPA_UNLIKELY(user_data_size > SIZE_MAX - sizeof(struct port) -
+			(SPA_CACHE_LINE_SIZE - 1u) -
+			sizeof(struct latest_link) * MAX_LATEST_LINKS)) {
+		errno = ENOMEM;
 		return NULL;
 	}
-	memset(p, 0, sizeof(struct port) + user_data_size);
+	allocation_size = sizeof(struct port) + user_data_size +
+			(SPA_CACHE_LINE_SIZE - 1u) +
+			sizeof(struct latest_link) * MAX_LATEST_LINKS;
+	if ((p = calloc(1, allocation_size)) == NULL)
+		return NULL;
+	p->latest_links = SPA_PTR_ALIGN(&p->user_data[user_data_size],
+			SPA_CACHE_LINE_SIZE, struct latest_link);
+	spa_assert(SPA_IS_ALIGNED(p->latest_links, SPA_CACHE_LINE_SIZE));
 	p->filter = filter;
 	p->direction = direction;
 	SPA_ATOMIC_STORE(p->latest_input_claimed, SPA_ID_INVALID);
