@@ -933,17 +933,33 @@ error_exit:
 	return res;
 }
 
-static void clear_mix(struct node_data *data, struct mix *mix)
+/* During ordinary removal, keep mappings alive if synchronous retirement fails.
+ * Forced cleanup is reserved for port or node teardown, where the owner can no
+ * longer run the removed mix. */
+static int clear_mix(struct node_data *data, struct mix *mix, bool force)
 {
+	int res = 0;
+
 	pw_log_debug("port %p: mix clear %d.%d", mix->port, mix->port->port_id, mix->mix.id);
 
-	if (mix->mix.id != SPA_ID_INVALID) {
-		mix->latest_io = NULL;
-		set_latest_link_io(data, mix, mix->port->direction,
+	if (mix->mix.id != SPA_ID_INVALID && mix->latest_io != NULL) {
+		res = set_latest_link_io(data, mix, mix->port->direction,
 				mix->port->port_id, NULL, -1);
+		if (res < 0) {
+			pw_log_warn("port %p: failed to retire latest link %d.%d: %s",
+					mix->port, mix->port->port_id, mix->mix.id,
+					spa_strerror(res));
+			if (!force)
+				return res;
+		}
+		mix->latest_io = NULL;
 	}
 	if (mix->latest_notify_fd >= 0) {
-		spa_system_close(data->data_system, mix->latest_notify_fd);
+		int close_res = spa_system_close(data->data_system,
+				mix->latest_notify_fd);
+		if (close_res < 0)
+			pw_log_warn("port %p: failed to close latest notification fd: %s",
+					mix->port, spa_strerror(close_res));
 		mix->latest_notify_fd = -1;
 	}
 	if (mix->mix.id != SPA_ID_INVALID)
@@ -958,6 +974,7 @@ static void clear_mix(struct node_data *data, struct mix *mix)
 	spa_list_append(&data->free_mix, &mix->link);
 	if (mix->mix.id != SPA_ID_INVALID)
 		pw_impl_port_release_mix(mix->port, &mix->mix);
+	return res;
 }
 
 static int client_node_port_set_mix_info(void *_data,
@@ -966,6 +983,7 @@ static int client_node_port_set_mix_info(void *_data,
 {
 	struct node_data *data = _data;
 	struct mix *mix;
+	int res;
 
 	pw_log_debug("%p: %d:%d:%d peer:%d", data, direction, port_id, mix_id, peer_id);
 
@@ -974,7 +992,8 @@ static int client_node_port_set_mix_info(void *_data,
 	if (peer_id == SPA_ID_INVALID) {
 		if (mix == NULL)
 			return -EINVAL;
-		clear_mix(data, mix);
+		if ((res = clear_mix(data, mix, false)) < 0)
+			return res;
 	} else {
 		struct pw_impl_port *port;
 		if (mix != NULL)
@@ -1041,9 +1060,9 @@ static void clean_node(struct node_data *d)
 	struct mix *mix;
 
 	spa_list_consume(mix, &d->mix[SPA_DIRECTION_INPUT], link)
-		clear_mix(d, mix);
+		clear_mix(d, mix, true);
 	spa_list_consume(mix, &d->mix[SPA_DIRECTION_OUTPUT], link)
-		clear_mix(d, mix);
+		clear_mix(d, mix, true);
 	spa_list_consume(mix, &d->free_mix, link) {
 		spa_list_remove(&mix->link);
 		free(mix);
@@ -1141,7 +1160,7 @@ static void node_port_removed(void *data, struct pw_impl_port *port)
 
 	spa_list_for_each_safe(mix, tmp, &d->mix[port->direction], link) {
 		if (mix->port == port)
-			clear_mix(d, mix);
+			clear_mix(d, mix, true);
 	}
 }
 
