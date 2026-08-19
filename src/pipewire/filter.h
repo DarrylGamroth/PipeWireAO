@@ -247,6 +247,55 @@ int pw_filter_try_dequeue_buffer_latest(void *port_data,
 		struct pw_buffer **buffer);
 
 /**
+ * Caller-owned state for one continuous latest-input polling interval.
+ *
+ * Initialize this object with \ref pw_filter_buffer_latest_poller_init and
+ * clear it on every cancellation or error exit. Do not copy or modify it while
+ * initialized. A poller may retain a live-link lifetime pin across empty polls,
+ * so its worker must continue polling and must not block between calls.
+ */
+struct pw_filter_buffer_latest_poller {
+	void *port_data;
+	struct spa_io_buffers_latest *io;
+	uint32_t slot;
+	uint32_t reserved;
+};
+
+#define PW_FILTER_BUFFER_LATEST_POLLER_INIT \
+	((struct pw_filter_buffer_latest_poller) { NULL, NULL, SPA_ID_INVALID, 0 })
+
+/**
+ * Initialize a continuous latest-input polling interval. RT safe.
+ *
+ * The exclusive input worker must not hold a dequeued buffer. Initialization
+ * performs all port-mode validation outside the empty-poll loop.
+ */
+int pw_filter_buffer_latest_poller_init(
+		struct pw_filter_buffer_latest_poller *poller, void *port_data);
+
+/**
+ * Try to claim one input publication through an initialized poller. RT safe.
+ *
+ * Returns 1 and stores a buffer, 0 for ordinary no-work, or a negative
+ * errno-style error. A successful claim or an error automatically releases
+ * the retained link pin and finishes the polling interval. Empty polls retain
+ * the pin while the link remains active. Link retirement is observed before
+ * dereferencing its shared mailbox and releases the pin before returning 0.
+ */
+int pw_filter_buffer_latest_poller_try_dequeue(
+		struct pw_filter_buffer_latest_poller *poller,
+		struct pw_buffer **buffer);
+
+/**
+ * Finish a polling interval and release any retained live-link pin. RT safe.
+ *
+ * This operation is idempotent. Call it before a polling worker blocks, exits,
+ * or stops checking the link so synchronous live-link retirement can finish.
+ */
+void pw_filter_buffer_latest_poller_clear(
+		struct pw_filter_buffer_latest_poller *poller);
+
+/**
  * Producer-local accounting for bounded latest-buffer acquisition.
  *
  * These counters are written only by the exclusive latest-buffer output
