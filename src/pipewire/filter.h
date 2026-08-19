@@ -231,7 +231,11 @@ uint64_t pw_filter_get_nsec(struct pw_filter *filter);
 struct pw_loop *pw_filter_get_data_loop(struct pw_filter *filter);
 
 /** Get a buffer that can be filled for output ports or consumed
- * for input ports. RT safe. */
+ * for input ports. RT safe.
+ *
+ * Calls that dequeue, queue, begin, or end buffers on the same port must be
+ * serialized by one worker. An input latest-buffer port may hold at most one
+ * dequeued consumer buffer at a time. */
 struct pw_buffer *pw_filter_dequeue_buffer(void *port_data);
 
 /**
@@ -332,7 +336,8 @@ struct pw_filter_buffer_latest_stats {
 int pw_filter_get_buffer_latest_stats(void *port_data,
 		struct pw_filter_buffer_latest_stats *stats);
 
-/** Submit a buffer for playback or recycle a buffer for capture. RT safe. */
+/** Submit a buffer for playback or recycle a buffer for capture. RT safe.
+ * The caller must own the port's serialized buffer worker. */
 int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer);
 
 /**
@@ -344,6 +349,12 @@ int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer);
  * progressive protocol still grants to the producer. The buffer must later be
  * passed exactly once to \ref pw_filter_end_progressive_buffer, not to
  * \ref pw_filter_queue_buffer.
+ *
+ * The caller must own the port's serialized output worker. Fan-out publication
+ * is latest-value delivery to independent subscribers, not an atomic multicast:
+ * subscribers may claim or supersede an offered buffer at different times.
+ * Per-subscriber leases keep the allocation unavailable for reuse until every
+ * subscriber has returned or superseded it and the producer lease has ended.
  *
  * This operation is supported only on an output port configured with
  * SPA_IO_BuffersLatest.
@@ -357,6 +368,8 @@ int pw_filter_begin_progressive_buffer(void *port_data, struct pw_buffer *buffer
  * terminal state. PipeWire makes the allocation reusable only after the input
  * consumer has also returned its lease. Consumer return and this call may
  * occur in either order.
+ *
+ * The caller must own the same serialized output worker that began the lease.
  */
 int pw_filter_end_progressive_buffer(void *port_data, struct pw_buffer *buffer);
 
