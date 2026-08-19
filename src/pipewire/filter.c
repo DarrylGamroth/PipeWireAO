@@ -720,6 +720,38 @@ static inline void unpin_latest_link(struct port *port,
 	SPA_ATOMIC_DEC(port->latest_links[view->slot].readers);
 }
 
+/*
+ * Link removal is a synchronous lifetime barrier: after it returns, the host
+ * may unmap io and close notify_fd.  A timeout must therefore not let removal
+ * proceed while a worker is still pinned.  Keep waiting, but make an abnormal
+ * delay visible without adding clocks or logging to the worker path.
+ */
+static void wait_latest_link_readers(struct port *port, struct latest_link *link,
+		const char *operation)
+{
+	struct timespec start, now;
+	uint32_t yields = 0;
+	bool check_delay;
+
+	if (SPA_ATOMIC_LOAD(link->readers) == 0)
+		return;
+	check_delay = clock_gettime(CLOCK_MONOTONIC, &start) == 0;
+	while (SPA_ATOMIC_LOAD(link->readers) != 0) {
+		sched_yield();
+		if (check_delay && ++yields == 1024) {
+			yields = 0;
+			if (clock_gettime(CLOCK_MONOTONIC, &now) == 0 &&
+			    SPA_TIMESPEC_TO_NSEC(&now) - SPA_TIMESPEC_TO_NSEC(&start) >=
+					SPA_NSEC_PER_SEC) {
+				pw_log_warn("%p: latest link %u %s waiting for %u readers",
+						port->filter, link->id, operation,
+						SPA_ATOMIC_LOAD(link->readers));
+				check_delay = false;
+			}
+		}
+	}
+}
+
 static int service_latest_retirements(struct port *port)
 {
 	uint32_t i, j;
@@ -785,8 +817,7 @@ static int update_latest_link(struct port *port,
 		bit = UINT64_C(1) << slot;
 		__atomic_fetch_and(&port->latest_active_mask, ~bit,
 				__ATOMIC_SEQ_CST);
-		while (SPA_ATOMIC_LOAD(link->readers) != 0)
-			sched_yield();
+		wait_latest_link_readers(port, link, "retirement");
 		link->io = NULL;
 		SPA_ATOMIC_STORE(link->notify_fd, -1);
 		if (port->direction == SPA_DIRECTION_INPUT) {
@@ -810,8 +841,7 @@ static int update_latest_link(struct port *port,
 		if (!SPA_ATOMIC_CAS(link->state, LATEST_LINK_ACTIVE,
 				LATEST_LINK_UPDATING))
 			return -EBUSY;
-		while (SPA_ATOMIC_LOAD(link->readers) != 0)
-			sched_yield();
+		wait_latest_link_readers(port, link, "notification update");
 		SPA_ATOMIC_STORE(link->notify_fd, desc->notify_fd);
 		SPA_ATOMIC_STORE(link->state, LATEST_LINK_ACTIVE);
 		return 0;
