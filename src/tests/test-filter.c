@@ -5,8 +5,12 @@
 #include <pipewire/pipewire.h>
 #include <pipewire/main-loop.h>
 #include <pipewire/filter.h>
+#include <pipewire/impl-node.h>
+#include <pipewire/private.h>
 
 #include <spa/utils/string.h>
+
+#include <pthread.h>
 
 #define TEST_FUNC(a,b,func)	\
 do {				\
@@ -340,6 +344,137 @@ static void test_create_port(void)
 	pw_main_loop_destroy(loop);
 }
 
+struct latest_link_update {
+	struct spa_node *node;
+	struct spa_io_buffers_latest_link *link;
+	uint32_t done;
+	int result;
+};
+
+static void *update_latest_input_link(void *data)
+{
+	struct latest_link_update *update = data;
+
+	update->result = spa_node_port_set_io(update->node, SPA_DIRECTION_INPUT, 0,
+			SPA_IO_BuffersLatestLink, update->link,
+			sizeof(*update->link));
+	SPA_ATOMIC_STORE(update->done, true);
+	return NULL;
+}
+
+static void poll_until_latest_link_update(
+		struct pw_filter_buffer_latest_poller *poller,
+		struct latest_link_update *update, pthread_t thread)
+{
+	struct pw_buffer *buffer;
+
+	while (!SPA_ATOMIC_LOAD(update->done)) {
+		spa_assert_se(pw_filter_buffer_latest_poller_try_dequeue(
+				poller, &buffer) == 0);
+		spa_assert_se(buffer == NULL);
+	}
+	spa_assert_se(pthread_join(thread, NULL) == 0);
+	spa_assert_se(update->result == 0);
+}
+
+static void test_latest_input_poller(void)
+{
+	struct pw_main_loop *loop;
+	struct pw_context *context;
+	struct pw_core *core;
+	struct pw_filter *filter;
+	struct spa_node *node;
+	struct spa_io_buffers_latest latest = SPA_IO_BUFFERS_LATEST_INIT;
+	struct spa_io_buffers_latest_link link = {
+		.id = 20,
+		.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+		.io = &latest,
+		.notify_fd = -1,
+	};
+	struct spa_buffer storage[2] = { 0 };
+	struct spa_buffer *buffers[2] = { &storage[0], &storage[1] };
+	struct pw_filter_buffer_latest_poller poller =
+		PW_FILTER_BUFFER_LATEST_POLLER_INIT;
+	struct {
+		struct latest_link_update update;
+		pthread_t thread;
+	} operation;
+	struct pw_buffer *buffer, *claimed;
+	void *port;
+	uint32_t id;
+
+	loop = pw_main_loop_new(NULL);
+	spa_assert_se(loop != NULL);
+	context = pw_context_new(pw_main_loop_get_loop(loop), NULL, 12);
+	spa_assert_se(context != NULL);
+	core = pw_context_connect_self(context, NULL, 0);
+	spa_assert_se(core != NULL);
+	filter = pw_filter_new(core, "latest-input-poller-test", NULL);
+	spa_assert_se(filter != NULL);
+	spa_assert_se(pw_filter_connect(filter, PW_FILTER_FLAG_RT_PROCESS,
+			NULL, 0) >= 0);
+
+	port = pw_filter_add_port(filter, PW_DIRECTION_INPUT,
+			PW_FILTER_PORT_FLAG_NONE, 0, NULL, NULL, 0);
+	spa_assert_se(port != NULL);
+	node = pw_impl_node_get_implementation(filter->node);
+	spa_assert_se(node != NULL);
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_INPUT, 0,
+			SPA_IO_BuffersLatestLink, &link, sizeof(link)) == 0);
+	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_INPUT, 0,
+			0, buffers, SPA_N_ELEMENTS(buffers)) == 0);
+
+	spa_assert_se(pw_filter_buffer_latest_poller_init(&poller, port) == 0);
+	spa_assert_se(pw_filter_buffer_latest_poller_try_dequeue(
+			&poller, &buffer) == 0);
+	spa_assert_se(buffer == NULL);
+
+	/* A notification change makes a retained poller quiesce before returning. */
+	link.notify_fd = 7;
+	operation.update = (struct latest_link_update) {
+		.node = node,
+		.link = &link,
+	};
+	spa_assert_se(pthread_create(&operation.thread, NULL,
+			update_latest_input_link, &operation.update) == 0);
+	poll_until_latest_link_update(&poller, &operation.update,
+			operation.thread);
+	pw_filter_buffer_latest_poller_clear(&poller);
+
+	/* Success releases the pin and finishes this polling interval. */
+	spa_assert_se(pw_filter_buffer_latest_poller_init(&poller, port) == 0);
+	spa_assert_se(spa_io_buffers_latest_publish(&latest, 0, NULL) == 0);
+	spa_assert_se(pw_filter_buffer_latest_poller_try_dequeue(
+			&poller, &buffer) == 1);
+	spa_assert_se(buffer != NULL);
+	claimed = buffer;
+	spa_assert_se(pw_filter_buffer_latest_poller_try_dequeue(
+			&poller, &buffer) == -EINVAL);
+	spa_assert_se(pw_filter_queue_buffer(port, claimed) == 0);
+	spa_assert_se(spa_io_buffers_latest_pop_recycle(&latest, &id) == 0);
+	spa_assert_se(id == 0);
+
+	/* Live retirement also waits until the polling worker observes it. */
+	spa_assert_se(pw_filter_buffer_latest_poller_init(&poller, port) == 0);
+	spa_assert_se(pw_filter_buffer_latest_poller_try_dequeue(
+			&poller, &buffer) == 0);
+	link.flags = 0;
+	link.io = NULL;
+	operation.update = (struct latest_link_update) {
+		.node = node,
+		.link = &link,
+	};
+	spa_assert_se(pthread_create(&operation.thread, NULL,
+			update_latest_input_link, &operation.update) == 0);
+	poll_until_latest_link_update(&poller, &operation.update,
+			operation.thread);
+	pw_filter_buffer_latest_poller_clear(&poller);
+
+	pw_filter_destroy(filter);
+	pw_context_destroy(context);
+	pw_main_loop_destroy(loop);
+}
+
 int main(int argc, char *argv[])
 {
 	pw_init(&argc, &argv);
@@ -348,6 +483,7 @@ int main(int argc, char *argv[])
 	test_create();
 	test_properties();
 	test_create_port();
+	test_latest_input_poller();
 
 	pw_deinit();
 
