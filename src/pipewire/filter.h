@@ -235,6 +235,18 @@ struct pw_loop *pw_filter_get_data_loop(struct pw_filter *filter);
 struct pw_buffer *pw_filter_dequeue_buffer(void *port_data);
 
 /**
+ * Try to claim a buffer directly from an input latest-buffer mailbox. RT safe.
+ *
+ * This skips the ordinary port queue and does not read or write errno. Returns
+ * 1 and stores the claimed buffer in \a buffer, 0 when no publication is
+ * currently visible, or a negative errno-style result for invalid state. The
+ * caller must own the port's serialized buffer worker and must return a
+ * claimed buffer before trying again.
+ */
+int pw_filter_try_dequeue_buffer_latest(void *port_data,
+		struct pw_buffer **buffer);
+
+/**
  * Producer-local accounting for bounded latest-buffer acquisition.
  *
  * These counters are written only by the exclusive latest-buffer output
