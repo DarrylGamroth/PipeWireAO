@@ -631,6 +631,45 @@ static void test_progressive_buffer_live_membership(void)
 	latest_output_test_clear(&test);
 }
 
+static void test_latest_buffer_subscriber_limit(void)
+{
+	struct latest_output_test test;
+	struct spa_io_buffers_latest latest[SPA_IO_BUFFERS_LATEST_MAX_LINKS + 1];
+	struct spa_io_buffers_latest_link links[SPA_IO_BUFFERS_LATEST_MAX_LINKS + 1];
+	struct spa_buffer storage[2] = { 0 };
+	struct spa_buffer *buffers[2] = { &storage[0], &storage[1] };
+	struct pw_filter_buffer_latest_stats stats;
+	struct pw_buffer *active;
+	uint32_t i;
+
+	latest_output_test_init(&test);
+	for (i = 0; i < SPA_N_ELEMENTS(links); i++) {
+		latest[i] = SPA_IO_BUFFERS_LATEST_INIT;
+		links[i] = (struct spa_io_buffers_latest_link) {
+			.id = 100 + i,
+			.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+			.io = &latest[i],
+			.notify_fd = -1,
+		};
+	}
+	for (i = 0; i < SPA_IO_BUFFERS_LATEST_MAX_LINKS; i++)
+		latest_output_test_add_link(&test, &links[i]);
+	spa_assert_se(spa_node_port_set_io(test.node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_IO_BuffersLatestLink, &links[i], sizeof(links[i])) == -ENOSPC);
+	latest_output_test_use_buffers(&test, buffers, SPA_N_ELEMENTS(buffers));
+
+	active = pw_filter_dequeue_buffer(test.port);
+	spa_assert_se(active != NULL);
+	spa_assert_se(pw_filter_begin_progressive_buffer(test.port, active) == 0);
+	spa_assert_se(pw_filter_get_buffer_latest_stats(test.port, &stats) == 0);
+	spa_assert_se(stats.publications == 1);
+	spa_assert_se(stats.subscriber_visits == SPA_IO_BUFFERS_LATEST_MAX_LINKS);
+	spa_assert_se(stats.subscriber_deliveries == SPA_IO_BUFFERS_LATEST_MAX_LINKS);
+	spa_assert_se(stats.max_subscriber_visits == SPA_IO_BUFFERS_LATEST_MAX_LINKS);
+
+	latest_output_test_clear(&test);
+}
+
 struct latest_link_update {
 	struct spa_node *node;
 	struct spa_io_buffers_latest_link *link;
@@ -773,6 +812,7 @@ int main(int argc, char *argv[])
 	test_latest_buffer_fanout();
 	test_progressive_buffer_consumer_first();
 	test_progressive_buffer_live_membership();
+	test_latest_buffer_subscriber_limit();
 	test_latest_input_poller();
 
 	pw_deinit();
