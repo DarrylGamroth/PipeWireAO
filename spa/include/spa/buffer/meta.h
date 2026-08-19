@@ -233,10 +233,18 @@ enum spa_meta_progressive_state {
 /**
  * Progressive payload publication state shared by producer and consumer.
  *
- * All fields other than snapshot are immutable while a producer or consumer
- * lease is active. The producer release-stores snapshot after making each new
- * payload prefix immutable; the consumer acquire-loads it before reading that
- * prefix.
+ * One producer owns updates for the duration of a producer lease. Version,
+ * layout, granularity, and reserved fields are immutable from PREPARED until
+ * all producer and consumer leases end. The committed count never decreases.
+ * Before release-storing an ACTIVE snapshot, the producer makes the newly
+ * committed payload prefix immutable. A consumer acquire-loads snapshot before
+ * reading that prefix and does not read beyond the observed committed count.
+ *
+ * terminal_flags is zero in PREPARED and ACTIVE. To finish, the producer first
+ * writes terminal_flags and any final payload bytes, then release-stores a
+ * COMPLETE or ABORTED snapshot. A consumer reads terminal_flags only after an
+ * acquire-load observes that terminal snapshot. This ordering deliberately
+ * keeps terminal_flags out of validation while publication is active.
  */
 struct SPA_ALIGNED(8) spa_meta_progressive {
 	uint32_t version;
