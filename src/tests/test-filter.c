@@ -344,6 +344,106 @@ static void test_create_port(void)
 	pw_main_loop_destroy(loop);
 }
 
+static void test_latest_buffer_fanout(void)
+{
+	struct pw_main_loop *loop;
+	struct pw_context *context;
+	struct pw_core *core;
+	struct pw_filter *filter;
+	struct spa_node *node;
+	struct spa_io_buffers_latest latest[2] = {
+		SPA_IO_BUFFERS_LATEST_INIT,
+		SPA_IO_BUFFERS_LATEST_INIT,
+	};
+	struct spa_io_buffers_latest_link links[2] = {
+		{
+			.id = 10,
+			.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+			.io = &latest[0],
+			.notify_fd = -1,
+		}, {
+			.id = 11,
+			.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+			.io = &latest[1],
+			.notify_fd = -1,
+		},
+	};
+	struct spa_buffer storage[2] = { 0 };
+	struct spa_buffer *buffers[2] = { &storage[0], &storage[1] };
+	struct pw_filter_buffer_latest_stats stats;
+	struct pw_buffer *b0, *b1;
+	void *port;
+	uint32_t id;
+	int res;
+
+	loop = pw_main_loop_new(NULL);
+	spa_assert_se(loop != NULL);
+	context = pw_context_new(pw_main_loop_get_loop(loop), NULL, 12);
+	spa_assert_se(context != NULL);
+	core = pw_context_connect_self(context, NULL, 0);
+	spa_assert_se(core != NULL);
+	filter = pw_filter_new(core, "latest-buffer-test", NULL);
+	spa_assert_se(filter != NULL);
+	spa_assert_se(pw_filter_connect(filter, PW_FILTER_FLAG_RT_PROCESS,
+			NULL, 0) >= 0);
+
+	port = pw_filter_add_port(filter, PW_DIRECTION_OUTPUT,
+			PW_FILTER_PORT_FLAG_NONE, 0, NULL, NULL, 0);
+	spa_assert_se(port != NULL);
+	node = pw_impl_node_get_implementation(filter->node);
+	spa_assert_se(node != NULL);
+
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_IO_BuffersLatestLink, &links[0], sizeof(links[0])) == 0);
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_IO_BuffersLatestLink, &links[1], sizeof(links[1])) == 0);
+	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_OUTPUT, 0,
+			0, buffers, SPA_N_ELEMENTS(buffers)) == 0);
+
+	/* A progressive producer lease and two consumer leases coexist. */
+	b0 = pw_filter_dequeue_buffer(port);
+	spa_assert_se(b0 != NULL);
+	spa_assert_se(pw_filter_begin_progressive_buffer(port, b0) == 0);
+	spa_assert_se(spa_io_buffers_latest_acquire(&latest[0], &id) == 0);
+	spa_assert_se(id == 0);
+	spa_assert_se(spa_io_buffers_latest_acquire(&latest[1], &id) == 0);
+	spa_assert_se(id == 0);
+	spa_assert_se(pw_filter_end_progressive_buffer(port, b0) == 0);
+
+	/* The other buffer remains usable and can be reclaimed from both ready slots. */
+	b1 = pw_filter_dequeue_buffer(port);
+	spa_assert_se(b1 != NULL && b1 != b0);
+	spa_assert_se(pw_filter_queue_buffer(port, b1) == 0);
+	spa_assert_se(pw_filter_dequeue_buffer(port) == b1);
+
+	/* Ending the producer lease is not enough: every subscriber must return. */
+	errno = 0;
+	spa_assert_se(pw_filter_dequeue_buffer(port) == NULL);
+	spa_assert_se(errno == EPIPE);
+	spa_assert_se(spa_io_buffers_latest_push_recycle(&latest[0], 0) == 0);
+	errno = 0;
+	spa_assert_se(pw_filter_dequeue_buffer(port) == NULL);
+	spa_assert_se(errno == EPIPE);
+	spa_assert_se(spa_io_buffers_latest_push_recycle(&latest[1], 0) == 0);
+	spa_assert_se(pw_filter_dequeue_buffer(port) == b0);
+
+	/* Retirement releases only that subscriber's outstanding lease. */
+	spa_assert_se(pw_filter_queue_buffer(port, b1) == 0);
+	links[1].flags = 0;
+	links[1].io = NULL;
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_IO_BuffersLatestLink, &links[1], sizeof(links[1])) == 0);
+	spa_assert_se(pw_filter_dequeue_buffer(port) == b1);
+	res = pw_filter_get_buffer_latest_stats(port, &stats);
+	spa_assert_se(res == 0);
+	spa_assert_se(stats.subscriber_retirements == 1);
+	spa_assert_se(stats.retired_leases == 1);
+
+	pw_filter_destroy(filter);
+	pw_context_destroy(context);
+	pw_main_loop_destroy(loop);
+}
+
 struct latest_link_update {
 	struct spa_node *node;
 	struct spa_io_buffers_latest_link *link;
@@ -483,6 +583,7 @@ int main(int argc, char *argv[])
 	test_create();
 	test_properties();
 	test_create_port();
+	test_latest_buffer_fanout();
 	test_latest_input_poller();
 
 	pw_deinit();
