@@ -344,13 +344,59 @@ static void test_create_port(void)
 	pw_main_loop_destroy(loop);
 }
 
-static void test_latest_buffer_fanout(void)
-{
+struct latest_output_test {
 	struct pw_main_loop *loop;
 	struct pw_context *context;
 	struct pw_core *core;
 	struct pw_filter *filter;
 	struct spa_node *node;
+	void *port;
+};
+
+static void latest_output_test_init(struct latest_output_test *test)
+{
+	*test = (struct latest_output_test) { 0 };
+	test->loop = pw_main_loop_new(NULL);
+	spa_assert_se(test->loop != NULL);
+	test->context = pw_context_new(pw_main_loop_get_loop(test->loop), NULL, 12);
+	spa_assert_se(test->context != NULL);
+	test->core = pw_context_connect_self(test->context, NULL, 0);
+	spa_assert_se(test->core != NULL);
+	test->filter = pw_filter_new(test->core, "latest-buffer-test", NULL);
+	spa_assert_se(test->filter != NULL);
+	spa_assert_se(pw_filter_connect(test->filter, PW_FILTER_FLAG_RT_PROCESS,
+			NULL, 0) >= 0);
+	test->port = pw_filter_add_port(test->filter, PW_DIRECTION_OUTPUT,
+			PW_FILTER_PORT_FLAG_NONE, 0, NULL, NULL, 0);
+	spa_assert_se(test->port != NULL);
+	test->node = pw_impl_node_get_implementation(test->filter->node);
+	spa_assert_se(test->node != NULL);
+}
+
+static void latest_output_test_add_link(struct latest_output_test *test,
+		struct spa_io_buffers_latest_link *link)
+{
+	spa_assert_se(spa_node_port_set_io(test->node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_IO_BuffersLatestLink, link, sizeof(*link)) == 0);
+}
+
+static void latest_output_test_use_buffers(struct latest_output_test *test,
+		struct spa_buffer **buffers, uint32_t n_buffers)
+{
+	spa_assert_se(spa_node_port_use_buffers(test->node, SPA_DIRECTION_OUTPUT, 0,
+			0, buffers, n_buffers) == 0);
+}
+
+static void latest_output_test_clear(struct latest_output_test *test)
+{
+	pw_filter_destroy(test->filter);
+	pw_context_destroy(test->context);
+	pw_main_loop_destroy(test->loop);
+}
+
+static void test_latest_buffer_fanout(void)
+{
+	struct latest_output_test test;
 	struct spa_io_buffers_latest latest[2] = {
 		SPA_IO_BUFFERS_LATEST_INIT,
 		SPA_IO_BUFFERS_LATEST_INIT,
@@ -372,76 +418,217 @@ static void test_latest_buffer_fanout(void)
 	struct spa_buffer *buffers[2] = { &storage[0], &storage[1] };
 	struct pw_filter_buffer_latest_stats stats;
 	struct pw_buffer *b0, *b1;
-	void *port;
 	uint32_t id;
 	int res;
 
-	loop = pw_main_loop_new(NULL);
-	spa_assert_se(loop != NULL);
-	context = pw_context_new(pw_main_loop_get_loop(loop), NULL, 12);
-	spa_assert_se(context != NULL);
-	core = pw_context_connect_self(context, NULL, 0);
-	spa_assert_se(core != NULL);
-	filter = pw_filter_new(core, "latest-buffer-test", NULL);
-	spa_assert_se(filter != NULL);
-	spa_assert_se(pw_filter_connect(filter, PW_FILTER_FLAG_RT_PROCESS,
-			NULL, 0) >= 0);
-
-	port = pw_filter_add_port(filter, PW_DIRECTION_OUTPUT,
-			PW_FILTER_PORT_FLAG_NONE, 0, NULL, NULL, 0);
-	spa_assert_se(port != NULL);
-	node = pw_impl_node_get_implementation(filter->node);
-	spa_assert_se(node != NULL);
-
-	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_OUTPUT, 0,
-			SPA_IO_BuffersLatestLink, &links[0], sizeof(links[0])) == 0);
-	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_OUTPUT, 0,
-			SPA_IO_BuffersLatestLink, &links[1], sizeof(links[1])) == 0);
-	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_OUTPUT, 0,
-			0, buffers, SPA_N_ELEMENTS(buffers)) == 0);
+	latest_output_test_init(&test);
+	latest_output_test_add_link(&test, &links[0]);
+	latest_output_test_add_link(&test, &links[1]);
+	latest_output_test_use_buffers(&test, buffers, SPA_N_ELEMENTS(buffers));
 
 	/* A progressive producer lease and two consumer leases coexist. */
-	b0 = pw_filter_dequeue_buffer(port);
+	b0 = pw_filter_dequeue_buffer(test.port);
 	spa_assert_se(b0 != NULL);
-	spa_assert_se(pw_filter_begin_progressive_buffer(port, b0) == 0);
+	spa_assert_se(pw_filter_begin_progressive_buffer(test.port, b0) == 0);
 	spa_assert_se(spa_io_buffers_latest_acquire(&latest[0], &id) == 0);
 	spa_assert_se(id == 0);
 	spa_assert_se(spa_io_buffers_latest_acquire(&latest[1], &id) == 0);
 	spa_assert_se(id == 0);
-	spa_assert_se(pw_filter_end_progressive_buffer(port, b0) == 0);
+	spa_assert_se(pw_filter_end_progressive_buffer(test.port, b0) == 0);
 
 	/* The other buffer remains usable and can be reclaimed from both ready slots. */
-	b1 = pw_filter_dequeue_buffer(port);
+	b1 = pw_filter_dequeue_buffer(test.port);
 	spa_assert_se(b1 != NULL && b1 != b0);
-	spa_assert_se(pw_filter_queue_buffer(port, b1) == 0);
-	spa_assert_se(pw_filter_dequeue_buffer(port) == b1);
+	spa_assert_se(pw_filter_queue_buffer(test.port, b1) == 0);
+	spa_assert_se(pw_filter_dequeue_buffer(test.port) == b1);
 
 	/* Ending the producer lease is not enough: every subscriber must return. */
 	errno = 0;
-	spa_assert_se(pw_filter_dequeue_buffer(port) == NULL);
+	spa_assert_se(pw_filter_dequeue_buffer(test.port) == NULL);
 	spa_assert_se(errno == EPIPE);
 	spa_assert_se(spa_io_buffers_latest_push_recycle(&latest[0], 0) == 0);
 	errno = 0;
-	spa_assert_se(pw_filter_dequeue_buffer(port) == NULL);
+	spa_assert_se(pw_filter_dequeue_buffer(test.port) == NULL);
 	spa_assert_se(errno == EPIPE);
 	spa_assert_se(spa_io_buffers_latest_push_recycle(&latest[1], 0) == 0);
-	spa_assert_se(pw_filter_dequeue_buffer(port) == b0);
+	spa_assert_se(pw_filter_dequeue_buffer(test.port) == b0);
 
 	/* Retirement releases only that subscriber's outstanding lease. */
-	spa_assert_se(pw_filter_queue_buffer(port, b1) == 0);
+	spa_assert_se(pw_filter_queue_buffer(test.port, b1) == 0);
 	links[1].flags = 0;
 	links[1].io = NULL;
-	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_OUTPUT, 0,
-			SPA_IO_BuffersLatestLink, &links[1], sizeof(links[1])) == 0);
-	spa_assert_se(pw_filter_dequeue_buffer(port) == b1);
-	res = pw_filter_get_buffer_latest_stats(port, &stats);
+	latest_output_test_add_link(&test, &links[1]);
+	spa_assert_se(pw_filter_dequeue_buffer(test.port) == b1);
+	res = pw_filter_get_buffer_latest_stats(test.port, &stats);
 	spa_assert_se(res == 0);
 	spa_assert_se(stats.subscriber_retirements == 1);
 	spa_assert_se(stats.retired_leases == 1);
 
-	pw_filter_destroy(filter);
-	pw_context_destroy(context);
-	pw_main_loop_destroy(loop);
+	latest_output_test_clear(&test);
+}
+
+static void test_progressive_buffer_consumer_first(void)
+{
+	struct latest_output_test test;
+	struct spa_io_buffers_latest latest[2] = {
+		SPA_IO_BUFFERS_LATEST_INIT,
+		SPA_IO_BUFFERS_LATEST_INIT,
+	};
+	struct spa_io_buffers_latest_link links[2] = {
+		{
+			.id = 20,
+			.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+			.io = &latest[0],
+			.notify_fd = -1,
+		}, {
+			.id = 21,
+			.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+			.io = &latest[1],
+			.notify_fd = -1,
+		},
+	};
+	struct spa_buffer storage[2] = { 0 };
+	struct spa_buffer *buffers[2] = { &storage[0], &storage[1] };
+	struct pw_filter_buffer_latest_stats stats;
+	struct pw_buffer *active, *held;
+	uint32_t active_id, id;
+
+	latest_output_test_init(&test);
+	latest_output_test_add_link(&test, &links[0]);
+	latest_output_test_add_link(&test, &links[1]);
+	latest_output_test_use_buffers(&test, buffers, SPA_N_ELEMENTS(buffers));
+
+	active = pw_filter_dequeue_buffer(test.port);
+	spa_assert_se(active != NULL);
+	spa_assert_se(pw_filter_begin_progressive_buffer(test.port, active) == 0);
+	spa_assert_se(spa_io_buffers_latest_acquire(&latest[0], &active_id) == 0);
+	spa_assert_se(spa_io_buffers_latest_acquire(&latest[1], &id) == 0);
+	spa_assert_se(id == active_id);
+
+	/* Occupy the spare slot so only the progressive allocation can recycle. */
+	held = pw_filter_dequeue_buffer(test.port);
+	spa_assert_se(held != NULL && held != active);
+	spa_assert_se(spa_io_buffers_latest_push_recycle(&latest[0],
+			active_id) == 0);
+	errno = 0;
+	spa_assert_se(pw_filter_dequeue_buffer(test.port) == NULL);
+	spa_assert_se(errno == EPIPE);
+
+	/* One returned consumer lease and producer completion are still insufficient. */
+	spa_assert_se(pw_filter_end_progressive_buffer(test.port, active) == 0);
+	errno = 0;
+	spa_assert_se(pw_filter_dequeue_buffer(test.port) == NULL);
+	spa_assert_se(errno == EPIPE);
+
+	spa_assert_se(spa_io_buffers_latest_push_recycle(&latest[1],
+			active_id) == 0);
+	spa_assert_se(pw_filter_dequeue_buffer(test.port) == active);
+	spa_assert_se(pw_filter_get_buffer_latest_stats(test.port, &stats) == 0);
+	spa_assert_se(stats.recycle_returns == 2);
+	spa_assert_se(stats.pool_exhaustions == 2);
+
+	latest_output_test_clear(&test);
+}
+
+static void test_progressive_buffer_live_membership(void)
+{
+	struct latest_output_test test;
+	struct spa_io_buffers_latest latest[4] = {
+		SPA_IO_BUFFERS_LATEST_INIT,
+		SPA_IO_BUFFERS_LATEST_INIT,
+		SPA_IO_BUFFERS_LATEST_INIT,
+		SPA_IO_BUFFERS_LATEST_INIT,
+	};
+	struct spa_io_buffers_latest_link links[3] = {
+		{
+			.id = 30,
+			.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+			.io = &latest[0],
+			.notify_fd = -1,
+		}, {
+			.id = 31,
+			.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+			.io = &latest[1],
+			.notify_fd = -1,
+		}, {
+			.id = 32,
+			.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+			.io = &latest[2],
+			.notify_fd = -1,
+		},
+	};
+	struct spa_buffer storage[2] = { 0 };
+	struct spa_buffer *buffers[2] = { &storage[0], &storage[1] };
+	struct pw_filter_buffer_latest_stats stats;
+	struct pw_buffer *first, *second;
+	uint32_t first_id, second_id, id;
+
+	latest_output_test_init(&test);
+	latest_output_test_add_link(&test, &links[0]);
+	latest_output_test_add_link(&test, &links[1]);
+	latest_output_test_use_buffers(&test, buffers, SPA_N_ELEMENTS(buffers));
+
+	first = pw_filter_dequeue_buffer(test.port);
+	spa_assert_se(first != NULL);
+	spa_assert_se(first->buffer == buffers[0] || first->buffer == buffers[1]);
+	first_id = first->buffer == buffers[0] ? 0 : 1;
+	spa_assert_se(pw_filter_begin_progressive_buffer(test.port, first) == 0);
+
+	/* A subscriber joining mid-publication starts with the next buffer. */
+	latest_output_test_add_link(&test, &links[2]);
+	spa_assert_se(spa_io_buffers_latest_acquire(&latest[2], &id) == -EPIPE);
+
+	second = pw_filter_dequeue_buffer(test.port);
+	spa_assert_se(second != NULL && second != first);
+	spa_assert_se(second->buffer == buffers[0] || second->buffer == buffers[1]);
+	second_id = second->buffer == buffers[0] ? 0 : 1;
+	spa_assert_se(pw_filter_begin_progressive_buffer(test.port, second) == 0);
+
+	/* Supersession releases only the unclaimed consumer leases on the first buffer. */
+	errno = 0;
+	spa_assert_se(pw_filter_dequeue_buffer(test.port) == NULL);
+	spa_assert_se(errno == EPIPE);
+	spa_assert_se(pw_filter_end_progressive_buffer(test.port, first) == 0);
+	spa_assert_se(pw_filter_dequeue_buffer(test.port) == first);
+
+	spa_assert_se(spa_io_buffers_latest_acquire(&latest[0], &id) == 0);
+	spa_assert_se(id == second_id);
+	spa_assert_se(spa_io_buffers_latest_acquire(&latest[1], &id) == 0);
+	spa_assert_se(id == second_id);
+	spa_assert_se(spa_io_buffers_latest_acquire(&latest[2], &id) == 0);
+	spa_assert_se(id == second_id);
+
+	/* Retiring one claimed subscriber releases only its lease. */
+	links[1].flags = 0;
+	links[1].io = NULL;
+	latest_output_test_add_link(&test, &links[1]);
+	spa_assert_se(spa_io_buffers_latest_push_recycle(&latest[0], second_id) == 0);
+	spa_assert_se(spa_io_buffers_latest_push_recycle(&latest[2], second_id) == 0);
+	errno = 0;
+	spa_assert_se(pw_filter_dequeue_buffer(test.port) == NULL);
+	spa_assert_se(errno == EPIPE);
+	spa_assert_se(pw_filter_end_progressive_buffer(test.port, second) == 0);
+	spa_assert_se(pw_filter_dequeue_buffer(test.port) == second);
+
+	/* The acknowledged slot can be reused without exposing the retired mailbox. */
+	links[1] = (struct spa_io_buffers_latest_link) {
+		.id = 33,
+		.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+		.io = &latest[3],
+		.notify_fd = -1,
+	};
+	latest_output_test_add_link(&test, &links[1]);
+	spa_assert_se(pw_filter_begin_progressive_buffer(test.port, first) == 0);
+	spa_assert_se(spa_io_buffers_latest_acquire(&latest[3], &id) == 0);
+	spa_assert_se(id == first_id);
+
+	spa_assert_se(pw_filter_get_buffer_latest_stats(test.port, &stats) == 0);
+	spa_assert_se(stats.subscriber_retirements == 1);
+	spa_assert_se(stats.retired_leases == 1);
+	spa_assert_se(stats.subscriber_supersessions == 2);
+	spa_assert_se(stats.max_subscriber_visits == 3);
+
+	latest_output_test_clear(&test);
 }
 
 struct latest_link_update {
@@ -584,6 +771,8 @@ int main(int argc, char *argv[])
 	test_properties();
 	test_create_port();
 	test_latest_buffer_fanout();
+	test_progressive_buffer_consumer_first();
+	test_progressive_buffer_live_membership();
 	test_latest_input_poller();
 
 	pw_deinit();
