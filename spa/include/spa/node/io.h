@@ -516,8 +516,11 @@ static inline int spa_io_buffers_latest_publish(struct spa_io_buffers_latest *la
 static inline int spa_io_buffers_latest_acquire(struct spa_io_buffers_latest *latest,
 		uint32_t *buffer_id)
 {
-	uint32_t id = SPA_ATOMIC_XCHG(latest->ready.id, SPA_ID_INVALID);
+	uint32_t id = __atomic_load_n(&latest->ready.id, __ATOMIC_ACQUIRE);
 
+	if (id == SPA_ID_INVALID)
+		return -EPIPE;
+	id = SPA_ATOMIC_XCHG(latest->ready.id, SPA_ID_INVALID);
 	if (id == SPA_ID_INVALID)
 		return -EPIPE;
 	*buffer_id = id;
