@@ -2495,14 +2495,72 @@ static int reclaim_latest_ready(struct port *p, struct buffer **buffer)
 	return *buffer != NULL ? 0 : -EPIPE;
 }
 
+static int try_dequeue_latest_input(struct port *p, struct buffer **buffer)
+{
+	struct latest_link_view link;
+	uint32_t id, slot;
+	uint64_t active;
+	int res;
+
+	*buffer = NULL;
+	if (SPA_UNLIKELY(!SPA_ATOMIC_LOAD(p->latest_mode) ||
+			p->direction != SPA_DIRECTION_INPUT))
+		return -ENOTSUP;
+	if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(p->latest_input_claimed) !=
+			SPA_ID_INVALID))
+		return -EBUSY;
+	active = SPA_ATOMIC_LOAD(p->latest_active_mask);
+	if (SPA_UNLIKELY(active == 0))
+		return 0;
+	slot = (uint32_t)__builtin_ctzll(active);
+	if (!pin_latest_link(p, slot, &link))
+		return 0;
+	res = spa_io_buffers_latest_acquire(link.io, &id);
+	if (res == -EPIPE) {
+		unpin_latest_link(p, &link);
+		return 0;
+	}
+	if (SPA_UNLIKELY(res < 0 || id >= p->n_buffers)) {
+		unpin_latest_link(p, &link);
+		return -EPROTO;
+	}
+	*buffer = &p->buffers[id];
+	if (SPA_UNLIKELY(SPA_FLAG_IS_SET((*buffer)->flags,
+			BUFFER_FLAG_DEQUEUED))) {
+		*buffer = NULL;
+		unpin_latest_link(p, &link);
+		return -EPROTO;
+	}
+	SPA_FLAG_SET((*buffer)->flags, BUFFER_FLAG_DEQUEUED);
+	SPA_ATOMIC_STORE(p->latest_input_claimed, id);
+	unpin_latest_link(p, &link);
+	return 1;
+}
+
+SPA_EXPORT
+int pw_filter_try_dequeue_buffer_latest(void *port_data,
+		struct pw_buffer **buffer)
+{
+	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
+	struct buffer *b;
+	int res;
+
+	if (SPA_UNLIKELY(buffer == NULL))
+		return -EINVAL;
+	*buffer = NULL;
+	res = try_dequeue_latest_input(p, &b);
+	if (res <= 0)
+		return res;
+
+	*buffer = &b->this;
+	return 1;
+}
+
 SPA_EXPORT
 struct pw_buffer *pw_filter_dequeue_buffer(void *port_data)
 {
 	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
 	struct buffer *b;
-	struct latest_link_view link;
-	uint32_t id, slot;
-	uint64_t active;
 	int res = -EPIPE;
 
 	b = NULL;
@@ -2530,37 +2588,15 @@ struct pw_buffer *pw_filter_dequeue_buffer(void *port_data)
 		goto latest_done;
 	} else {
 		b = pop_queue(p, &p->dequeued);
-		if (b == NULL && port_has_latest(p)) {
-			if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(p->latest_input_claimed) !=
-					SPA_ID_INVALID)) {
-				res = -EBUSY;
+		if (b == NULL && SPA_ATOMIC_LOAD(p->latest_mode)) {
+			res = try_dequeue_latest_input(p, &b);
+			if (res <= 0) {
+				if (res == 0)
+					res = -EPIPE;
 				goto latest_error;
 			}
-			active = SPA_ATOMIC_LOAD(p->latest_active_mask);
-			if (SPA_UNLIKELY(active == 0)) {
-				res = -EPROTO;
-				goto latest_error;
-			}
-			slot = (uint32_t)__builtin_ctzll(active);
-			if (!pin_latest_link(p, slot, &link)) {
-				res = -EPIPE;
-				goto latest_error;
-			}
-			res = spa_io_buffers_latest_acquire(link.io, &id);
-			unpin_latest_link(p, &link);
-			if (res == 0) {
-				if (SPA_UNLIKELY(id >= p->n_buffers)) {
-					errno = EPROTO;
-					return NULL;
-				}
-				b = &p->buffers[id];
-				if (SPA_UNLIKELY(SPA_FLAG_IS_SET(b->flags,
-						BUFFER_FLAG_DEQUEUED))) {
-					errno = EPROTO;
-					return NULL;
-				}
-			} else
-				goto latest_error;
+			pw_log_trace_fp("%p: dequeue buffer %d", p->filter, b->id);
+			return &b->this;
 		}
 		if (b != NULL)
 			goto latest_done;
