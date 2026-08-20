@@ -271,6 +271,7 @@ static inline void spa_ndarray_build_id(struct spa_pod_builder *builder,
 	}
 	spa_pod_builder_push_choice(builder, &choice, SPA_CHOICE_Enum, 0);
 	spa_pod_builder_id(builder, value);
+	spa_pod_builder_id(builder, value);
 	for (i = 0; i < n_values; i++) {
 		uint32_t id;
 
@@ -293,6 +294,8 @@ static inline void spa_ndarray_build_rate(struct spa_pod_builder *builder,
 	}
 	spa_pod_builder_push_choice(builder, &choice, choices->rate_choice, 0);
 	spa_pod_builder_fraction(builder, rate->num, rate->denom);
+	if (choices->rate_choice == SPA_CHOICE_Enum)
+		spa_pod_builder_fraction(builder, rate->num, rate->denom);
 	for (i = 0; i < choices->n_rate_values; i++)
 		spa_pod_builder_fraction(builder, choices->rate_values[i].num,
 				choices->rate_values[i].denom);
