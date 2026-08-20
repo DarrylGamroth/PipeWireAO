@@ -13,7 +13,9 @@ the `pipewire-ao` daemon, `pipewire-ao-0` default socket, `pwao-*` tools, and
 separate header, module, SPA plugin, configuration, and service paths. It
 retains the `pw_` C symbol namespace for source compatibility. Desktop audio
 compatibility layers and a session manager are disabled by default because
-they are outside the AO runtime profile.
+they are outside the AO runtime profile. When explicitly enabled, retained
+upstream compatibility layers keep their upstream-specific environment
+controls.
 
 ## Upstream foundation
 
@@ -102,10 +104,10 @@ effect and can be omitted.
 
 JACK applications will automatically use the buffer-size chosen by the
 server. You can force a maximum buffer size (latency) by setting the
-`PIPEWIREAO_LATENCY` environment variable like so:
+`PIPEWIRE_LATENCY` environment variable like so:
 
 ```
-PIPEWIREAO_LATENCY=128/48000 jack_simple_client
+PIPEWIRE_LATENCY=128/48000 jack_simple_client
 ```
 Requests the `jack_simple_client` to run with a buffer of 128 or
 less samples.

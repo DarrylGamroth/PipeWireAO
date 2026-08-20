@@ -561,7 +561,7 @@ build_with_custom_options:
   parallel:
     matrix:
       - MESON_OPTION: [docs, installed_tests, systemd-system-service, bluez5-backend-hsphfpd,
-                       audiotestsrc, test, videotestsrc, volume, vulkan, sdl2, sndfile]
+                       audiotestsrc, pulse-server, test, videotestsrc, volume, vulkan, sdl2, sndfile]
         MESON_OPTION_VALUE: [enabled, disabled]
   script:
     - echo "Building with -D$MESON_OPTION=$MESON_OPTION_VALUE"

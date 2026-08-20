@@ -378,7 +378,7 @@
  * A newline will be written into the notification file descriptor when the server has
  * started if the following environment variable is set:
  *
- * - PIPEWIREAO_PULSE_NOTIFICATION_FD
+ * - PIPEWIRE_PULSE_NOTIFICATION_FD
  *
  * ## Example configuration
  *

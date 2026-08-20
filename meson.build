@@ -40,6 +40,7 @@ jackversion = '@0@.@1@.@2@'.format(jack_version_major, jack_version_minor, 0)
 pipewire_name = 'pipewire-ao-@0@'.format(apiversion)
 spa_name = 'spa-ao-@0@'.format(spaversion)
 pipewire_daemon_name = 'pipewire-ao'
+build_pulse_server = get_option('pulse-server').enabled()
 
 prefix = get_option('prefix')
 pipewire_bindir = prefix / get_option('bindir')
