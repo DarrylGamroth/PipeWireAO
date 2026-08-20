@@ -334,15 +334,21 @@ struct pw_filter_buffer_latest_stats {
 	uint32_t max_subscriber_visits; /**< largest publication fan-out */
 };
 
+#define PW_FILTER_BUFFER_LATEST_STATS_VERSION_0_SIZE 120u
+SPA_STATIC_ASSERT(sizeof(struct pw_filter_buffer_latest_stats) ==
+		PW_FILTER_BUFFER_LATEST_STATS_VERSION_0_SIZE,
+		"latest-buffer statistics version 0 ABI");
+
 /**
  * Snapshot bounded latest-buffer output acquisition accounting. RT safe.
  *
  * The caller must own the exclusive latest-buffer output worker and must not
  * race this operation with publication. Returns -ENOTSUP for ordinary or
- * input ports.
+ * input ports. `stats_size` must be the caller's allocation size; the function
+ * writes only the supported prefix that fits in that allocation.
  */
 int pw_filter_get_buffer_latest_stats(void *port_data,
-		struct pw_filter_buffer_latest_stats *stats);
+		struct pw_filter_buffer_latest_stats *stats, size_t stats_size);
 
 /**
  * Begin exclusive latest-buffer worker ownership of a port. RT safe.
@@ -390,6 +396,11 @@ struct pw_filter_rendezvous_result {
 	uint32_t reserved;
 };
 
+#define PW_FILTER_RENDEZVOUS_RESULT_VERSION_0_SIZE 120u
+SPA_STATIC_ASSERT(sizeof(struct pw_filter_rendezvous_result) ==
+		PW_FILTER_RENDEZVOUS_RESULT_VERSION_0_SIZE,
+		"rendezvous result version 0 ABI");
+
 /** Single-writer accounting for one client-side buffer rendezvous. */
 struct pw_filter_rendezvous_stats {
 	uint64_t accepted;
@@ -404,6 +415,11 @@ struct pw_filter_rendezvous_stats {
 	uint64_t lease_returns;
 	uint64_t cleanup_errors;
 };
+
+#define PW_FILTER_RENDEZVOUS_STATS_VERSION_0_SIZE 88u
+SPA_STATIC_ASSERT(sizeof(struct pw_filter_rendezvous_stats) ==
+		PW_FILTER_RENDEZVOUS_STATS_VERSION_0_SIZE,
+		"rendezvous statistics version 0 ABI");
 
 struct pw_filter_rendezvous;
 
@@ -435,14 +451,15 @@ int pw_filter_rendezvous_begin(struct pw_filter_rendezvous *rendezvous,
  * Perform one bounded input scan and at most one release decision. RT safe.
  *
  * `monotonic_now_nsec` is supplied by the caller; this operation does not read
- * a clock or wait. It returns 1 and writes `result` when release is eligible,
- * 0 while the acquisition remains pending, or a negative errno-style result.
+ * a clock or wait. `result_size` must be the caller's allocation size. The
+ * operation returns 1 and writes the supported result prefix when release is
+ * eligible, 0 while the acquisition remains pending, or a negative errno-style result.
  * Accepted input leases remain owned by the rendezvous until finish, cancel,
  * reset, or destroy. Nonaccepted leases are returned before this call exits.
  */
 int pw_filter_rendezvous_poll(struct pw_filter_rendezvous *rendezvous,
 		uint64_t monotonic_now_nsec,
-		struct pw_filter_rendezvous_result *result);
+		struct pw_filter_rendezvous_result *result, size_t result_size);
 
 /**
  * Borrow one accepted input buffer after a release decision. RT safe.
@@ -462,9 +479,9 @@ int pw_filter_rendezvous_cancel(struct pw_filter_rendezvous *rendezvous);
 /** Cancel active work and clear completed-acquisition ordering state. RT safe. */
 int pw_filter_rendezvous_reset(struct pw_filter_rendezvous *rendezvous);
 
-/** Snapshot single-writer rendezvous accounting. RT safe. */
+/** Snapshot the supported prefix of single-writer rendezvous accounting. RT safe. */
 int pw_filter_rendezvous_get_stats(struct pw_filter_rendezvous *rendezvous,
-		struct pw_filter_rendezvous_stats *stats);
+		struct pw_filter_rendezvous_stats *stats, size_t stats_size);
 
 /**
  * Return all leases, end every worker lifetime, and free the rendezvous.

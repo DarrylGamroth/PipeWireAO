@@ -2448,17 +2448,21 @@ struct pw_loop *pw_filter_get_data_loop(struct pw_filter *filter)
 
 SPA_EXPORT
 int pw_filter_get_buffer_latest_stats(void *port_data,
-		struct pw_filter_buffer_latest_stats *stats)
+		struct pw_filter_buffer_latest_stats *stats, size_t stats_size)
 {
 	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
 
 	if (SPA_UNLIKELY(stats == NULL))
 		return -EINVAL;
+	if (SPA_UNLIKELY(stats_size <
+			PW_FILTER_BUFFER_LATEST_STATS_VERSION_0_SIZE))
+		return -ENOSPC;
 	if (SPA_UNLIKELY(!SPA_ATOMIC_LOAD(p->latest_mode) ||
 			p->direction != SPA_DIRECTION_OUTPUT))
 		return -ENOTSUP;
 
-	*stats = p->latest_stats;
+	memcpy(stats, &p->latest_stats, SPA_MIN(stats_size,
+			sizeof(p->latest_stats)));
 	return 0;
 }
 
@@ -2714,7 +2718,7 @@ static int rendezvous_scan_input(struct pw_filter_rendezvous *rendezvous,
 SPA_EXPORT
 int pw_filter_rendezvous_poll(struct pw_filter_rendezvous *rendezvous,
 		uint64_t monotonic_now_nsec,
-		struct pw_filter_rendezvous_result *result)
+		struct pw_filter_rendezvous_result *result, size_t result_size)
 {
 	enum pw_filter_rendezvous_release_cause cause;
 	uint64_t unaccepted;
@@ -2723,6 +2727,8 @@ int pw_filter_rendezvous_poll(struct pw_filter_rendezvous *rendezvous,
 
 	if (rendezvous == NULL || result == NULL)
 		return -EINVAL;
+	if (result_size < PW_FILTER_RENDEZVOUS_RESULT_VERSION_0_SIZE)
+		return -ENOSPC;
 	if (!rendezvous->active)
 		return -ENOENT;
 	if (rendezvous->error < 0) {
@@ -2734,7 +2740,8 @@ int pw_filter_rendezvous_poll(struct pw_filter_rendezvous *rendezvous,
 		return cleanup_res < 0 ? cleanup_res : operation_error;
 	}
 	if (rendezvous->decision_ready) {
-		*result = rendezvous->result;
+		memcpy(result, &rendezvous->result, SPA_MIN(result_size,
+				sizeof(rendezvous->result)));
 		return 1;
 	}
 	unaccepted = rendezvous_input_mask(rendezvous->n_ports) &
@@ -2791,7 +2798,8 @@ int pw_filter_rendezvous_poll(struct pw_filter_rendezvous *rendezvous,
 		while (missing-- > 0)
 			rendezvous_count(&rendezvous->stats.missing_required_inputs);
 	}
-	*result = rendezvous->result;
+	memcpy(result, &rendezvous->result, SPA_MIN(result_size,
+			sizeof(rendezvous->result)));
 	return 1;
 }
 
@@ -2857,11 +2865,14 @@ int pw_filter_rendezvous_reset(struct pw_filter_rendezvous *rendezvous)
 
 SPA_EXPORT
 int pw_filter_rendezvous_get_stats(struct pw_filter_rendezvous *rendezvous,
-		struct pw_filter_rendezvous_stats *stats)
+		struct pw_filter_rendezvous_stats *stats, size_t stats_size)
 {
 	if (rendezvous == NULL || stats == NULL)
 		return -EINVAL;
-	*stats = rendezvous->stats;
+	if (stats_size < PW_FILTER_RENDEZVOUS_STATS_VERSION_0_SIZE)
+		return -ENOSPC;
+	memcpy(stats, &rendezvous->stats, SPA_MIN(stats_size,
+			sizeof(rendezvous->stats)));
 	return 0;
 }
 
