@@ -264,14 +264,15 @@ do_remove_mix(struct spa_loop *loop,
 }
 
 static int set_latest_link_io(struct pw_impl_port *port,
-		struct pw_impl_port_mix *mix)
+		struct pw_impl_port_mix *mix,
+		struct spa_io_buffers_latest *io, int notify_fd)
 {
 	struct spa_io_buffers_latest_link link = {
 		.id = mix->port.port_id,
-		.flags = mix->latest_io != NULL
+		.flags = io != NULL
 			? SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE : 0,
-		.io = mix->latest_io,
-		.notify_fd = mix->latest_notify_fd,
+		.io = io,
+		.notify_fd = notify_fd,
 	};
 
 	return spa_node_port_set_io(port->node->node, port->direction,
@@ -294,7 +295,7 @@ static int port_set_io(void *object,
 
 	switch (id) {
 	case SPA_IO_BuffersLatestNotify: {
-		int old_fd = mix->latest_notify_fd;
+		int new_fd;
 
 		if (data != NULL) {
 			const struct spa_io_buffers_latest_notify *notify = data;
@@ -302,40 +303,36 @@ static int port_set_io(void *object,
 			if (size < sizeof(*notify) || notify->reserved != 0 ||
 			    notify->fd < 0)
 				return -EINVAL;
-			mix->latest_notify_fd = notify->fd;
+			new_fd = notify->fd;
 		} else {
-			mix->latest_notify_fd = -1;
+			new_fd = -1;
 		}
-		res = set_latest_link_io(this, mix);
-		if (res < 0) {
-			mix->latest_notify_fd = old_fd;
+		res = set_latest_link_io(this, mix, mix->latest_io, new_fd);
+		if (res < 0)
 			return res;
-		}
+		mix->latest_notify_fd = new_fd;
 		break;
 	}
 	case SPA_IO_BuffersLatest:
 	{
-		struct spa_io_buffers_latest *old_io = mix->latest_io;
+		struct spa_io_buffers_latest *new_io;
 
-		if (data == NULL || size < sizeof(struct spa_io_buffers_latest)) {
-			pw_loop_locked(this->node->data_loop,
-			       do_remove_mix, SPA_ID_INVALID, NULL, 0, mix);
-			mix->io_data = mix->io[0] = mix->io[1] = NULL;
-			mix->latest_io = NULL;
-		} else {
-			/* Latest-mode workers own publication; the graph mixer must not
-			 * interpret this area as struct spa_io_buffers. */
-			pw_loop_locked(this->node->data_loop,
-			       do_remove_mix, SPA_ID_INVALID, NULL, 0, mix);
-			mix->io_data = data;
-			mix->io[0] = mix->io[1] = NULL;
-			mix->latest_io = data;
-		}
-		res = set_latest_link_io(this, mix);
-		if (res < 0) {
-			mix->latest_io = old_io;
+		if (data != NULL && size < sizeof(struct spa_io_buffers_latest))
+			return -EINVAL;
+		new_io = data;
+		res = set_latest_link_io(this, mix, new_io,
+				mix->latest_notify_fd);
+		if (res < 0)
 			return res;
-		}
+
+		/* Commit process-local mix state only after the node accepts the
+		 * live-link transition. In particular, -EBUSY retirement leaves the
+		 * existing IO and graph membership untouched for a later retry. */
+		pw_loop_locked(this->node->data_loop,
+			       do_remove_mix, SPA_ID_INVALID, NULL, 0, mix);
+		mix->io_data = new_io;
+		mix->io[0] = mix->io[1] = NULL;
+		mix->latest_io = new_io;
 		break;
 	}
 	case SPA_IO_Buffers:
