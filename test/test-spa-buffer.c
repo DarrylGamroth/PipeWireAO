@@ -71,7 +71,8 @@ PWTEST(buffer_abi_sizes)
 	pwtest_int_eq(sizeof(struct spa_meta_bitmap), 20U);
 	pwtest_int_eq(sizeof(struct spa_meta_cursor), 28U);
 	pwtest_int_eq(sizeof(struct spa_meta_videotransform), 4U);
-	pwtest_int_eq(sizeof(struct spa_meta_acquisition), SPA_META_ACQUISITION_SIZE);
+	pwtest_int_eq(sizeof(struct spa_meta_acquisition),
+			(size_t) SPA_META_ACQUISITION_SIZE);
 	pwtest_int_eq(_Alignof(struct spa_meta_acquisition), 8U);
 	pwtest_int_eq(offsetof(struct spa_meta_acquisition, domain), 16U);
 	pwtest_int_eq(offsetof(struct spa_meta_acquisition, generation), 32U);
@@ -111,10 +112,10 @@ PWTEST(buffer_acquisition_meta)
 	};
 	uint8_t unaligned[sizeof(acquisition) + 1];
 
-	pwtest_int_eq(SPA_META_ACQUISITION_VERSION, 1U);
-	pwtest_int_eq(SPA_META_ACQUISITION_SIZE, 96U);
-	pwtest_int_eq(SPA_META_ACQUISITION_DOMAIN_SIZE, 16U);
-	pwtest_int_eq(SPA_META_FEATURE_ACQUISITION_VERSION_1, 1U << 0);
+	pwtest_int_eq(SPA_META_ACQUISITION_VERSION, 1);
+	pwtest_int_eq(SPA_META_ACQUISITION_SIZE, 96);
+	pwtest_int_eq(SPA_META_ACQUISITION_DOMAIN_SIZE, 16);
+	pwtest_int_eq(SPA_META_FEATURE_ACQUISITION_VERSION_1, 1 << 0);
 	pwtest_bool_false(spa_meta_acquisition_init(NULL));
 	pwtest_bool_false(spa_meta_acquisition_init(
 			(struct spa_meta_acquisition *)&unaligned[1]));
