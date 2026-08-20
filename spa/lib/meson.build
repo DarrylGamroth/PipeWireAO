@@ -1,4 +1,4 @@
-spa_lib = shared_library('spa',
+spa_lib = shared_library('spa-ao',
   [ 'lib.c' ],
   include_directories : [ configinc ],
   dependencies : [ spa_dep, pthread_lib, mathlib ],
