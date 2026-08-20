@@ -100,9 +100,9 @@ PWTEST(buffer_abi_sizes)
 
 PWTEST(buffer_acquisition_meta)
 {
-	const uint8_t domain_a[16] = { 1 };
-	const uint8_t domain_b[16] = { 2 };
-	const uint8_t zero_domain[16] = { 0 };
+	const uint8_t domain_a[SPA_META_ACQUISITION_DOMAIN_SIZE] = { 1 };
+	const uint8_t domain_b[SPA_META_ACQUISITION_DOMAIN_SIZE] = { 2 };
+	const uint8_t zero_domain[SPA_META_ACQUISITION_DOMAIN_SIZE] = { 0 };
 	struct spa_meta_acquisition acquisition, same, malformed;
 	struct spa_meta meta = {
 		.type = SPA_META_Acquisition,
@@ -113,6 +113,7 @@ PWTEST(buffer_acquisition_meta)
 
 	pwtest_int_eq(SPA_META_ACQUISITION_VERSION, 1U);
 	pwtest_int_eq(SPA_META_ACQUISITION_SIZE, 96U);
+	pwtest_int_eq(SPA_META_ACQUISITION_DOMAIN_SIZE, 16U);
 	pwtest_int_eq(SPA_META_FEATURE_ACQUISITION_VERSION_1, 1U << 0);
 	pwtest_bool_false(spa_meta_acquisition_init(NULL));
 	pwtest_bool_false(spa_meta_acquisition_init(
