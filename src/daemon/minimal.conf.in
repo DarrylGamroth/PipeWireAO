@@ -47,7 +47,7 @@ context.properties = {
     minimal.use-udev = true
 
     # Load the pulseaudio emulation daemon
-    minimal.use-pulse = true
+    minimal.use-pulse = false
 
     # Load the jack-tunnel as a backend
     minimal.use-jack-tunnel = true

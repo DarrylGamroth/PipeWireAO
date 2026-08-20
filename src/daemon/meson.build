@@ -69,10 +69,13 @@ conf_files = [
  'filter-chain.conf',
  'jack.conf',
  'minimal.conf',
- 'pipewire-pulse.conf',
  'pipewire-avb.conf',
  'pipewire-aes67.conf',
 ]
+
+if build_pulse_server
+  conf_files += 'pipewire-pulse.conf'
+endif
 
 if build_vk
   conf_files += 'pipewire-vulkan.conf'
@@ -94,8 +97,11 @@ test('validate-json-pipewire-uninstalled.conf', spa_json_dump_exe, args : res)
 conf_avail_folders = [
   'pipewire.conf.avail',
   'client.conf.avail',
-  'pipewire-pulse.conf.avail',
 ]
+
+if build_pulse_server
+  conf_avail_folders += 'pipewire-pulse.conf.avail'
+endif
 
 foreach c : conf_avail_folders
   subdir(c)

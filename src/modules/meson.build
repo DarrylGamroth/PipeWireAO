@@ -368,21 +368,21 @@ pipewire_module_protocol_pulse_sources = [
   'module-protocol-pulse/modules/pulse-module-zeroconf-discover.c',
 ]
 
-if snap_dep.found() and glib2_snap_dep.found() and gio2_snap_dep.found() and apparmor_snap_dep.found()
+if build_pulse_server and snap_dep.found() and glib2_snap_dep.found() and gio2_snap_dep.found() and apparmor_snap_dep.found()
   pipewire_module_protocol_pulse_sources += [
     'module-protocol-pulse/snap-policy.c',
   ]
   pipewire_module_protocol_pulse_deps += snap_deps
 endif
 
-if dbus_dep.found()
+if build_pulse_server and dbus_dep.found()
   pipewire_module_protocol_pulse_sources += [
     'module-protocol-pulse/dbus-name.c',
   ]
   pipewire_module_protocol_pulse_deps += dbus_dep
 endif
 
-if avahi_dep.found()
+if build_pulse_server and avahi_dep.found()
   pipewire_module_protocol_pulse_sources += [
     'module-protocol-pulse/modules/pulse-module-zeroconf-publish.c',
   ]
@@ -390,7 +390,7 @@ if avahi_dep.found()
   pipewire_module_protocol_pulse_deps += zeroconf_deps
 endif
 
-if gsettings_gio_dep.found()
+if build_pulse_server and gsettings_gio_dep.found()
   pipewire_module_protocol_pulse_sources += [
     'module-protocol-pulse/modules/pulse-module-gsettings.c',
   ]
@@ -407,18 +407,21 @@ if gsettings_gio_dep.found()
   endif
 endif
 
-if flatpak_support
-  pipewire_module_protocol_pulse_deps += glib2_dep
+if build_pulse_server and flatpak_support
+	pipewire_module_protocol_pulse_deps += glib2_dep
 endif
 
-pipewire_module_protocol_pulse = shared_library('pipewire-module-protocol-pulse',
-  pipewire_module_protocol_pulse_sources,
-  include_directories : [configinc],
-  install : true,
-  install_dir : modules_install_dir,
-  install_rpath: modules_install_dir,
-  dependencies : pipewire_module_protocol_pulse_deps,
-)
+if build_pulse_server
+  pipewire_module_protocol_pulse = shared_library('pipewire-module-protocol-pulse',
+    pipewire_module_protocol_pulse_sources,
+    include_directories : [configinc],
+    install : true,
+    install_dir : modules_install_dir,
+    install_rpath: modules_install_dir,
+    dependencies : pipewire_module_protocol_pulse_deps,
+  )
+endif
+summary({'pulse-server': build_pulse_server}, bool_yn: true, section: 'Optional Modules')
 
 build_module_pulse_tunnel = pulseaudio_dep.found()
   if build_module_pulse_tunnel

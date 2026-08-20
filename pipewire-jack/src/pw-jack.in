@@ -9,16 +9,16 @@ DEFAULT_SAMPLERATE=48000
 while getopts 'hr:vs:p:' param ; do
 	case $param in
 		r)
-			PIPEWIREAO_REMOTE="$OPTARG"
-			export PIPEWIREAO_REMOTE
+			PIPEWIRE_REMOTE="$OPTARG"
+			export PIPEWIRE_REMOTE
 			;;
 		v)
-			if [ -z "$PIPEWIREAO_DEBUG" ]; then
-				PIPEWIREAO_DEBUG=3
+			if [ -z "$PIPEWIRE_DEBUG" ]; then
+				PIPEWIRE_DEBUG=3
 			else
-				PIPEWIREAO_DEBUG=$(( PIPEWIREAO_DEBUG + 1 ))
+				PIPEWIRE_DEBUG=$(( PIPEWIRE_DEBUG + 1 ))
 			fi
-			export PIPEWIREAO_DEBUG
+			export PIPEWIRE_DEBUG
 			;;
 		s)
 			SAMPLERATE="$OPTARG"
@@ -46,11 +46,11 @@ shift $(( OPTIND - 1 ))
 
 if [ -n "$PERIOD" ]; then
 	if [ -n "$SAMPLERATE" ]; then
-		PIPEWIREAO_QUANTUM="$PERIOD/$SAMPLERATE"
+		PIPEWIRE_QUANTUM="$PERIOD/$SAMPLERATE"
 	else
-		PIPEWIREAO_QUANTUM="$PERIOD/$DEFAULT_SAMPLERATE"
+		PIPEWIRE_QUANTUM="$PERIOD/$DEFAULT_SAMPLERATE"
 	fi
-	export PIPEWIREAO_QUANTUM
+	export PIPEWIRE_QUANTUM
 fi
 
 # shellcheck disable=SC2016 # ${LIB} is interpreted by ld.so, not the shell
