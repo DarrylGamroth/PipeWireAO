@@ -93,6 +93,8 @@
 #include <spa/param/latency.h>
 #include <spa/param/latency-types.h>
 #include <spa/param/latency-utils.h>
+#include <spa/param/ndarray.h>
+#include <spa/param/ndarray-utils.h>
 #include <spa/param/param.h>
 #include <spa/param/param-types.h>
 #include <spa/param/port-config.h>
