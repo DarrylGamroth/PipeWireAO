@@ -408,7 +408,7 @@ if build_pulse_server and gsettings_gio_dep.found()
 endif
 
 if build_pulse_server and flatpak_support
-	pipewire_module_protocol_pulse_deps += glib2_dep
+  pipewire_module_protocol_pulse_deps += glib2_dep
 endif
 
 if build_pulse_server
