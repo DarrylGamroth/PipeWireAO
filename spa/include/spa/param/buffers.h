@@ -26,8 +26,13 @@ enum spa_param_buffers {
 	SPA_PARAM_BUFFERS_align,	/**< alignment of data block memory (Int) */
 	SPA_PARAM_BUFFERS_dataType,	/**< possible memory types (flags choice Int, mask of enum spa_data_type) */
 	SPA_PARAM_BUFFERS_metaType,	/**< required meta data types (Int, mask of enum spa_meta_type) */
-	SPA_PARAM_BUFFERS_pageSizeHint,	/**< preferred backing page size (Id enum spa_buffer_page_size_hint) */
+
+	SPA_PARAM_BUFFERS_START_PipeWireAO = 0x1000000,
+	SPA_PARAM_BUFFERS_pageSizeHint = SPA_PARAM_BUFFERS_START_PipeWireAO,	/**< preferred backing page size (Id enum spa_buffer_page_size_hint) */
 };
+
+SPA_STATIC_ASSERT(SPA_PARAM_BUFFERS_pageSizeHint == 0x1000000,
+		"PipeWireAO buffer page-size property ABI");
 
 /** Best-effort backing page size for host-allocated shared memory. */
 enum spa_buffer_page_size_hint {
