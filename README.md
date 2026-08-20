@@ -9,11 +9,11 @@ graph-independent, lossy latest-buffer ownership with selectable busy-spin,
 
 PipeWireAO is designed to coexist with a system PipeWire installation. It uses
 the `libpipewire-ao-0.3` and `libspa-ao-0.2` library and pkg-config identities,
-the `pipewire-ao` daemon and default socket, `pwao-*` tools, and separate
-header, module, SPA plugin, configuration, and service paths. It retains the
-`pw_` C symbol namespace for source compatibility. Desktop audio compatibility
-layers and a session manager are disabled by default because they are outside
-the AO runtime profile.
+the `pipewire-ao` daemon, `pipewire-ao-0` default socket, `pwao-*` tools, and
+separate header, module, SPA plugin, configuration, and service paths. It
+retains the `pw_` C symbol namespace for source compatibility. Desktop audio
+compatibility layers and a session manager are disabled by default because
+they are outside the AO runtime profile.
 
 ## Upstream foundation
 
