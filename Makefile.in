@@ -24,17 +24,7 @@ run: all
 	ACP_PATHS_DIR=$(SOURCE_ROOT)/spa/plugins/alsa/mixer/paths \
 	ACP_PROFILES_DIR=$(SOURCE_ROOT)/spa/plugins/alsa/mixer/profile-sets \
 	PIPEWIREAO_LOG_SYSTEMD=false \
-	$(DBG) $(BUILD_ROOT)/src/daemon/pipewire-uninstalled
-
-run-pulse: all
-	PIPEWIREAO_SPA_PLUGIN_DIR=$(BUILD_ROOT)/spa/plugins \
-	SPA_DATA_DIR=$(SOURCE_ROOT)/spa/plugins \
-	PIPEWIREAO_MODULE_DIR=$(BUILD_ROOT)/src/modules \
-	PIPEWIREAO_CONFIG_DIR=$(BUILD_ROOT)/src/daemon \
-	ACP_PATHS_DIR=$(SOURCE_ROOT)/spa/plugins/alsa/mixer/paths \
-	ACP_PROFILES_DIR=$(SOURCE_ROOT)/spa/plugins/alsa/mixer/profile-sets \
-	PIPEWIREAO_LOG_SYSTEMD=false \
-	$(DBG) $(BUILD_ROOT)/src/daemon/pipewire-pulse
+	$(DBG) $(BUILD_ROOT)/src/daemon/pipewire-ao-uninstalled
 
 gdb:
 	$(MAKE) run DBG=gdb
@@ -52,22 +42,22 @@ monitor: all
 	PIPEWIREAO_SPA_PLUGIN_DIR=$(BUILD_ROOT)/spa/plugins \
 	SPA_DATA_DIR=$(SOURCE_ROOT)/spa/plugins \
 	PIPEWIREAO_MODULE_DIR=$(BUILD_ROOT)/src/modules/ \
-	$(BUILD_ROOT)/src/tools/pw-mon
+	$(BUILD_ROOT)/src/tools/pwao-mon
 
 cli: all
 	PIPEWIREAO_SPA_PLUGIN_DIR=$(BUILD_ROOT)/spa/plugins \
 	SPA_DATA_DIR=$(SOURCE_ROOT)/spa/plugins \
 	PIPEWIREAO_MODULE_DIR=$(BUILD_ROOT)/src/modules/ \
-	$(BUILD_ROOT)/src/tools/pw-cli
+	$(BUILD_ROOT)/src/tools/pwao-cli
 
 shell: all
-	ninja -C $(BUILD_ROOT) pw-uninstalled
+	ninja -C $(BUILD_ROOT) pipewire-ao-uninstalled
 
 dist: all
-	git archive --prefix=pipewire-$(VERSION)/ -o pipewire-$(VERSION).tar.gz $(TAG)
+	git archive --prefix=pipewire-ao-$(VERSION)/ -o pipewire-ao-$(VERSION).tar.gz $(TAG)
 
 rpm: dist
-	rpmbuild -ta pipewire-$(VERSION).tar.gz
+	rpmbuild -ta pipewire-ao-$(VERSION).tar.gz
 
 publish: all
 	git branch -D gh-pages 2>/dev/null || true && \
