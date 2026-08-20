@@ -116,6 +116,8 @@ struct port {
 	uint64_t latest_active_mask;
 	uint64_t latest_retired_mask;
 	uint32_t latest_mode;
+	uint32_t latest_worker_active;
+	uint32_t latest_worker_retiring;
 	uint32_t latest_input_claimed;
 	uint32_t latest_recycle_hint;
 	uint32_t latest_scan_hint;
@@ -180,6 +182,8 @@ struct filter {
 	unsigned int allow_mlock:1;
 	unsigned int warn_mlock:1;
 	unsigned int trigger:1;
+	uint32_t latest_workers;
+	uint32_t latest_workers_retiring;
 	int in_emit_param_changed;
 	int pending_drain;
 };
@@ -680,6 +684,21 @@ static inline bool port_has_latest(const struct port *port)
 	return SPA_ATOMIC_LOAD(port->latest_active_mask) != 0;
 }
 
+static int begin_latest_worker_retirement(struct port *port)
+{
+	SPA_ATOMIC_STORE(port->latest_worker_retiring, true);
+	if (SPA_ATOMIC_LOAD(port->latest_worker_active)) {
+		SPA_ATOMIC_STORE(port->latest_worker_retiring, false);
+		return -EBUSY;
+	}
+	return 0;
+}
+
+static inline void end_latest_worker_retirement(struct port *port)
+{
+	SPA_ATOMIC_STORE(port->latest_worker_retiring, false);
+}
+
 static struct latest_link *find_latest_link(struct port *port, uint32_t id,
 		uint32_t *slot)
 {
@@ -1159,6 +1178,7 @@ static int impl_port_set_param(void *object,
 	struct port *port;
 	int res;
 	bool emit = true;
+	bool retiring = false;
 	const struct spa_pod *params[1];
 	uint32_t n_params = 0;
 
@@ -1178,13 +1198,29 @@ static int impl_port_set_param(void *object,
 
 	params[0] = param;
 	n_params = param ? 1 : 0;
+	if (id == SPA_PARAM_Format && port->n_buffers > 0) {
+		if (port_has_latest(port))
+			return -EBUSY;
+		if ((res = begin_latest_worker_retirement(port)) < 0)
+			return res;
+		retiring = true;
+		if ((res = service_latest_retirements(port)) < 0) {
+			end_latest_worker_retirement(port);
+			return res;
+		}
+	}
 
-	if ((res = update_params(impl, port, id, params, n_params)) < 0)
+	if ((res = update_params(impl, port, id, params, n_params)) < 0) {
+		if (retiring)
+			end_latest_worker_retirement(port);
 		return res;
+	}
 
 	switch (id) {
 	case SPA_PARAM_Format:
 		clear_buffers(port);
+		if (retiring)
+			end_latest_worker_retirement(port);
 		break;
 	case SPA_PARAM_Latency:
 		handle_latency(impl, port, param);
@@ -1213,6 +1249,7 @@ static int impl_port_use_buffers(void *object,
 	struct pw_filter *filter = &impl->this;
 	uint32_t i, j, impl_flags;
 	int res, size = 0;
+	bool retiring = false;
 
 	pw_log_debug("%p: port:%d.%d buffers:%u disconnecting:%d", impl,
 			direction, port_id, n_buffers, impl->disconnecting);
@@ -1222,13 +1259,23 @@ static int impl_port_use_buffers(void *object,
 
 	if (impl->disconnecting && n_buffers > 0)
 		return -EIO;
+	if (n_buffers > MAX_BUFFERS)
+		return -ENOSPC;
+	if (port->n_buffers > 0) {
+		if (port_has_latest(port))
+			return -EBUSY;
+		if ((res = begin_latest_worker_retirement(port)) < 0)
+			return res;
+		retiring = true;
+		if ((res = service_latest_retirements(port)) < 0) {
+			end_latest_worker_retirement(port);
+			return res;
+		}
+	}
 
 	clear_buffers(port);
 
 	impl_flags = port->flags;
-
-	if (n_buffers > MAX_BUFFERS)
-		return -ENOSPC;
 
 	for (i = 0; i < n_buffers; i++) {
 		int buf_size = 0;
@@ -1248,12 +1295,13 @@ static int impl_port_use_buffers(void *object,
 					if (SPA_FLAG_IS_SET(d->flags, SPA_DATA_FLAG_WRITABLE))
 						prot |= PROT_WRITE;
 					if ((res = map_data(impl, d, prot)) < 0)
-						return res;
+						goto done;
 					SPA_FLAG_SET(b->flags, BUFFER_FLAG_MAPPED);
 				}
 				else if (d->type == SPA_DATA_MemPtr && d->data == NULL) {
 					pw_log_error("%p: invalid buffer mem", filter);
-					return -EINVAL;
+					res = -EINVAL;
+					goto done;
 				}
 				buf_size += d->maxsize;
 				pw_log_debug("%p:  data:%d type:%d flags:%08x size:%d", filter, j,
@@ -1262,7 +1310,8 @@ static int impl_port_use_buffers(void *object,
 
 			if (size > 0 && buf_size != size) {
 				pw_log_error("%p: invalid buffer size %d", filter, buf_size);
-				return -EINVAL;
+				res = -EINVAL;
+				goto done;
 			} else
 				size = buf_size;
 		}
@@ -1290,7 +1339,11 @@ static int impl_port_use_buffers(void *object,
 
 		pw_filter_emit_add_buffer(filter, port->user_data, &b->this);
 	}
-	return 0;
+	res = 0;
+done:
+	if (retiring)
+		end_latest_worker_retirement(port);
+	return res;
 }
 
 static int impl_port_reuse_buffer(void *object, uint32_t port_id, uint32_t buffer_id)
@@ -1689,6 +1742,11 @@ static int filter_disconnect(struct filter *impl)
 	struct pw_filter *filter = &impl->this;
 	pw_log_debug("%p: disconnect", impl);
 
+	SPA_ATOMIC_STORE(impl->latest_workers_retiring, true);
+	if (SPA_ATOMIC_LOAD(impl->latest_workers) != 0) {
+		SPA_ATOMIC_STORE(impl->latest_workers_retiring, false);
+		return -EBUSY;
+	}
 	if (impl->disconnecting)
 		return -EBUSY;
 
@@ -1756,6 +1814,13 @@ void pw_filter_destroy(struct pw_filter *filter)
 	ensure_loop(impl->main_loop, return);
 
 	pw_log_debug("%p: destroy", filter);
+	SPA_ATOMIC_STORE(impl->latest_workers_retiring, true);
+	if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(impl->latest_workers) != 0)) {
+		pw_log_error("%p: refusing to destroy filter with %u active latest-buffer workers",
+				filter, SPA_ATOMIC_LOAD(impl->latest_workers));
+		SPA_ATOMIC_STORE(impl->latest_workers_retiring, false);
+		return;
+	}
 
 	pw_filter_emit_destroy(filter);
 
@@ -2241,8 +2306,11 @@ int pw_filter_remove_port(void *port_data)
 {
 	struct port *port = SPA_CONTAINER_OF(port_data, struct port, user_data);
 	struct filter *impl = port->filter;
+	int res;
 
 	ensure_loop(impl->main_loop, return -EIO);
+	if ((res = begin_latest_worker_retirement(port)) < 0)
+		return res;
 
 	free_port(impl, port);
 	return 0;
@@ -2373,6 +2441,44 @@ int pw_filter_get_buffer_latest_stats(void *port_data,
 		return -ENOTSUP;
 
 	*stats = p->latest_stats;
+	return 0;
+}
+
+SPA_EXPORT
+int pw_filter_buffer_latest_worker_begin(void *port_data)
+{
+	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
+	struct filter *impl = p->filter;
+
+	if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(impl->latest_workers_retiring)))
+		return -EPIPE;
+	SPA_ATOMIC_INC(impl->latest_workers);
+	if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(impl->latest_workers_retiring))) {
+		SPA_ATOMIC_DEC(impl->latest_workers);
+		return -EPIPE;
+	}
+	if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(p->latest_worker_retiring) ||
+			!SPA_ATOMIC_CAS(p->latest_worker_active, false, true))) {
+		SPA_ATOMIC_DEC(impl->latest_workers);
+		return -EBUSY;
+	}
+	if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(impl->latest_workers_retiring) ||
+			SPA_ATOMIC_LOAD(p->latest_worker_retiring))) {
+		SPA_ATOMIC_STORE(p->latest_worker_active, false);
+		SPA_ATOMIC_DEC(impl->latest_workers);
+		return -EPIPE;
+	}
+	return 0;
+}
+
+SPA_EXPORT
+int pw_filter_buffer_latest_worker_end(void *port_data)
+{
+	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
+
+	if (SPA_UNLIKELY(!SPA_ATOMIC_CAS(p->latest_worker_active, true, false)))
+		return -EINVAL;
+	SPA_ATOMIC_DEC(p->filter->latest_workers);
 	return 0;
 }
 
