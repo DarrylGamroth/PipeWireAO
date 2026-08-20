@@ -151,7 +151,7 @@ const char *get_server_name(struct pw_context *context)
 	const char *name = NULL, *sep;
 	const struct pw_properties *props = pw_context_get_properties(context);
 
-	name = getenv("PIPEWIREAO_REMOTE");
+	name = getenv("PIPEWIRE_REMOTE");
 	if ((name == NULL || name[0] == '\0') && props != NULL)
 		name = pw_properties_get(props, PW_KEY_REMOTE_NAME);
 	if (name != NULL && (sep = strrchr(name, '/')) != NULL)
@@ -195,7 +195,7 @@ int notify_startup(void)
 	long v;
 	int fd, res = 0;
 	char *endptr;
-	const char *env = getenv("PIPEWIREAO_PULSE_NOTIFICATION_FD");
+	const char *env = getenv("PIPEWIRE_PULSE_NOTIFICATION_FD");
 
 	if (env == NULL || env[0] == '\0')
 		return 0;
@@ -206,22 +206,22 @@ int notify_startup(void)
 		errno = EINVAL;
 	if (errno != 0) {
 		res = -errno;
-		pw_log_error("can't parse PIPEWIREAO_PULSE_NOTIFICATION_FD env: %m");
+		pw_log_error("can't parse PIPEWIRE_PULSE_NOTIFICATION_FD env: %m");
 		goto error;
 	}
 	fd = (int)v;
 	if (v != fd) {
 		res = -ERANGE;
-		pw_log_error("invalid PIPEWIREAO_PULSE_NOTIFICATION_FD %ld: %s", v, spa_strerror(res));
+		pw_log_error("invalid PIPEWIRE_PULSE_NOTIFICATION_FD %ld: %s", v, spa_strerror(res));
 		goto error;
 	}
 	if (dprintf(fd, "\n") < 0) {
 		res = -errno;
-		pw_log_error("can't signal PIPEWIREAO_PULSE_NOTIFICATION_FD: %m");
+		pw_log_error("can't signal PIPEWIRE_PULSE_NOTIFICATION_FD: %m");
 		goto error;
 	}
 	close(fd);
-	unsetenv("PIPEWIREAO_PULSE_NOTIFICATION_FD");
+	unsetenv("PIPEWIRE_PULSE_NOTIFICATION_FD");
 	return 0;
 
 error:

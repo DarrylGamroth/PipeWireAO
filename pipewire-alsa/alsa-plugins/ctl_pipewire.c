@@ -1373,7 +1373,7 @@ SND_CTL_PLUGIN_DEFINE_FUNC(pipewire)
 		pw_properties_setf(ctl->props, PW_KEY_APP_NAME, "PipeWire ALSA [%s]",
 				pw_get_prgname());
 
-	str = getenv("PIPEWIREAO_ALSA");
+	str = getenv("PIPEWIRE_ALSA");
 	if (str != NULL)
 		pw_properties_update_string(ctl->props, str, strlen(str));
 
