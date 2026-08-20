@@ -7,16 +7,16 @@
 while getopts 'hr:vs:p:' param ; do
 	case $param in
 		r)
-			PIPEWIREAO_REMOTE="$OPTARG"
-			export PIPEWIREAO_REMOTE
+			PIPEWIRE_REMOTE="$OPTARG"
+			export PIPEWIRE_REMOTE
 			;;
 		v)
-			if [ -z "$PIPEWIREAO_DEBUG" ]; then
-				PIPEWIREAO_DEBUG=3
+			if [ -z "$PIPEWIRE_DEBUG" ]; then
+				PIPEWIRE_DEBUG=3
 			else
-				PIPEWIREAO_DEBUG=$(( PIPEWIREAO_DEBUG + 1 ))
+				PIPEWIRE_DEBUG=$(( PIPEWIRE_DEBUG + 1 ))
 			fi
-			export PIPEWIREAO_DEBUG
+			export PIPEWIRE_DEBUG
 			;;
 		*)
 			echo "$0 - run v4l2 applications on PipeWire"
