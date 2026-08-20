@@ -27,12 +27,12 @@ PWTEST(buffer_abi_types)
 	pwtest_int_eq(SPA_DATA_MemId, 4);
 	pwtest_int_eq(SPA_DATA_SyncObj, 5);
 	pwtest_int_eq(_SPA_DATA_LAST, 6);
-	pwtest_int_eq(SPA_DATA_FLAG_HUGE_PAGES, 1U << 4);
-	pwtest_int_eq(SPA_DATA_FLAG_HUGE_2MB, 1U << 5);
-	pwtest_int_eq(SPA_DATA_FLAG_HUGE_1GB, 1U << 6);
+	pwtest_int_eq(SPA_DATA_FLAG_HUGE_PAGES, 1U << 28);
+	pwtest_int_eq(SPA_DATA_FLAG_HUGE_2MB, 1U << 29);
+	pwtest_int_eq(SPA_DATA_FLAG_HUGE_1GB, 1U << 30);
 
 	/* buffer allocation hints */
-	pwtest_int_eq(SPA_PARAM_BUFFERS_pageSizeHint, 8);
+	pwtest_int_eq(SPA_PARAM_BUFFERS_pageSizeHint, 0x1000000);
 	pwtest_int_eq(SPA_BUFFER_PAGE_SIZE_NORMAL, 0);
 	pwtest_int_eq(SPA_BUFFER_PAGE_SIZE_HUGE_DEFAULT, 1);
 	pwtest_int_eq(SPA_BUFFER_PAGE_SIZE_HUGE_2MB, 2);

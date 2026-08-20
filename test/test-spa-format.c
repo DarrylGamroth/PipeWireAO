@@ -158,11 +158,11 @@ PWTEST(ndarray_format_abi)
 	};
 	uint32_t i;
 
-	pwtest_int_eq(SPA_MEDIA_SUBTYPE_ndarray, 0x60002);
-	pwtest_int_eq(SPA_FORMAT_NDARRAY_elementType, 0x61001);
-	pwtest_int_eq(SPA_FORMAT_NDARRAY_shape, 0x61002);
-	pwtest_int_eq(SPA_FORMAT_NDARRAY_layout, 0x61003);
-	pwtest_int_eq(SPA_FORMAT_NDARRAY_rate, 0x61004);
+	pwtest_int_eq(SPA_MEDIA_SUBTYPE_ndarray, 0x1000000);
+	pwtest_int_eq(SPA_FORMAT_NDARRAY_elementType, 0x1000001);
+	pwtest_int_eq(SPA_FORMAT_NDARRAY_shape, 0x1000002);
+	pwtest_int_eq(SPA_FORMAT_NDARRAY_layout, 0x1000003);
+	pwtest_int_eq(SPA_FORMAT_NDARRAY_rate, 0x1000004);
 	pwtest_int_eq(SPA_NDARRAY_LAYOUT_ROW_MAJOR, 1);
 	pwtest_int_eq(SPA_NDARRAY_LAYOUT_COLUMN_MAJOR, 2);
 	pwtest_int_eq(SPA_ELEMENT_TYPE_BOOL8, 1);

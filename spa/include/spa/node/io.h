@@ -44,10 +44,19 @@ enum spa_io_type {
 	SPA_IO_RateMatch,	/**< rate matching between nodes, struct spa_io_rate_match */
 	SPA_IO_Memory,		/**< memory pointer, struct spa_io_memory (currently not used in PipeWire) */
 	SPA_IO_AsyncBuffers,	/**< async area to exchange buffers, struct spa_io_async_buffers */
-	SPA_IO_BuffersLatest,	/**< latest complete buffer, struct spa_io_buffers_latest */
+
+	SPA_IO_START_PipeWireAO = 0x1000000,
+	SPA_IO_BuffersLatest = SPA_IO_START_PipeWireAO,	/**< latest complete buffer, struct spa_io_buffers_latest */
 	SPA_IO_BuffersLatestNotify, /**< process-local advisory fd, struct spa_io_buffers_latest_notify */
 	SPA_IO_BuffersLatestLink, /**< process-local per-mix latest link, struct spa_io_buffers_latest_link */
 };
+
+SPA_STATIC_ASSERT(SPA_IO_BuffersLatest == 0x1000000,
+		"PipeWireAO latest-buffer IO ABI");
+SPA_STATIC_ASSERT(SPA_IO_BuffersLatestNotify == 0x1000001,
+		"PipeWireAO latest-buffer notification IO ABI");
+SPA_STATIC_ASSERT(SPA_IO_BuffersLatestLink == 0x1000002,
+		"PipeWireAO latest-buffer link IO ABI");
 
 /**
  * IO area to exchange buffers.
