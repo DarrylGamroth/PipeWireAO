@@ -631,6 +631,67 @@ static void test_progressive_buffer_live_membership(void)
 	latest_output_test_clear(&test);
 }
 
+static void test_latest_worker_lifecycle_barrier(void)
+{
+	struct latest_output_test test;
+	struct spa_io_buffers_latest first = SPA_IO_BUFFERS_LATEST_INIT;
+	struct spa_io_buffers_latest second = SPA_IO_BUFFERS_LATEST_INIT;
+	struct spa_io_buffers_latest_link link = {
+		.id = 40,
+		.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+		.io = &first,
+		.notify_fd = -1,
+	};
+	struct spa_buffer storage[2] = { 0 };
+	struct spa_buffer *buffers[2] = { &storage[0], &storage[1] };
+	struct pw_buffer *active;
+	uint32_t id;
+
+	latest_output_test_init(&test);
+	latest_output_test_add_link(&test, &link);
+	latest_output_test_use_buffers(&test, buffers, SPA_N_ELEMENTS(buffers));
+
+	spa_assert_se(pw_filter_buffer_latest_worker_begin(test.port) == 0);
+	spa_assert_se(pw_filter_buffer_latest_worker_begin(test.port) == -EBUSY);
+	active = pw_filter_dequeue_buffer(test.port);
+	spa_assert_se(active != NULL);
+	spa_assert_se(pw_filter_begin_progressive_buffer(test.port, active) == 0);
+
+	/* Destructive control operations cannot retire storage under the writer. */
+	spa_assert_se(pw_filter_disconnect(test.filter) == -EBUSY);
+	spa_assert_se(pw_filter_remove_port(test.port) == -EBUSY);
+	spa_assert_se(spa_node_port_use_buffers(test.node,
+			SPA_DIRECTION_OUTPUT, 0, 0, NULL, 0) == -EBUSY);
+
+	spa_assert_se(pw_filter_end_progressive_buffer(test.port, active) == 0);
+	spa_assert_se(pw_filter_buffer_latest_worker_end(test.port) == 0);
+	spa_assert_se(pw_filter_buffer_latest_worker_end(test.port) == -EINVAL);
+
+	/* A pool generation cannot retire while its link generation is active. */
+	spa_assert_se(spa_node_port_use_buffers(test.node,
+			SPA_DIRECTION_OUTPUT, 0, 0, NULL, 0) == -EBUSY);
+	link.flags = 0;
+	link.io = NULL;
+	latest_output_test_add_link(&test, &link);
+	spa_assert_se(spa_node_port_use_buffers(test.node,
+			SPA_DIRECTION_OUTPUT, 0, 0, NULL, 0) == 0);
+
+	/* Restart uses a fresh mailbox identity and a newly installed pool. */
+	link = (struct spa_io_buffers_latest_link) {
+		.id = 41,
+		.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+		.io = &second,
+		.notify_fd = -1,
+	};
+	latest_output_test_add_link(&test, &link);
+	latest_output_test_use_buffers(&test, buffers, SPA_N_ELEMENTS(buffers));
+	spa_assert_se(spa_io_buffers_latest_acquire(&second, &id) == -EPIPE);
+	spa_assert_se(pw_filter_buffer_latest_worker_begin(test.port) == 0);
+	spa_assert_se(pw_filter_buffer_latest_worker_end(test.port) == 0);
+
+	latest_output_test_clear(&test);
+}
+
 static void test_latest_buffer_subscriber_limit(void)
 {
 	struct latest_output_test test;
@@ -812,6 +873,7 @@ int main(int argc, char *argv[])
 	test_latest_buffer_fanout();
 	test_progressive_buffer_consumer_first();
 	test_progressive_buffer_live_membership();
+	test_latest_worker_lifecycle_barrier();
 	test_latest_buffer_subscriber_limit();
 	test_latest_input_poller();
 
