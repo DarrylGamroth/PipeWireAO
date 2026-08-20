@@ -188,6 +188,24 @@ struct filter {
 	int pending_drain;
 };
 
+struct pw_filter_rendezvous {
+	uint32_t n_ports;
+	uint64_t required_inputs;
+	enum pw_filter_rendezvous_release_policy policy;
+	void *ports[PW_FILTER_RENDEZVOUS_MAX_INPUTS];
+	struct pw_buffer *buffers[PW_FILTER_RENDEZVOUS_MAX_INPUTS];
+	struct spa_meta_acquisition acquisition;
+	struct spa_meta_acquisition last_released;
+	uint64_t release_at_nsec;
+	uint64_t accepted_inputs;
+	int error;
+	bool active;
+	bool decision_ready;
+	bool have_last_released;
+	struct pw_filter_rendezvous_result result;
+	struct pw_filter_rendezvous_stats stats;
+};
+
 static int get_param_index(uint32_t id)
 {
 	switch (id) {
@@ -2480,6 +2498,391 @@ int pw_filter_buffer_latest_worker_end(void *port_data)
 		return -EINVAL;
 	SPA_ATOMIC_DEC(p->filter->latest_workers);
 	return 0;
+}
+
+static inline void rendezvous_count(uint64_t *counter)
+{
+	if (*counter != UINT64_MAX)
+		(*counter)++;
+}
+
+static inline uint64_t rendezvous_input_mask(uint32_t n_ports)
+{
+	return n_ports == PW_FILTER_RENDEZVOUS_MAX_INPUTS ? UINT64_MAX :
+		(UINT64_C(1) << n_ports) - 1;
+}
+
+static bool rendezvous_has_identity(
+		const struct spa_meta_acquisition *acquisition)
+{
+	return _spa_meta_acquisition_fields_are_valid(acquisition) &&
+		SPA_FLAG_IS_SET(acquisition->flags,
+				SPA_META_ACQUISITION_FLAG_IDENTITY_VALID);
+}
+
+static int rendezvous_compare_identity(
+		const struct spa_meta_acquisition *observation,
+		const struct spa_meta_acquisition *reference)
+{
+	if (memcmp(observation->domain, reference->domain,
+				sizeof(reference->domain)) != 0)
+		return 2;
+	if (observation->generation < reference->generation)
+		return -1;
+	if (observation->generation > reference->generation)
+		return 1;
+	return observation->sequence < reference->sequence ? -1 :
+		observation->sequence > reference->sequence ? 1 : 0;
+}
+
+static void rendezvous_clear_active(struct pw_filter_rendezvous *rendezvous)
+{
+	rendezvous->active = false;
+	rendezvous->decision_ready = false;
+	rendezvous->release_at_nsec = 0;
+	rendezvous->accepted_inputs = 0;
+	rendezvous->error = 0;
+	memset(&rendezvous->acquisition, 0, sizeof(rendezvous->acquisition));
+	memset(&rendezvous->result, 0, sizeof(rendezvous->result));
+}
+
+static int rendezvous_return_leases(struct pw_filter_rendezvous *rendezvous)
+{
+	uint32_t i;
+	int first_error = 0;
+
+	for (i = 0; i < rendezvous->n_ports; i++) {
+		int res;
+
+		if (rendezvous->buffers[i] == NULL)
+			continue;
+		res = pw_filter_queue_buffer(rendezvous->ports[i],
+				rendezvous->buffers[i]);
+		if (res < 0) {
+			rendezvous_count(&rendezvous->stats.cleanup_errors);
+			if (first_error == 0)
+				first_error = res;
+			continue;
+		}
+		rendezvous->buffers[i] = NULL;
+		rendezvous_count(&rendezvous->stats.lease_returns);
+	}
+	return first_error;
+}
+
+SPA_EXPORT
+int pw_filter_rendezvous_new(struct pw_filter_rendezvous **rendezvous,
+		void *const *port_data, uint32_t n_ports, uint64_t required_inputs,
+		enum pw_filter_rendezvous_release_policy policy)
+{
+	struct pw_filter_rendezvous *state;
+	uint64_t valid_inputs;
+	uint32_t i;
+	int res;
+
+	if (rendezvous == NULL)
+		return -EINVAL;
+	*rendezvous = NULL;
+	if (port_data == NULL || n_ports < 2 ||
+			n_ports > PW_FILTER_RENDEZVOUS_MAX_INPUTS ||
+			required_inputs == 0 ||
+			(policy != PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE &&
+			 policy != PW_FILTER_RENDEZVOUS_RELEASE_FIXED))
+		return -EINVAL;
+	valid_inputs = rendezvous_input_mask(n_ports);
+	if ((required_inputs & ~valid_inputs) != 0)
+		return -EINVAL;
+	for (i = 0; i < n_ports; i++) {
+		struct port *port;
+
+		if (port_data[i] == NULL)
+			return -EINVAL;
+		port = SPA_CONTAINER_OF(port_data[i], struct port, user_data);
+		if (!SPA_ATOMIC_LOAD(port->latest_mode) ||
+				port->direction != SPA_DIRECTION_INPUT)
+			return -ENOTSUP;
+	}
+	state = calloc(1, sizeof(*state));
+	if (state == NULL)
+		return -errno;
+	state->n_ports = n_ports;
+	state->required_inputs = required_inputs;
+	state->policy = policy;
+	memcpy(state->ports, port_data, n_ports * sizeof(port_data[0]));
+	for (i = 0; i < n_ports; i++) {
+		res = pw_filter_buffer_latest_worker_begin(state->ports[i]);
+		if (res < 0)
+			goto error_workers;
+	}
+	*rendezvous = state;
+	return 0;
+
+error_workers:
+	while (i > 0)
+		pw_filter_buffer_latest_worker_end(state->ports[--i]);
+	free(state);
+	return res;
+}
+
+SPA_EXPORT
+int pw_filter_rendezvous_begin(struct pw_filter_rendezvous *rendezvous,
+		const struct spa_meta_acquisition *acquisition,
+		uint64_t release_at_nsec, bool discontinuity)
+{
+	int comparison;
+
+	if (rendezvous == NULL || !rendezvous_has_identity(acquisition))
+		return -EINVAL;
+	if (rendezvous->active)
+		return -EBUSY;
+	if (rendezvous->have_last_released) {
+		comparison = rendezvous_compare_identity(acquisition,
+				&rendezvous->last_released);
+		if (comparison == 2 && !discontinuity)
+			return -EXDEV;
+		if (comparison != 2 && comparison <= 0)
+			return -ESTALE;
+	}
+	rendezvous->acquisition = *acquisition;
+	rendezvous->release_at_nsec = release_at_nsec;
+	rendezvous->accepted_inputs = 0;
+	rendezvous->error = 0;
+	rendezvous->decision_ready = false;
+	rendezvous->active = true;
+	memset(&rendezvous->result, 0, sizeof(rendezvous->result));
+	return 0;
+}
+
+static int rendezvous_reject_buffer(struct pw_filter_rendezvous *rendezvous,
+		uint32_t input_index, struct pw_buffer *buffer, uint64_t *counter)
+{
+	int res;
+
+	rendezvous_count(counter);
+	res = pw_filter_queue_buffer(rendezvous->ports[input_index], buffer);
+	if (res < 0) {
+		rendezvous->buffers[input_index] = buffer;
+		rendezvous_count(&rendezvous->stats.cleanup_errors);
+		return res;
+	}
+	rendezvous_count(&rendezvous->stats.lease_returns);
+	return 0;
+}
+
+static int rendezvous_scan_input(struct pw_filter_rendezvous *rendezvous,
+		uint32_t input_index)
+{
+	struct spa_meta_acquisition *acquisition;
+	struct pw_buffer *buffer;
+	struct spa_meta *meta;
+	int comparison, res;
+
+	res = pw_filter_try_dequeue_buffer_latest(rendezvous->ports[input_index],
+			&buffer);
+	if (res <= 0)
+		return res;
+	if (buffer->buffer == NULL ||
+			spa_buffer_find_meta(buffer->buffer, SPA_META_Progressive) != NULL)
+		return rendezvous_reject_buffer(rendezvous, input_index, buffer,
+				&rendezvous->stats.rejected);
+	meta = spa_buffer_find_meta(buffer->buffer, SPA_META_Acquisition);
+	if (!spa_meta_acquisition_is_valid(meta))
+		return rendezvous_reject_buffer(rendezvous, input_index, buffer,
+				&rendezvous->stats.rejected);
+	acquisition = meta->data;
+	if (!SPA_FLAG_IS_SET(acquisition->flags,
+				SPA_META_ACQUISITION_FLAG_IDENTITY_VALID))
+		return rendezvous_reject_buffer(rendezvous, input_index, buffer,
+				&rendezvous->stats.rejected);
+	comparison = rendezvous_compare_identity(acquisition,
+			&rendezvous->acquisition);
+	if (comparison == 2)
+		return rendezvous_reject_buffer(rendezvous, input_index, buffer,
+				&rendezvous->stats.rejected);
+	if (comparison < 0)
+		return rendezvous_reject_buffer(rendezvous, input_index, buffer,
+				&rendezvous->stats.stale);
+	if (comparison > 0)
+		return rendezvous_reject_buffer(rendezvous, input_index, buffer,
+				&rendezvous->stats.future);
+	rendezvous->buffers[input_index] = buffer;
+	rendezvous->accepted_inputs |= UINT64_C(1) << input_index;
+	rendezvous_count(&rendezvous->stats.accepted);
+	return 1;
+}
+
+SPA_EXPORT
+int pw_filter_rendezvous_poll(struct pw_filter_rendezvous *rendezvous,
+		uint64_t monotonic_now_nsec,
+		struct pw_filter_rendezvous_result *result)
+{
+	enum pw_filter_rendezvous_release_cause cause;
+	uint64_t unaccepted;
+	uint32_t input_index;
+	int res;
+
+	if (rendezvous == NULL || result == NULL)
+		return -EINVAL;
+	if (!rendezvous->active)
+		return -ENOENT;
+	if (rendezvous->error < 0) {
+		int operation_error = rendezvous->error;
+		int cleanup_res = rendezvous_return_leases(rendezvous);
+
+		if (cleanup_res == 0)
+			rendezvous_clear_active(rendezvous);
+		return cleanup_res < 0 ? cleanup_res : operation_error;
+	}
+	if (rendezvous->decision_ready) {
+		*result = rendezvous->result;
+		return 1;
+	}
+	unaccepted = rendezvous_input_mask(rendezvous->n_ports) &
+			~rendezvous->accepted_inputs;
+	while (unaccepted != 0) {
+		input_index = (uint32_t)__builtin_ctzll(unaccepted);
+		unaccepted &= unaccepted - 1;
+		res = rendezvous_scan_input(rendezvous, input_index);
+		if (res < 0) {
+			int cleanup_res = rendezvous_return_leases(rendezvous);
+
+			rendezvous->error = res;
+			if (cleanup_res == 0)
+				rendezvous_clear_active(rendezvous);
+			return cleanup_res < 0 ? cleanup_res : res;
+		}
+	}
+	if (monotonic_now_nsec >= rendezvous->release_at_nsec) {
+		cause = rendezvous->policy ==
+				PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE ?
+				PW_FILTER_RENDEZVOUS_CAUSE_DEADLINE :
+				PW_FILTER_RENDEZVOUS_CAUSE_FIXED;
+	} else if (rendezvous->policy ==
+			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE &&
+			(rendezvous->accepted_inputs & rendezvous->required_inputs) ==
+				rendezvous->required_inputs) {
+		cause = PW_FILTER_RENDEZVOUS_CAUSE_COMPLETE;
+	} else {
+		return 0;
+	}
+	rendezvous->result.acquisition = rendezvous->acquisition;
+	rendezvous->result.accepted_inputs = rendezvous->accepted_inputs;
+	rendezvous->result.missing_required_inputs = rendezvous->required_inputs &
+			~rendezvous->accepted_inputs;
+	rendezvous->result.cause = cause;
+	rendezvous->decision_ready = true;
+	switch (cause) {
+	case PW_FILTER_RENDEZVOUS_CAUSE_COMPLETE:
+		rendezvous_count(&rendezvous->stats.complete_releases);
+		break;
+	case PW_FILTER_RENDEZVOUS_CAUSE_DEADLINE:
+		rendezvous_count(&rendezvous->stats.deadline_releases);
+		break;
+	case PW_FILTER_RENDEZVOUS_CAUSE_FIXED:
+		rendezvous_count(&rendezvous->stats.fixed_releases);
+		break;
+	default:
+		return -EPROTO;
+	}
+	if (rendezvous->result.missing_required_inputs != 0) {
+		uint32_t missing = (uint32_t)__builtin_popcountll(
+				rendezvous->result.missing_required_inputs);
+
+		while (missing-- > 0)
+			rendezvous_count(&rendezvous->stats.missing_required_inputs);
+	}
+	*result = rendezvous->result;
+	return 1;
+}
+
+SPA_EXPORT
+struct pw_buffer *pw_filter_rendezvous_get_buffer(
+		struct pw_filter_rendezvous *rendezvous, uint32_t input_index)
+{
+	if (rendezvous == NULL || !rendezvous->active ||
+			!rendezvous->decision_ready || input_index >= rendezvous->n_ports)
+		return NULL;
+	return rendezvous->buffers[input_index];
+}
+
+SPA_EXPORT
+int pw_filter_rendezvous_finish(struct pw_filter_rendezvous *rendezvous)
+{
+	int res;
+
+	if (rendezvous == NULL)
+		return -EINVAL;
+	if (!rendezvous->active || !rendezvous->decision_ready)
+		return -ENOENT;
+	res = rendezvous_return_leases(rendezvous);
+	if (res < 0)
+		return res;
+	rendezvous->last_released = rendezvous->acquisition;
+	rendezvous->have_last_released = true;
+	rendezvous_clear_active(rendezvous);
+	return 0;
+}
+
+SPA_EXPORT
+int pw_filter_rendezvous_cancel(struct pw_filter_rendezvous *rendezvous)
+{
+	int res;
+
+	if (rendezvous == NULL)
+		return -EINVAL;
+	if (!rendezvous->active)
+		return 0;
+	res = rendezvous_return_leases(rendezvous);
+	if (res < 0)
+		return res;
+	rendezvous_clear_active(rendezvous);
+	return 0;
+}
+
+SPA_EXPORT
+int pw_filter_rendezvous_reset(struct pw_filter_rendezvous *rendezvous)
+{
+	int res;
+
+	if (rendezvous == NULL)
+		return -EINVAL;
+	res = pw_filter_rendezvous_cancel(rendezvous);
+	if (res < 0)
+		return res;
+	rendezvous->have_last_released = false;
+	memset(&rendezvous->last_released, 0,
+			sizeof(rendezvous->last_released));
+	return 0;
+}
+
+SPA_EXPORT
+int pw_filter_rendezvous_get_stats(struct pw_filter_rendezvous *rendezvous,
+		struct pw_filter_rendezvous_stats *stats)
+{
+	if (rendezvous == NULL || stats == NULL)
+		return -EINVAL;
+	*stats = rendezvous->stats;
+	return 0;
+}
+
+SPA_EXPORT
+int pw_filter_rendezvous_destroy(struct pw_filter_rendezvous *rendezvous)
+{
+	uint32_t i;
+	int first_error = 0, res;
+
+	if (rendezvous == NULL)
+		return 0;
+	res = pw_filter_rendezvous_cancel(rendezvous);
+	if (res < 0)
+		return res;
+	for (i = 0; i < rendezvous->n_ports; i++) {
+		res = pw_filter_buffer_latest_worker_end(rendezvous->ports[i]);
+		if (res < 0 && first_error == 0)
+			first_error = res;
+	}
+	free(rendezvous);
+	return first_error;
 }
 
 static int release_latest_lease(struct port *p, uint32_t slot, uint32_t id,
