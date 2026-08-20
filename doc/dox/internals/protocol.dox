@@ -59,7 +59,7 @@ After the payload, there is an optional footer POD object.
 # Making a connection {#native-protocol-making-connection}
 
 First a connection is made to a unix domain socket. By default, the socket is
-named as "pipewire-0" and searched in the following directories:
+named as "pipewire-ao-0" and searched in the following directories:
 
  - getenv("PIPEWIREAO_RUNTIME_DIR")
  - getenv("XDG_RUNTIME_DIR")
