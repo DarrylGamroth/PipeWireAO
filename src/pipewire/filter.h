@@ -26,6 +26,7 @@ extern "C" {
 struct pw_filter;
 
 #include <spa/buffer/buffer.h>
+#include <spa/buffer/meta.h>
 #include <spa/node/io.h>
 #include <spa/param/param.h>
 #include <spa/pod/command.h>
@@ -363,6 +364,114 @@ int pw_filter_buffer_latest_worker_begin(void *port_data);
  * Returns -EINVAL when no worker ownership is active.
  */
 int pw_filter_buffer_latest_worker_end(void *port_data);
+
+/** Maximum input count supported by one client-side buffer rendezvous. */
+#define PW_FILTER_RENDEZVOUS_MAX_INPUTS 64u
+
+/** Prepared release behavior for a client-side complete-buffer rendezvous. */
+enum pw_filter_rendezvous_release_policy {
+	PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE = 0,
+	PW_FILTER_RENDEZVOUS_RELEASE_FIXED = 1,
+};
+
+/** Event that made one complete-buffer rendezvous result eligible. */
+enum pw_filter_rendezvous_release_cause {
+	PW_FILTER_RENDEZVOUS_CAUSE_COMPLETE = 0,
+	PW_FILTER_RENDEZVOUS_CAUSE_DEADLINE = 1,
+	PW_FILTER_RENDEZVOUS_CAUSE_FIXED = 2,
+};
+
+/** One immutable complete-buffer rendezvous result. */
+struct pw_filter_rendezvous_result {
+	struct spa_meta_acquisition acquisition;
+	uint64_t accepted_inputs;
+	uint64_t missing_required_inputs;
+	enum pw_filter_rendezvous_release_cause cause;
+	uint32_t reserved;
+};
+
+/** Single-writer accounting for one client-side buffer rendezvous. */
+struct pw_filter_rendezvous_stats {
+	uint64_t accepted;
+	uint64_t duplicate;
+	uint64_t stale;
+	uint64_t future;
+	uint64_t rejected;
+	uint64_t complete_releases;
+	uint64_t deadline_releases;
+	uint64_t fixed_releases;
+	uint64_t missing_required_inputs;
+	uint64_t lease_returns;
+	uint64_t cleanup_errors;
+};
+
+struct pw_filter_rendezvous;
+
+/**
+ * Prepare an explicitly selected client-side complete-buffer rendezvous.
+ *
+ * Preparation allocates the opaque state and begins exclusive latest-buffer
+ * worker ownership on every supplied input port. It performs no graph
+ * scheduling and does not infer activation from topology. The caller must not
+ * perform another buffer operation on these ports until destroy succeeds.
+ */
+int pw_filter_rendezvous_new(struct pw_filter_rendezvous **rendezvous,
+		void *const *port_data, uint32_t n_ports, uint64_t required_inputs,
+		enum pw_filter_rendezvous_release_policy policy);
+
+/**
+ * Begin one expected acquisition after the previous result was finished.
+ *
+ * `release_at_nsec` is in the caller's local CLOCK_MONOTONIC domain. This
+ * operation copies the complete Version 1 acquisition metadata but uses only
+ * its valid identity tuple for matching. `discontinuity` is required when the
+ * acquisition domain changes across completed results.
+ */
+int pw_filter_rendezvous_begin(struct pw_filter_rendezvous *rendezvous,
+		const struct spa_meta_acquisition *acquisition,
+		uint64_t release_at_nsec, bool discontinuity);
+
+/**
+ * Perform one bounded input scan and at most one release decision. RT safe.
+ *
+ * `monotonic_now_nsec` is supplied by the caller; this operation does not read
+ * a clock or wait. It returns 1 and writes `result` when release is eligible,
+ * 0 while the acquisition remains pending, or a negative errno-style result.
+ * Accepted input leases remain owned by the rendezvous until finish, cancel,
+ * reset, or destroy. Nonaccepted leases are returned before this call exits.
+ */
+int pw_filter_rendezvous_poll(struct pw_filter_rendezvous *rendezvous,
+		uint64_t monotonic_now_nsec,
+		struct pw_filter_rendezvous_result *result);
+
+/**
+ * Borrow one accepted input buffer after a release decision. RT safe.
+ *
+ * The pointer remains valid only until the next finish, cancel, reset, or
+ * destroy operation. The caller must not queue it directly.
+ */
+struct pw_buffer *pw_filter_rendezvous_get_buffer(
+		struct pw_filter_rendezvous *rendezvous, uint32_t input_index);
+
+/** Return all accepted leases and complete the released acquisition. RT safe. */
+int pw_filter_rendezvous_finish(struct pw_filter_rendezvous *rendezvous);
+
+/** Return retained leases and cancel only the active acquisition. RT safe. */
+int pw_filter_rendezvous_cancel(struct pw_filter_rendezvous *rendezvous);
+
+/** Cancel active work and clear completed-acquisition ordering state. RT safe. */
+int pw_filter_rendezvous_reset(struct pw_filter_rendezvous *rendezvous);
+
+/** Snapshot single-writer rendezvous accounting. RT safe. */
+int pw_filter_rendezvous_get_stats(struct pw_filter_rendezvous *rendezvous,
+		struct pw_filter_rendezvous_stats *stats);
+
+/**
+ * Return all leases, end every worker lifetime, and free the rendezvous.
+ *
+ * A cleanup failure leaves the object allocated so the caller can retry.
+ */
+int pw_filter_rendezvous_destroy(struct pw_filter_rendezvous *rendezvous);
 
 /** Submit a buffer for playback or recycle a buffer for capture. RT safe.
  * The caller must own the port's serialized buffer worker. */

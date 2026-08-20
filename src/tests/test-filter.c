@@ -862,6 +862,238 @@ static void test_latest_input_poller(void)
 	pw_main_loop_destroy(loop);
 }
 
+static void rendezvous_set_acquisition(struct spa_meta_acquisition *acquisition,
+		uint8_t domain_byte, uint64_t generation, uint64_t sequence)
+{
+	uint8_t domain[SPA_META_ACQUISITION_DOMAIN_SIZE] = { domain_byte };
+
+	spa_assert_se(spa_meta_acquisition_init(acquisition));
+	spa_assert_se(spa_meta_acquisition_set_identity(acquisition, domain,
+			generation, sequence));
+}
+
+static void test_complete_buffer_rendezvous(void)
+{
+	struct pw_main_loop *loop;
+	struct pw_context *context;
+	struct pw_core *core;
+	struct pw_filter *filter;
+	struct spa_node *node;
+	struct spa_io_buffers_latest latest[2] = {
+		SPA_IO_BUFFERS_LATEST_INIT,
+		SPA_IO_BUFFERS_LATEST_INIT,
+	};
+	struct spa_io_buffers_latest_link links[2] = {
+		{
+			.id = 50,
+			.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+			.io = &latest[0],
+			.notify_fd = -1,
+		}, {
+			.id = 51,
+			.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+			.io = &latest[1],
+			.notify_fd = -1,
+		},
+	};
+	struct spa_meta_acquisition acquisitions[2][2];
+	struct spa_meta metas[2][2] = {
+		{
+			{ SPA_META_Acquisition, sizeof(acquisitions[0][0]),
+				&acquisitions[0][0] },
+			{ SPA_META_Acquisition, sizeof(acquisitions[0][1]),
+				&acquisitions[0][1] },
+		}, {
+			{ SPA_META_Acquisition, sizeof(acquisitions[1][0]),
+				&acquisitions[1][0] },
+			{ SPA_META_Acquisition, sizeof(acquisitions[1][1]),
+				&acquisitions[1][1] },
+		},
+	};
+	struct spa_buffer storage[2][2] = {
+		{
+			{ .n_metas = 1, .metas = &metas[0][0] },
+			{ .n_metas = 1, .metas = &metas[0][1] },
+		}, {
+			{ .n_metas = 1, .metas = &metas[1][0] },
+			{ .n_metas = 1, .metas = &metas[1][1] },
+		},
+	};
+	struct spa_buffer *buffers[2][2] = {
+		{ &storage[0][0], &storage[0][1] },
+		{ &storage[1][0], &storage[1][1] },
+	};
+	struct spa_meta_acquisition target;
+	struct pw_filter_rendezvous *rendezvous;
+	struct pw_filter_rendezvous_result result, repeated;
+	struct pw_filter_rendezvous_stats stats;
+	struct spa_meta_progressive progressive = { 0 };
+	struct spa_meta progressive_metas[2];
+	void *ports[2];
+	uint32_t id;
+
+	loop = pw_main_loop_new(NULL);
+	spa_assert_se(loop != NULL);
+	context = pw_context_new(pw_main_loop_get_loop(loop), NULL, 12);
+	spa_assert_se(context != NULL);
+	core = pw_context_connect_self(context, NULL, 0);
+	spa_assert_se(core != NULL);
+	filter = pw_filter_new(core, "complete-buffer-rendezvous-test", NULL);
+	spa_assert_se(filter != NULL);
+	spa_assert_se(pw_filter_connect(filter, PW_FILTER_FLAG_RT_PROCESS,
+			NULL, 0) >= 0);
+	ports[0] = pw_filter_add_port(filter, PW_DIRECTION_INPUT,
+			PW_FILTER_PORT_FLAG_NONE, 0, NULL, NULL, 0);
+	ports[1] = pw_filter_add_port(filter, PW_DIRECTION_INPUT,
+			PW_FILTER_PORT_FLAG_NONE, 0, NULL, NULL, 0);
+	spa_assert_se(ports[0] != NULL && ports[1] != NULL);
+	node = pw_impl_node_get_implementation(filter->node);
+	spa_assert_se(node != NULL);
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_INPUT, 0,
+			SPA_IO_BuffersLatestLink, &links[0], sizeof(links[0])) == 0);
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_INPUT, 1,
+			SPA_IO_BuffersLatestLink, &links[1], sizeof(links[1])) == 0);
+	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_INPUT, 0,
+			0, buffers[0], SPA_N_ELEMENTS(buffers[0])) == 0);
+	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_INPUT, 1,
+			0, buffers[1], SPA_N_ELEMENTS(buffers[1])) == 0);
+
+	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 1, 1,
+			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE) == -EINVAL);
+	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 2, 0,
+			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE) == -EINVAL);
+	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 2, 4,
+			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE) == -EINVAL);
+	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 2, 3,
+			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE) == 0);
+	spa_assert_se(pw_filter_buffer_latest_worker_begin(ports[0]) == -EBUSY);
+
+	/* An incomplete acquisition releases at its absolute deadline. */
+	rendezvous_set_acquisition(&target, 1, 1, 1);
+	rendezvous_set_acquisition(&acquisitions[0][0], 1, 1, 1);
+	spa_assert_se(pw_filter_rendezvous_begin(rendezvous, &target, 100,
+			false) == 0);
+	spa_assert_se(spa_io_buffers_latest_publish(&latest[0], 0, NULL) == 0);
+	spa_assert_se(pw_filter_rendezvous_poll(rendezvous, 50, &result) == 0);
+	spa_assert_se(pw_filter_rendezvous_get_buffer(rendezvous, 0) == NULL);
+	spa_assert_se(pw_filter_rendezvous_poll(rendezvous, 100, &result) == 1);
+	spa_assert_se(result.accepted_inputs == 1);
+	spa_assert_se(result.missing_required_inputs == 2);
+	spa_assert_se(result.cause == PW_FILTER_RENDEZVOUS_CAUSE_DEADLINE);
+	spa_assert_se(pw_filter_rendezvous_get_buffer(rendezvous, 0) != NULL);
+	spa_assert_se(pw_filter_rendezvous_get_buffer(rendezvous, 1) == NULL);
+	spa_assert_se(pw_filter_rendezvous_poll(rendezvous, 101, &repeated) == 1);
+	spa_assert_se(memcmp(&result, &repeated, sizeof(result)) == 0);
+	spa_assert_se(pw_filter_rendezvous_finish(rendezvous) == 0);
+	spa_assert_se(spa_io_buffers_latest_pop_recycle(&latest[0], &id) == 0);
+	spa_assert_se(id == 0);
+
+	/* A complete required mask releases early and keeps both leases borrowed. */
+	rendezvous_set_acquisition(&target, 1, 1, 2);
+	rendezvous_set_acquisition(&acquisitions[0][1], 1, 1, 2);
+	rendezvous_set_acquisition(&acquisitions[1][1], 1, 1, 2);
+	spa_assert_se(pw_filter_rendezvous_begin(rendezvous, &target, 200,
+			false) == 0);
+	spa_assert_se(spa_io_buffers_latest_publish(&latest[0], 1, NULL) == 0);
+	spa_assert_se(spa_io_buffers_latest_publish(&latest[1], 1, NULL) == 0);
+	spa_assert_se(pw_filter_rendezvous_poll(rendezvous, 150, &result) == 1);
+	spa_assert_se(result.accepted_inputs == 3);
+	spa_assert_se(result.missing_required_inputs == 0);
+	spa_assert_se(result.cause == PW_FILTER_RENDEZVOUS_CAUSE_COMPLETE);
+	spa_assert_se(pw_filter_rendezvous_get_buffer(rendezvous, 0) != NULL);
+	spa_assert_se(pw_filter_rendezvous_get_buffer(rendezvous, 1) != NULL);
+	spa_assert_se(pw_filter_rendezvous_finish(rendezvous) == 0);
+	spa_assert_se(spa_io_buffers_latest_pop_recycle(&latest[0], &id) == 0);
+	spa_assert_se(id == 1);
+	spa_assert_se(spa_io_buffers_latest_pop_recycle(&latest[1], &id) == 0);
+	spa_assert_se(id == 1);
+
+	/* Nonmatching observations are returned during the same bounded poll. */
+	rendezvous_set_acquisition(&target, 1, 1, 3);
+	rendezvous_set_acquisition(&acquisitions[0][0], 1, 1, 2);
+	rendezvous_set_acquisition(&acquisitions[1][0], 1, 1, 4);
+	spa_assert_se(pw_filter_rendezvous_begin(rendezvous, &target, 300,
+			false) == 0);
+	spa_assert_se(spa_io_buffers_latest_publish(&latest[0], 0, NULL) == 0);
+	spa_assert_se(spa_io_buffers_latest_publish(&latest[1], 0, NULL) == 0);
+	spa_assert_se(pw_filter_rendezvous_poll(rendezvous, 300, &result) == 1);
+	spa_assert_se(result.accepted_inputs == 0);
+	spa_assert_se(result.missing_required_inputs == 3);
+	spa_assert_se(pw_filter_rendezvous_finish(rendezvous) == 0);
+	spa_assert_se(spa_io_buffers_latest_pop_recycle(&latest[0], &id) == 0);
+	spa_assert_se(id == 0);
+	spa_assert_se(spa_io_buffers_latest_pop_recycle(&latest[1], &id) == 0);
+	spa_assert_se(id == 0);
+
+	spa_assert_se(pw_filter_rendezvous_get_stats(rendezvous, &stats) == 0);
+	spa_assert_se(stats.accepted == 3);
+	spa_assert_se(stats.stale == 1);
+	spa_assert_se(stats.future == 1);
+	spa_assert_se(stats.complete_releases == 1);
+	spa_assert_se(stats.deadline_releases == 2);
+	spa_assert_se(stats.missing_required_inputs == 3);
+	spa_assert_se(stats.lease_returns == 5);
+
+	/* Version 1 progressive buffers are outside this complete-buffer facility. */
+	rendezvous_set_acquisition(&target, 1, 1, 4);
+	rendezvous_set_acquisition(&acquisitions[0][0], 1, 1, 4);
+	progressive_metas[0] = metas[0][0];
+	progressive_metas[1] = (struct spa_meta) {
+		.type = SPA_META_Progressive,
+		.size = sizeof(progressive),
+		.data = &progressive,
+	};
+	storage[0][0].n_metas = SPA_N_ELEMENTS(progressive_metas);
+	storage[0][0].metas = progressive_metas;
+	spa_assert_se(pw_filter_rendezvous_begin(rendezvous, &target, 400,
+			false) == 0);
+	spa_assert_se(spa_io_buffers_latest_publish(&latest[0], 0, NULL) == 0);
+	spa_assert_se(pw_filter_rendezvous_poll(rendezvous, 400, &result) == 1);
+	spa_assert_se(result.accepted_inputs == 0);
+	spa_assert_se(pw_filter_rendezvous_finish(rendezvous) == 0);
+	spa_assert_se(spa_io_buffers_latest_pop_recycle(&latest[0], &id) == 0);
+	spa_assert_se(id == 0);
+	storage[0][0].n_metas = 1;
+	storage[0][0].metas = &metas[0][0];
+	spa_assert_se(pw_filter_rendezvous_get_stats(rendezvous, &stats) == 0);
+	spa_assert_se(stats.rejected == 1);
+
+	/* Ordering requires an explicit discontinuity for domain replacement. */
+	spa_assert_se(pw_filter_rendezvous_begin(rendezvous, &target, 400,
+			false) == -ESTALE);
+	rendezvous_set_acquisition(&target, 2, 1, 1);
+	spa_assert_se(pw_filter_rendezvous_begin(rendezvous, &target, 400,
+			false) == -EXDEV);
+	spa_assert_se(pw_filter_rendezvous_begin(rendezvous, &target, 400,
+			true) == 0);
+	spa_assert_se(pw_filter_rendezvous_cancel(rendezvous) == 0);
+	spa_assert_se(pw_filter_rendezvous_destroy(rendezvous) == 0);
+
+	/* Fixed release remains pending even when every required input is ready. */
+	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 2, 3,
+			PW_FILTER_RENDEZVOUS_RELEASE_FIXED) == 0);
+	rendezvous_set_acquisition(&target, 1, 1, 4);
+	rendezvous_set_acquisition(&acquisitions[0][0], 1, 1, 4);
+	rendezvous_set_acquisition(&acquisitions[1][0], 1, 1, 4);
+	spa_assert_se(pw_filter_rendezvous_begin(rendezvous, &target, 500,
+			false) == 0);
+	spa_assert_se(spa_io_buffers_latest_publish(&latest[0], 0, NULL) == 0);
+	spa_assert_se(spa_io_buffers_latest_publish(&latest[1], 0, NULL) == 0);
+	spa_assert_se(pw_filter_rendezvous_poll(rendezvous, 499, &result) == 0);
+	spa_assert_se(pw_filter_rendezvous_poll(rendezvous, 500, &result) == 1);
+	spa_assert_se(result.cause == PW_FILTER_RENDEZVOUS_CAUSE_FIXED);
+	spa_assert_se(pw_filter_rendezvous_reset(rendezvous) == 0);
+	spa_assert_se(spa_io_buffers_latest_pop_recycle(&latest[0], &id) == 0);
+	spa_assert_se(id == 0);
+	spa_assert_se(spa_io_buffers_latest_pop_recycle(&latest[1], &id) == 0);
+	spa_assert_se(id == 0);
+	spa_assert_se(pw_filter_rendezvous_destroy(rendezvous) == 0);
+
+	pw_filter_destroy(filter);
+	pw_context_destroy(context);
+	pw_main_loop_destroy(loop);
+}
+
 int main(int argc, char *argv[])
 {
 	pw_init(&argc, &argv);
@@ -876,6 +1108,7 @@ int main(int argc, char *argv[])
 	test_latest_worker_lifecycle_barrier();
 	test_latest_buffer_subscriber_limit();
 	test_latest_input_poller();
+	test_complete_buffer_rendezvous();
 
 	pw_deinit();
 
