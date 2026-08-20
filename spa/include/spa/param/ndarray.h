@@ -54,9 +54,11 @@ struct spa_ndarray_info {
 /** Optional alternatives for an enumerated ndarray format.
  *
  * The fixed values in `spa_ndarray_info` are the defaults. Element-type and
- * layout arrays contain additional values for an ordinary SPA Enum Choice.
+ * layout arrays contain additional values for an ordinary SPA Enum Choice;
+ * the builder repeats the default in the admissible list as SPA requires.
  * Rate values follow the default and are interpreted according to
- * `rate_choice`: Enum values are alternatives, Range values are `[min,max]`,
+ * `rate_choice`: Enum values are additional alternatives (the builder repeats
+ * the default), Range values are `[min,max]`,
  * and Step values are `[min,max,step]`. SPA_CHOICE_None requires no values.
  * Shape is deliberately not a choice; offer a separate format POD for each
  * supported exact shape.

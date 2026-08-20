@@ -383,6 +383,7 @@ PWTEST(ndarray_format_choices)
 	pwtest_bool_true(spa_pod_is_choice(&property->value));
 	pwtest_int_eq(SPA_POD_CHOICE_TYPE(&property->value),
 			(uint32_t)SPA_CHOICE_Enum);
+	pwtest_int_eq(SPA_POD_CHOICE_N_VALUES(&property->value), 3U);
 	property = spa_pod_find_prop(offered, NULL, SPA_FORMAT_NDARRAY_shape);
 	pwtest_ptr_notnull(property);
 	pwtest_bool_false(spa_pod_is_choice(&property->value));
@@ -397,10 +398,22 @@ PWTEST(ndarray_format_choices)
 	pwtest_ptr_notnull(fixed);
 	spa_pod_builder_init(&result_builder, result_buffer, sizeof(result_buffer));
 	pwtest_int_ge(spa_pod_filter(&result_builder, &result, fixed, offered), 0);
+	pwtest_int_ge(spa_pod_filter_make(result), 0);
 	pwtest_int_eq(spa_format_ndarray_parse(result, &parsed), 0);
 	pwtest_int_eq(parsed.element_type, (enum spa_element_type)SPA_ELEMENT_TYPE_F32_LE);
 	pwtest_int_eq(parsed.layout, (enum spa_ndarray_layout)SPA_NDARRAY_LAYOUT_ROW_MAJOR);
 	pwtest_int_eq(parsed.rate.num, 1000U);
+
+	fixed_info.element_type = SPA_ELEMENT_TYPE_F64_LE;
+	fixed_info.layout = SPA_NDARRAY_LAYOUT_COLUMN_MAJOR;
+	spa_pod_builder_init(&builder, fixed_buffer, sizeof(fixed_buffer));
+	fixed = spa_format_ndarray_build(&builder, SPA_PARAM_EnumFormat, &fixed_info);
+	spa_pod_builder_init(&result_builder, result_buffer, sizeof(result_buffer));
+	pwtest_int_ge(spa_pod_filter(&result_builder, &result, fixed, offered), 0);
+	pwtest_int_ge(spa_pod_filter_make(result), 0);
+	pwtest_int_eq(spa_format_ndarray_parse(result, &parsed), 0);
+	pwtest_int_eq(parsed.element_type, (enum spa_element_type)SPA_ELEMENT_TYPE_F64_LE);
+	pwtest_int_eq(parsed.layout, (enum spa_ndarray_layout)SPA_NDARRAY_LAYOUT_COLUMN_MAJOR);
 
 	fixed_info.shape[1] = 17;
 	spa_pod_builder_init(&builder, mismatch_buffer, sizeof(mismatch_buffer));
