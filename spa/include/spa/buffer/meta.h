@@ -537,6 +537,14 @@ SPA_API_META bool spa_meta_progressive_is_valid(const struct spa_meta *meta)
 	if (!spa_meta_progressive_snapshot_decode(snapshot, &committed, &state) ||
 	    committed > progressive->payload_size)
 		return false;
+	if ((state == SPA_META_PROGRESSIVE_STATE_PREPARED && committed != 0) ||
+	    (state == SPA_META_PROGRESSIVE_STATE_COMPLETE &&
+	     committed != progressive->payload_size) ||
+	    ((state == SPA_META_PROGRESSIVE_STATE_ACTIVE ||
+	      state == SPA_META_PROGRESSIVE_STATE_ABORTED) &&
+	     committed != progressive->payload_size &&
+	     committed % progressive->commit_granularity != 0))
+		return false;
 	if ((state == SPA_META_PROGRESSIVE_STATE_COMPLETE ||
 	     state == SPA_META_PROGRESSIVE_STATE_ABORTED) &&
 	    (progressive->terminal_flags & ~SPA_META_PROGRESSIVE_FLAG_ALL) != 0)
