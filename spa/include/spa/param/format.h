@@ -85,7 +85,9 @@ enum spa_media_subtype {
 	SPA_MEDIA_SUBTYPE_START_Application	= 0x60000,
 	SPA_MEDIA_SUBTYPE_control,		/**< control stream, data contains
 						  *  spa_pod_sequence with control info. */
-	SPA_MEDIA_SUBTYPE_ndarray,		/**< packed N-dimensional typed elements */
+
+	SPA_MEDIA_SUBTYPE_START_PipeWireAO = 0x1000000,
+	SPA_MEDIA_SUBTYPE_ndarray = SPA_MEDIA_SUBTYPE_START_PipeWireAO,	/**< packed N-dimensional typed elements */
 };
 
 /**
@@ -243,13 +245,24 @@ enum spa_format {
 	SPA_FORMAT_CONTROL_types,		/**< possible control types (flags choice Int,
 						  *  mask of enum spa_control_type) */
 
-	/* NdArray format keys */
-	SPA_FORMAT_START_NdArray = 0x61000,
+	/* PipeWireAO NdArray format keys */
+	SPA_FORMAT_START_NdArray = 0x1000000,
 	SPA_FORMAT_NDARRAY_elementType,		/**< element type (Id enum spa_element_type) */
 	SPA_FORMAT_NDARRAY_shape,		/**< positive logical dimensions (Array of Int) */
 	SPA_FORMAT_NDARRAY_layout,		/**< storage order (Id enum spa_ndarray_layout) */
 	SPA_FORMAT_NDARRAY_rate,		/**< optional sample rate (Fraction) */
 };
+
+SPA_STATIC_ASSERT(SPA_MEDIA_SUBTYPE_ndarray == 0x1000000,
+		"PipeWireAO ndarray media subtype ABI");
+SPA_STATIC_ASSERT(SPA_FORMAT_NDARRAY_elementType == 0x1000001,
+		"PipeWireAO ndarray element-type key ABI");
+SPA_STATIC_ASSERT(SPA_FORMAT_NDARRAY_shape == 0x1000002,
+		"PipeWireAO ndarray shape key ABI");
+SPA_STATIC_ASSERT(SPA_FORMAT_NDARRAY_layout == 0x1000003,
+		"PipeWireAO ndarray layout key ABI");
+SPA_STATIC_ASSERT(SPA_FORMAT_NDARRAY_rate == 0x1000004,
+		"PipeWireAO ndarray rate key ABI");
 
 #define SPA_KEY_FORMAT_DSP		"format.dsp"		/**< a predefined DSP format,
 								  *  Ex. "32 bit float mono audio" */
