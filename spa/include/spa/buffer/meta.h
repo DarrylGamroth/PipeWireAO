@@ -38,6 +38,7 @@ enum spa_meta_type {
 	SPA_META_VideoTransform,	/**< struct spa_meta_transform */
 	SPA_META_SyncTimeline,		/**< struct spa_meta_sync_timeline */
 	SPA_META_Progressive,		/**< struct spa_meta_progressive */
+	SPA_META_Acquisition,		/**< struct spa_meta_acquisition */
 	_SPA_META_LAST,			/**< not part of ABI/API */
 
 	SPA_META_START_custom		= 0x200,
@@ -204,6 +205,195 @@ struct spa_meta_sync_timeline {
 	uint64_t release_point;			/**< the timeline release point, this timeline point should
 						  *  be signaled when the data is no longer accessed. */
 };
+
+/** Version 1 acquisition metadata ABI. */
+#define SPA_META_ACQUISITION_VERSION		1u
+#define SPA_META_ACQUISITION_SIZE		96u
+#define SPA_META_FEATURE_ACQUISITION_VERSION_1	(1u << 0)
+
+#define SPA_META_ACQUISITION_FLAG_IDENTITY_VALID		(1u << 0)
+#define SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID	(1u << 1)
+#define SPA_META_ACQUISITION_FLAG_EXPOSURE_DURATION_VALID	(1u << 2)
+#define SPA_META_ACQUISITION_FLAG_ALL			((1u << 3) - 1u)
+
+/**
+ * Physical acquisition identity and qualified exposure time.
+ *
+ * The producer initializes this structure before publishing a complete buffer
+ * or before the first ACTIVE publication of a progressive buffer. It remains
+ * immutable until every producer and consumer lease on that buffer ends.
+ *
+ * Identity is the complete (domain, generation, sequence) tuple. The domain is
+ * opaque and compared bytewise. exposure_start_nsec is the physical exposure
+ * start mapped into the local Linux CLOCK_MONOTONIC domain. A valid timestamp
+ * has a nonnegative value and an inclusive uncertainty bound. Version 1
+ * timestamps from different Linux kernels are not comparable.
+ */
+struct SPA_ALIGNED(8) spa_meta_acquisition {
+	uint32_t version;
+	uint32_t abi_size;
+	uint32_t flags;
+	uint32_t reserved0;
+	uint8_t domain[16];
+	uint64_t generation;
+	uint64_t sequence;
+	int64_t exposure_start_nsec;
+	uint64_t exposure_duration_nsec;
+	uint64_t timestamp_uncertainty_nsec;
+	uint64_t reserved[3];
+};
+
+SPA_STATIC_ASSERT(sizeof(struct spa_meta_acquisition) == SPA_META_ACQUISITION_SIZE,
+		"spa_meta_acquisition ABI size");
+SPA_STATIC_ASSERT(SPA_ALIGNOF(struct spa_meta_acquisition) == 8u,
+		"spa_meta_acquisition ABI alignment");
+SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, domain) == 16u,
+		"spa_meta_acquisition domain offset");
+SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, generation) == 32u,
+		"spa_meta_acquisition generation offset");
+SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, sequence) == 40u,
+		"spa_meta_acquisition sequence offset");
+SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, exposure_start_nsec) == 48u,
+		"spa_meta_acquisition exposure-start offset");
+SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, reserved) == 72u,
+		"spa_meta_acquisition reserved offset");
+
+static inline bool _spa_meta_acquisition_domain_is_zero(const uint8_t domain[16])
+{
+	uint8_t value = 0;
+	uint32_t i;
+
+	for (i = 0; i < 16; i++)
+		value |= domain[i];
+	return value == 0;
+}
+
+static inline bool _spa_meta_acquisition_fields_are_valid(
+		const struct spa_meta_acquisition *acquisition)
+{
+	bool identity_valid, start_valid, duration_valid;
+
+	if (acquisition == NULL || !SPA_IS_ALIGNED(acquisition, 8) ||
+	    acquisition->version != SPA_META_ACQUISITION_VERSION ||
+	    acquisition->abi_size != SPA_META_ACQUISITION_SIZE ||
+	    (acquisition->flags & ~SPA_META_ACQUISITION_FLAG_ALL) != 0 ||
+	    acquisition->reserved0 != 0 ||
+	    acquisition->reserved[0] != 0 || acquisition->reserved[1] != 0 ||
+	    acquisition->reserved[2] != 0)
+		return false;
+
+	identity_valid = SPA_FLAG_IS_SET(acquisition->flags,
+			SPA_META_ACQUISITION_FLAG_IDENTITY_VALID);
+	if (identity_valid) {
+		if (_spa_meta_acquisition_domain_is_zero(acquisition->domain))
+			return false;
+	} else if (!_spa_meta_acquisition_domain_is_zero(acquisition->domain) ||
+		   acquisition->generation != 0 || acquisition->sequence != 0) {
+		return false;
+	}
+
+	start_valid = SPA_FLAG_IS_SET(acquisition->flags,
+			SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID);
+	if (start_valid) {
+		if (acquisition->exposure_start_nsec < 0)
+			return false;
+	} else if (acquisition->exposure_start_nsec != SPA_TIME_INVALID ||
+		   acquisition->timestamp_uncertainty_nsec != 0) {
+		return false;
+	}
+
+	duration_valid = SPA_FLAG_IS_SET(acquisition->flags,
+			SPA_META_ACQUISITION_FLAG_EXPOSURE_DURATION_VALID);
+	if (duration_valid) {
+		if (acquisition->exposure_duration_nsec == 0)
+			return false;
+	} else if (acquisition->exposure_duration_nsec != 0) {
+		return false;
+	}
+	return true;
+}
+
+/** Initialize reusable acquisition metadata with no valid identity or time. */
+SPA_API_META bool spa_meta_acquisition_init(struct spa_meta_acquisition *acquisition)
+{
+	if (acquisition == NULL || !SPA_IS_ALIGNED(acquisition, 8))
+		return false;
+
+	memset(acquisition, 0, sizeof(*acquisition));
+	acquisition->version = SPA_META_ACQUISITION_VERSION;
+	acquisition->abi_size = SPA_META_ACQUISITION_SIZE;
+	acquisition->exposure_start_nsec = SPA_TIME_INVALID;
+	return true;
+}
+
+/** Establish the acquisition identity tuple. */
+SPA_API_META bool spa_meta_acquisition_set_identity(
+		struct spa_meta_acquisition *acquisition, const uint8_t domain[16],
+		uint64_t generation, uint64_t sequence)
+{
+	if (!_spa_meta_acquisition_fields_are_valid(acquisition) || domain == NULL ||
+	    _spa_meta_acquisition_domain_is_zero(domain))
+		return false;
+
+	memcpy(acquisition->domain, domain, sizeof(acquisition->domain));
+	acquisition->generation = generation;
+	acquisition->sequence = sequence;
+	SPA_FLAG_SET(acquisition->flags, SPA_META_ACQUISITION_FLAG_IDENTITY_VALID);
+	return true;
+}
+
+/** Establish a local CLOCK_MONOTONIC exposure-start mapping. */
+SPA_API_META bool spa_meta_acquisition_set_exposure_start(
+		struct spa_meta_acquisition *acquisition, int64_t exposure_start_nsec,
+		uint64_t timestamp_uncertainty_nsec)
+{
+	if (!_spa_meta_acquisition_fields_are_valid(acquisition) || exposure_start_nsec < 0)
+		return false;
+
+	acquisition->exposure_start_nsec = exposure_start_nsec;
+	acquisition->timestamp_uncertainty_nsec = timestamp_uncertainty_nsec;
+	SPA_FLAG_SET(acquisition->flags,
+			SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID);
+	return true;
+}
+
+/** Establish a positive exposure duration. */
+SPA_API_META bool spa_meta_acquisition_set_exposure_duration(
+		struct spa_meta_acquisition *acquisition, uint64_t exposure_duration_nsec)
+{
+	if (!_spa_meta_acquisition_fields_are_valid(acquisition) ||
+	    exposure_duration_nsec == 0)
+		return false;
+
+	acquisition->exposure_duration_nsec = exposure_duration_nsec;
+	SPA_FLAG_SET(acquisition->flags,
+			SPA_META_ACQUISITION_FLAG_EXPOSURE_DURATION_VALID);
+	return true;
+}
+
+/** Validate a mapped Version 1 acquisition metadata allocation. */
+SPA_API_META bool spa_meta_acquisition_is_valid(const struct spa_meta *meta)
+{
+	return meta != NULL && meta->type == SPA_META_Acquisition &&
+		meta->data != NULL && meta->size >= sizeof(struct spa_meta_acquisition) &&
+		_spa_meta_acquisition_fields_are_valid(
+				(const struct spa_meta_acquisition *)meta->data);
+}
+
+/** Compare two complete, valid acquisition identity tuples. */
+SPA_API_META bool spa_meta_acquisition_identity_equal(
+		const struct spa_meta_acquisition *a,
+		const struct spa_meta_acquisition *b)
+{
+	if (!_spa_meta_acquisition_fields_are_valid(a) ||
+	    !_spa_meta_acquisition_fields_are_valid(b) ||
+	    !SPA_FLAG_IS_SET(a->flags, SPA_META_ACQUISITION_FLAG_IDENTITY_VALID) ||
+	    !SPA_FLAG_IS_SET(b->flags, SPA_META_ACQUISITION_FLAG_IDENTITY_VALID))
+		return false;
+
+	return a->generation == b->generation && a->sequence == b->sequence &&
+		memcmp(a->domain, b->domain, sizeof(a->domain)) == 0;
+}
 
 /** Version 1 progressive metadata ABI. */
 #define SPA_META_PROGRESSIVE_VERSION		1u
