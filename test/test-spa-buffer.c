@@ -333,6 +333,18 @@ PWTEST(buffer_progressive_meta)
 	pwtest_int_eq((uint32_t) state,
 			(uint32_t) SPA_META_PROGRESSIVE_STATE_ACTIVE);
 	pwtest_bool_true(spa_meta_progressive_is_valid(&meta));
+	spa_meta_progressive_store_release(&progressive,
+			spa_meta_progressive_snapshot_encode(1025,
+				SPA_META_PROGRESSIVE_STATE_ACTIVE));
+	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
+	spa_meta_progressive_store_release(&progressive,
+			spa_meta_progressive_snapshot_encode(1024,
+				SPA_META_PROGRESSIVE_STATE_COMPLETE));
+	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
+	spa_meta_progressive_store_release(&progressive,
+			spa_meta_progressive_snapshot_encode(1,
+				SPA_META_PROGRESSIVE_STATE_PREPARED));
+	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
 	progressive.terminal_flags = SPA_META_PROGRESSIVE_FLAG_CANCELLED;
 	spa_meta_progressive_store_release(&progressive,
 			spa_meta_progressive_snapshot_encode(1024,

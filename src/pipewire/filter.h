@@ -469,7 +469,9 @@ int pw_filter_rendezvous_get_stats(struct pw_filter_rendezvous *rendezvous,
 /**
  * Return all leases, end every worker lifetime, and free the rendezvous.
  *
- * A cleanup failure leaves the object allocated so the caller can retry.
+ * This is a best-effort terminal operation. It returns the first worker-
+ * lifetime cleanup error after visiting every input, and frees the rendezvous
+ * even when it reports an invariant failure.
  */
 int pw_filter_rendezvous_destroy(struct pw_filter_rendezvous *rendezvous);
 
