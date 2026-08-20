@@ -209,6 +209,7 @@ struct spa_meta_sync_timeline {
 /** Version 1 acquisition metadata ABI. */
 #define SPA_META_ACQUISITION_VERSION		1u
 #define SPA_META_ACQUISITION_SIZE		96u
+#define SPA_META_ACQUISITION_DOMAIN_SIZE	16u
 #define SPA_META_FEATURE_ACQUISITION_VERSION_1	(1u << 0)
 
 #define SPA_META_ACQUISITION_FLAG_IDENTITY_VALID		(1u << 0)
@@ -234,7 +235,7 @@ struct SPA_ALIGNED(8) spa_meta_acquisition {
 	uint32_t abi_size;
 	uint32_t flags;
 	uint32_t reserved0;
-	uint8_t domain[16];
+	uint8_t domain[SPA_META_ACQUISITION_DOMAIN_SIZE];
 	uint64_t generation;
 	uint64_t sequence;
 	int64_t exposure_start_nsec;
@@ -258,12 +259,13 @@ SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, exposure_start_nsec) == 
 SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, reserved) == 72u,
 		"spa_meta_acquisition reserved offset");
 
-static inline bool _spa_meta_acquisition_domain_is_zero(const uint8_t domain[16])
+static inline bool _spa_meta_acquisition_domain_is_zero(
+		const uint8_t domain[SPA_META_ACQUISITION_DOMAIN_SIZE])
 {
 	uint8_t value = 0;
 	uint32_t i;
 
-	for (i = 0; i < 16; i++)
+	for (i = 0; i < SPA_META_ACQUISITION_DOMAIN_SIZE; i++)
 		value |= domain[i];
 	return value == 0;
 }
@@ -328,7 +330,8 @@ SPA_API_META bool spa_meta_acquisition_init(struct spa_meta_acquisition *acquisi
 
 /** Establish the acquisition identity tuple. */
 SPA_API_META bool spa_meta_acquisition_set_identity(
-		struct spa_meta_acquisition *acquisition, const uint8_t domain[16],
+		struct spa_meta_acquisition *acquisition,
+		const uint8_t domain[SPA_META_ACQUISITION_DOMAIN_SIZE],
 		uint64_t generation, uint64_t sequence)
 {
 	if (!_spa_meta_acquisition_fields_are_valid(acquisition) || domain == NULL ||
