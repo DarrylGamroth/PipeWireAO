@@ -178,7 +178,11 @@ pw_filter_connect(struct pw_filter *filter,		/**< a \ref pw_filter */
 uint32_t
 pw_filter_get_node_id(struct pw_filter *filter);
 
-/** Disconnect \a filter  */
+/** Disconnect \a filter.
+ *
+ * Returns -EBUSY while any latest-buffer worker ownership is active. Stop the
+ * worker, return every held buffer, end its ownership, and retry disconnect.
+ */
 int pw_filter_disconnect(struct pw_filter *filter);
 
 /** add a port to the filter, returns user data of port_data_size. */
@@ -191,7 +195,10 @@ void *pw_filter_add_port(struct pw_filter *filter,	/**< a \ref pw_filter */
 							  *  ideally contain the supported formats */
 		uint32_t n_params			/**< number of elements in \a params */);
 
-/** remove a port from the filter */
+/** Remove a port from the filter.
+ *
+ * Returns -EBUSY while latest-buffer worker ownership is active on the port.
+ */
 int pw_filter_remove_port(void *port_data		/**< data associated with port */);
 
 /** get properties, port_data of NULL will give global properties */
@@ -335,6 +342,27 @@ struct pw_filter_buffer_latest_stats {
  */
 int pw_filter_get_buffer_latest_stats(void *port_data,
 		struct pw_filter_buffer_latest_stats *stats);
+
+/**
+ * Begin exclusive latest-buffer worker ownership of a port. RT safe.
+ *
+ * This lifetime barrier prevents filter disconnect, port removal, and
+ * replacement of an installed buffer pool until the worker calls
+ * \ref pw_filter_buffer_latest_worker_end. It does not make concurrent buffer
+ * operations safe: the successful caller remains the port's only buffer
+ * worker. Returns -EBUSY for a second worker and -EPIPE while teardown is
+ * retiring the filter or port.
+ */
+int pw_filter_buffer_latest_worker_begin(void *port_data);
+
+/**
+ * End exclusive latest-buffer worker ownership of a port. RT safe.
+ *
+ * Every successful \ref pw_filter_buffer_latest_worker_begin must be matched
+ * exactly once after all dequeued and progressive buffers have been returned.
+ * Returns -EINVAL when no worker ownership is active.
+ */
+int pw_filter_buffer_latest_worker_end(void *port_data);
 
 /** Submit a buffer for playback or recycle a buffer for capture. RT safe.
  * The caller must own the port's serialized buffer worker. */
