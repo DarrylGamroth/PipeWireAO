@@ -5,6 +5,8 @@
 #include <spa/param/audio/format-utils.h>
 #include <spa/param/audio/format.h>
 #include <spa/param/format-types.h>
+#include <spa/param/ndarray-utils.h>
+#include <spa/pod/filter.h>
 
 #include "pwtest.h"
 
@@ -258,11 +260,165 @@ PWTEST(ndarray_format_pods)
 	return PWTEST_PASS;
 }
 
+PWTEST(ndarray_format_utils)
+{
+	uint8_t buffer[2048], invalid_buffer[1024];
+	struct spa_pod_builder builder;
+	struct spa_pod *pod, *invalid;
+	struct spa_ndarray_info parsed;
+	struct spa_ndarray_info matrix = SPA_NDARRAY_INFO_INIT(
+		.element_type = SPA_ELEMENT_TYPE_F32_LE,
+		.layout = SPA_NDARRAY_LAYOUT_COLUMN_MAJOR,
+		.rate = SPA_FRACTION(1000, 1),
+		.n_dimensions = 2,
+		.shape = { 48, 64 });
+	size_t n_elements, n_bytes;
+
+	pwtest_int_eq(spa_ndarray_info_validate(&matrix), 0);
+	pwtest_int_eq(spa_ndarray_info_get_n_elements(&matrix, &n_elements), 0);
+	pwtest_int_eq(n_elements, 48U * 64U);
+	pwtest_int_eq(spa_ndarray_info_get_size(&matrix, &n_bytes), 0);
+	pwtest_int_eq(n_bytes, 48U * 64U * sizeof(float));
+
+	spa_pod_builder_init(&builder, buffer, sizeof(buffer));
+	pod = spa_format_ndarray_build(&builder, SPA_PARAM_Format, &matrix);
+	pwtest_ptr_notnull(pod);
+	spa_zero(parsed);
+	pwtest_int_eq(spa_format_ndarray_parse(pod, &parsed), 0);
+	pwtest_int_eq(parsed.element_type, matrix.element_type);
+	pwtest_int_eq(parsed.layout, matrix.layout);
+	pwtest_int_eq(parsed.rate.num, matrix.rate.num);
+	pwtest_int_eq(parsed.rate.denom, matrix.rate.denom);
+	pwtest_int_eq(parsed.n_dimensions, 2U);
+	pwtest_int_eq(parsed.shape[0], 48U);
+	pwtest_int_eq(parsed.shape[1], 64U);
+
+	parsed = matrix;
+	parsed.element_type = SPA_ELEMENT_TYPE_UNKNOWN;
+	pwtest_int_eq(spa_ndarray_info_validate(&parsed), -EINVAL);
+	parsed = matrix;
+	parsed.layout = SPA_NDARRAY_LAYOUT_UNKNOWN;
+	pwtest_int_eq(spa_ndarray_info_validate(&parsed), -EINVAL);
+	parsed = matrix;
+	parsed.shape[0] = 0;
+	pwtest_int_eq(spa_ndarray_info_validate(&parsed), -EINVAL);
+	parsed = matrix;
+	parsed.rate = SPA_FRACTION(0, 1);
+	pwtest_int_eq(spa_ndarray_info_validate(&parsed), -EINVAL);
+	parsed = matrix;
+	parsed.n_dimensions = 3;
+	parsed.shape[0] = INT32_MAX;
+	parsed.shape[1] = INT32_MAX;
+	parsed.shape[2] = INT32_MAX;
+	pwtest_int_eq(spa_ndarray_info_validate(&parsed), -EOVERFLOW);
+	pwtest_int_eq(spa_ndarray_info_ext_validate(&matrix,
+			offsetof(struct spa_ndarray_info, shape) + sizeof(uint32_t)), -EINVAL);
+
+	spa_pod_builder_init(&builder, invalid_buffer, sizeof(invalid_buffer));
+	invalid = spa_pod_builder_add_object(&builder,
+		SPA_TYPE_OBJECT_Format, SPA_PARAM_Format,
+		SPA_FORMAT_mediaType, SPA_POD_Id(SPA_MEDIA_TYPE_video),
+		SPA_FORMAT_mediaSubtype, SPA_POD_Id(SPA_MEDIA_SUBTYPE_ndarray),
+		SPA_FORMAT_NDARRAY_elementType, SPA_POD_Id(SPA_ELEMENT_TYPE_F32_LE),
+		SPA_FORMAT_NDARRAY_shape, SPA_POD_Array(sizeof(uint32_t), SPA_TYPE_Int,
+			matrix.n_dimensions, matrix.shape),
+		SPA_FORMAT_NDARRAY_layout, SPA_POD_Id(SPA_NDARRAY_LAYOUT_ROW_MAJOR));
+	pwtest_int_eq(spa_format_ndarray_parse(invalid, &parsed), -EINVAL);
+
+	spa_pod_builder_init(&builder, invalid_buffer, sizeof(invalid_buffer));
+	invalid = spa_pod_builder_add_object(&builder,
+		SPA_TYPE_OBJECT_Format, SPA_PARAM_Format,
+		SPA_FORMAT_mediaType, SPA_POD_Id(SPA_MEDIA_TYPE_application),
+		SPA_FORMAT_mediaSubtype, SPA_POD_Id(SPA_MEDIA_SUBTYPE_ndarray),
+		SPA_FORMAT_NDARRAY_elementType, SPA_POD_Id(SPA_ELEMENT_TYPE_F32_LE),
+		SPA_FORMAT_NDARRAY_shape, SPA_POD_Array(sizeof(uint32_t), SPA_TYPE_Int,
+			matrix.n_dimensions, matrix.shape));
+	pwtest_int_eq(spa_format_ndarray_parse(invalid, &parsed), -EINVAL);
+
+	return PWTEST_PASS;
+}
+
+PWTEST(ndarray_format_choices)
+{
+	uint8_t offered_buffer[2048], fixed_buffer[2048], result_buffer[2048],
+		mismatch_buffer[2048];
+	struct spa_pod_builder builder, result_builder;
+	struct spa_pod *offered, *fixed, *result, *mismatch;
+	struct spa_ndarray_info parsed;
+	struct spa_ndarray_info offered_info = SPA_NDARRAY_INFO_INIT(
+		.element_type = SPA_ELEMENT_TYPE_F64_LE,
+		.layout = SPA_NDARRAY_LAYOUT_COLUMN_MAJOR,
+		.rate = SPA_FRACTION(1000, 1),
+		.n_dimensions = 2,
+		.shape = { 16, 16 });
+	struct spa_ndarray_info fixed_info = SPA_NDARRAY_INFO_INIT(
+		.element_type = SPA_ELEMENT_TYPE_F32_LE,
+		.layout = SPA_NDARRAY_LAYOUT_ROW_MAJOR,
+		.rate = SPA_FRACTION(1000, 1),
+		.n_dimensions = 2,
+		.shape = { 16, 16 });
+	const enum spa_element_type element_types[] = { SPA_ELEMENT_TYPE_F32_LE };
+	const enum spa_ndarray_layout layouts[] = { SPA_NDARRAY_LAYOUT_ROW_MAJOR };
+	const struct spa_fraction rates[] = {
+		SPA_FRACTION(500, 1), SPA_FRACTION(2000, 1)
+	};
+	const struct spa_ndarray_choices choices = SPA_NDARRAY_CHOICES_INIT(
+		.n_element_types = SPA_N_ELEMENTS(element_types),
+		.element_types = element_types,
+		.n_layouts = SPA_N_ELEMENTS(layouts),
+		.layouts = layouts,
+		.rate_choice = SPA_CHOICE_Range,
+		.n_rate_values = SPA_N_ELEMENTS(rates),
+		.rate_values = rates);
+	const struct spa_pod_prop *property;
+
+	pwtest_int_eq(spa_ndarray_choices_validate(&offered_info,
+			sizeof(offered_info), &choices), 0);
+	spa_pod_builder_init(&builder, offered_buffer, sizeof(offered_buffer));
+	offered = spa_format_ndarray_build_choices(&builder, SPA_PARAM_EnumFormat,
+			&offered_info, &choices);
+	pwtest_ptr_notnull(offered);
+	property = spa_pod_find_prop(offered, NULL, SPA_FORMAT_NDARRAY_elementType);
+	pwtest_ptr_notnull(property);
+	pwtest_bool_true(spa_pod_is_choice(&property->value));
+	pwtest_int_eq(SPA_POD_CHOICE_TYPE(&property->value),
+			(uint32_t)SPA_CHOICE_Enum);
+	property = spa_pod_find_prop(offered, NULL, SPA_FORMAT_NDARRAY_shape);
+	pwtest_ptr_notnull(property);
+	pwtest_bool_false(spa_pod_is_choice(&property->value));
+	property = spa_pod_find_prop(offered, NULL, SPA_FORMAT_NDARRAY_rate);
+	pwtest_ptr_notnull(property);
+	pwtest_int_eq(SPA_POD_CHOICE_TYPE(&property->value),
+			(uint32_t)SPA_CHOICE_Range);
+	pwtest_int_lt(spa_format_ndarray_parse(offered, &parsed), 0);
+
+	spa_pod_builder_init(&builder, fixed_buffer, sizeof(fixed_buffer));
+	fixed = spa_format_ndarray_build(&builder, SPA_PARAM_EnumFormat, &fixed_info);
+	pwtest_ptr_notnull(fixed);
+	spa_pod_builder_init(&result_builder, result_buffer, sizeof(result_buffer));
+	pwtest_int_ge(spa_pod_filter(&result_builder, &result, fixed, offered), 0);
+	pwtest_int_eq(spa_format_ndarray_parse(result, &parsed), 0);
+	pwtest_int_eq(parsed.element_type, (enum spa_element_type)SPA_ELEMENT_TYPE_F32_LE);
+	pwtest_int_eq(parsed.layout, (enum spa_ndarray_layout)SPA_NDARRAY_LAYOUT_ROW_MAJOR);
+	pwtest_int_eq(parsed.rate.num, 1000U);
+
+	fixed_info.shape[1] = 17;
+	spa_pod_builder_init(&builder, mismatch_buffer, sizeof(mismatch_buffer));
+	mismatch = spa_format_ndarray_build(&builder, SPA_PARAM_EnumFormat, &fixed_info);
+	pwtest_ptr_notnull(mismatch);
+	spa_pod_builder_init(&result_builder, result_buffer, sizeof(result_buffer));
+	pwtest_int_lt(spa_pod_filter(&result_builder, &result, mismatch, offered), 0);
+
+	return PWTEST_PASS;
+}
+
 PWTEST_SUITE(spa_format)
 {
 	pwtest_add(audio_format_sizes, PWTEST_NOARG);
 	pwtest_add(ndarray_format_abi, PWTEST_NOARG);
 	pwtest_add(ndarray_format_pods, PWTEST_NOARG);
+	pwtest_add(ndarray_format_utils, PWTEST_NOARG);
+	pwtest_add(ndarray_format_choices, PWTEST_NOARG);
 
 	return PWTEST_PASS;
 }
