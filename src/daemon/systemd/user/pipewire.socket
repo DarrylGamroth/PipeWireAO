@@ -4,7 +4,7 @@ ConditionUser=!root
 
 [Socket]
 Priority=6
-ListenStream=%t/pipewire-ao
+ListenStream=%t/pipewire-ao-0
 
 [Install]
 WantedBy=sockets.target
