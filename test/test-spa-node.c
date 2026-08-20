@@ -75,9 +75,9 @@ PWTEST(node_io_abi)
 	pwtest_int_eq(SPA_IO_RateMatch, 8);
 	pwtest_int_eq(SPA_IO_Memory, 9);
 	pwtest_int_eq(SPA_IO_AsyncBuffers, 10);
-	pwtest_int_eq(SPA_IO_BuffersLatest, 11);
-	pwtest_int_eq(SPA_IO_BuffersLatestNotify, 12);
-	pwtest_int_eq(SPA_IO_BuffersLatestLink, 13);
+	pwtest_int_eq(SPA_IO_BuffersLatest, 0x1000000);
+	pwtest_int_eq(SPA_IO_BuffersLatestNotify, 0x1000001);
+	pwtest_int_eq(SPA_IO_BuffersLatestLink, 0x1000002);
 	pwtest_int_eq(sizeof(struct spa_io_buffers_latest_notify), 8U);
 	pwtest_int_eq(offsetof(struct spa_io_buffers_latest_link, id), 0U);
 	pwtest_int_eq(offsetof(struct spa_io_buffers_latest_link, io), 8U);

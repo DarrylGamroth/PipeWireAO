@@ -37,9 +37,13 @@ enum spa_meta_type {
 	SPA_META_Busy,			/**< don't write to buffer when count > 0 */
 	SPA_META_VideoTransform,	/**< struct spa_meta_transform */
 	SPA_META_SyncTimeline,		/**< struct spa_meta_sync_timeline */
-	SPA_META_Progressive,		/**< struct spa_meta_progressive */
+
+	/* Metadata types are negotiated in a 32-bit mask. Reserve these low
+	 * PipeWireAO slots explicitly instead of following upstream implicitly. */
+	SPA_META_START_PipeWireAO = 10,
+	SPA_META_Progressive = SPA_META_START_PipeWireAO,	/**< struct spa_meta_progressive */
 	SPA_META_Acquisition,		/**< struct spa_meta_acquisition */
-	_SPA_META_LAST,			/**< not part of ABI/API */
+	_SPA_META_LAST = 12,		/**< not part of ABI/API */
 
 	SPA_META_START_custom		= 0x200,
 
@@ -47,6 +51,11 @@ enum spa_meta_type {
 							 * type in the upper 16 bits and a bitmask in
 							 * the lower 16 bits with type specific features. */
 };
+
+SPA_STATIC_ASSERT(SPA_META_Progressive == 10,
+		"PipeWireAO progressive metadata ABI");
+SPA_STATIC_ASSERT(SPA_META_Acquisition == 11,
+		"PipeWireAO acquisition metadata ABI");
 
 #define SPA_META_TYPE_FEATURES(type,features)	(((type)<<16)|(features))
 
