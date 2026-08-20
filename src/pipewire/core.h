@@ -51,7 +51,7 @@ struct pw_registry;
 #endif
 
 /** The default remote name to connect to */
-#define PW_DEFAULT_REMOTE	"pipewire-ao"
+#define PW_DEFAULT_REMOTE	"pipewire-ao-0"
 
 /** default ID for the core object after connect */
 #define PW_ID_CORE		0

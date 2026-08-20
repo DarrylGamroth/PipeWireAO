@@ -3,7 +3,7 @@ Description=PipeWireAO Socket
 
 [Socket]
 Priority=6
-ListenStream=%t/pipewire-ao/pipewire-ao
+ListenStream=%t/pipewire-ao/pipewire-ao-0
 SocketUser=pipewire
 SocketGroup=pipewire
 SocketMode=0660
