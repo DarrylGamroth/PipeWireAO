@@ -67,6 +67,10 @@ option('pipewire-v4l2',
        description: 'Enable pipewire-v4l2 integration',
        type: 'feature',
        value: 'disabled')
+option('pulse-server',
+       description: 'Enable the PulseAudio compatibility server',
+       type: 'feature',
+       value: 'disabled')
 option('jack-devel',
        description: 'Install jack development files',
        type: 'boolean',
