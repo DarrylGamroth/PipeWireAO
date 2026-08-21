@@ -1122,6 +1122,24 @@ static void test_complete_buffer_rendezvous(void)
 	spa_assert_se(id == 0);
 	spa_assert_se(pw_filter_rendezvous_destroy(rendezvous) == 0);
 
+	/* A full return ring leaves destruction retryable and keeps both workers. */
+	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 2, 3,
+			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE) == 0);
+	rendezvous_set_acquisition(&target, 1, 1, 5);
+	rendezvous_set_acquisition(&acquisitions[0][0], 1, 1, 5);
+	spa_assert_se(pw_filter_rendezvous_begin(rendezvous, &target, 600,
+			false) == 0);
+	spa_assert_se(spa_io_buffers_latest_publish(&latest[0], 0, NULL) == 0);
+	spa_assert_se(pw_filter_rendezvous_poll(rendezvous, 600, &result,
+			sizeof(result)) == 1);
+	for (id = 0; id < SPA_IO_BUFFERS_LATEST_CAPACITY; id++)
+		spa_assert_se(spa_io_buffers_latest_push_recycle(&latest[0], 0) == 0);
+	spa_assert_se(pw_filter_rendezvous_destroy(rendezvous) == -ENOSPC);
+	spa_assert_se(pw_filter_buffer_latest_worker_begin(ports[0]) == -EBUSY);
+	spa_assert_se(pw_filter_buffer_latest_worker_begin(ports[1]) == -EBUSY);
+	spa_assert_se(spa_io_buffers_latest_pop_recycle(&latest[0], &id) == 0);
+	spa_assert_se(pw_filter_rendezvous_destroy(rendezvous) == 0);
+
 	pw_filter_destroy(filter);
 	pw_context_destroy(context);
 	pw_main_loop_destroy(loop);
