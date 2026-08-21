@@ -621,6 +621,17 @@ int pw_stream_get_time(struct pw_stream *stream, struct pw_time *time);
 struct pw_buffer *pw_stream_dequeue_buffer(struct pw_stream *stream);
 
 /**
+ * Try to acquire an output buffer whose subscriber leases have completed.
+ * RT safe.
+ *
+ * Returns 1 with a reusable buffer, 0 without withdrawing a visible
+ * submission when no buffer is reusable, or a negative errno-style result.
+ * The caller must own the stream's exclusive latest-buffer worker.
+ */
+int pw_stream_try_dequeue_buffer_reusable(struct pw_stream *stream,
+		struct pw_buffer **buffer);
+
+/**
  * Try to receive one graph-independent latest-buffer submission. RT safe.
  *
  * Returns 1 with a claimed buffer and nonzero submission sequence, 0 when no
