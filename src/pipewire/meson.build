@@ -1,5 +1,6 @@
 pipewire_headers = [
   'array.h',
+  'buffer-latest.h',
   'buffers.h',
   'impl-core.h',
   'impl-client.h',
@@ -50,6 +51,7 @@ pipewire_headers = [
 ]
 
 pipewire_sources = [
+  'buffer-latest.c',
   'buffers.c',
   'impl-core.c',
   'impl-client.c',
