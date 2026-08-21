@@ -738,7 +738,28 @@ int pw_buffer_latest_dequeue(struct pw_buffer_latest *latest, uint32_t *buffer_i
 	if (latest->direction == SPA_DIRECTION_INPUT)
 		return pw_buffer_latest_try_dequeue(latest, buffer_id,
 				submission_sequence);
-	if (SPA_UNLIKELY(!SPA_ATOMIC_LOAD(latest->enabled)))
+	res = pw_buffer_latest_try_dequeue_reusable(latest, buffer_id);
+	if (res != 0)
+		return res;
+	if ((res = reclaim_submissions(latest, buffer_id)) < 0) {
+		if (res == -EPIPE)
+			latest->stats.pool_exhaustions++;
+		return res;
+	}
+	latest->buffers[*buffer_id].flags |= BUFFER_DEQUEUED;
+	return 1;
+}
+
+int pw_buffer_latest_try_dequeue_reusable(struct pw_buffer_latest *latest,
+		uint32_t *buffer_id)
+{
+	int res;
+
+	if (SPA_UNLIKELY(latest == NULL || buffer_id == NULL))
+		return -EINVAL;
+	*buffer_id = SPA_ID_INVALID;
+	if (SPA_UNLIKELY(latest->direction != SPA_DIRECTION_OUTPUT ||
+			!SPA_ATOMIC_LOAD(latest->enabled)))
 		return -ENOTSUP;
 	if ((res = pw_buffer_latest_service_retirements(latest)) < 0)
 		return res;
@@ -747,16 +768,8 @@ int pw_buffer_latest_dequeue(struct pw_buffer_latest *latest, uint32_t *buffer_i
 	latest->stats.dequeue_attempts++;
 	if ((res = drain_completions(latest)) < 0)
 		return res;
-	if ((res = scan_output(latest, buffer_id)) == 0)
-		goto done;
-	if (res != -EPIPE)
-		return res;
-	if ((res = reclaim_submissions(latest, buffer_id)) < 0) {
-		if (res == -EPIPE)
-			latest->stats.pool_exhaustions++;
-		return res;
-	}
-done:
+	if ((res = scan_output(latest, buffer_id)) != 0)
+		return res == -EPIPE ? 0 : res;
 	latest->buffers[*buffer_id].flags |= BUFFER_DEQUEUED;
 	return 1;
 }
