@@ -7,6 +7,7 @@
 #include <pipewire/private.h>
 #include <pipewire/stream.h>
 
+#include <spa/param/video/raw-utils.h>
 #include <spa/utils/string.h>
 
 #define TEST_FUNC(a,b,func)	\
@@ -314,6 +315,77 @@ static void test_latest_buffer_fanout(void)
 	pw_main_loop_destroy(loop);
 }
 
+static void test_exact_latest_video_streams(void)
+{
+	struct pw_main_loop *loop;
+	struct pw_context *context;
+	struct pw_core *core;
+	struct pw_stream *output, *input;
+	struct pw_impl_port *output_port, *input_port;
+	struct pw_impl_link *link;
+	struct spa_video_info_raw info = {
+		.format = SPA_VIDEO_FORMAT_GRAY8,
+		.size = SPA_RECTANGLE(640, 480),
+		.framerate = SPA_FRACTION(25, 1),
+	};
+	uint8_t storage[1024];
+	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(storage, sizeof(storage));
+	const struct spa_pod *param;
+	const struct pw_properties *props;
+	const struct pw_link_info *link_info;
+
+	loop = pw_main_loop_new(NULL);
+	spa_assert_se(loop != NULL);
+	context = pw_context_new(pw_main_loop_get_loop(loop), NULL, 12);
+	spa_assert_se(context != NULL);
+	core = pw_context_connect_self(context, NULL, 0);
+	spa_assert_se(core != NULL);
+
+	param = spa_format_video_raw_build(&builder, SPA_PARAM_EnumFormat, &info);
+	spa_assert_se(param != NULL);
+	output = pw_stream_new(core, "exact-latest-video-output", NULL);
+	spa_assert_se(output != NULL);
+	spa_assert_se(pw_stream_connect(output, PW_DIRECTION_OUTPUT, PW_ID_ANY,
+			PW_STREAM_FLAG_NO_CONVERT | PW_STREAM_FLAG_BUFFER_LATEST,
+			&param, 1) == 0);
+
+	spa_pod_builder_init(&builder, storage, sizeof(storage));
+	param = spa_format_video_raw_build(&builder, SPA_PARAM_EnumFormat, &info);
+	spa_assert_se(param != NULL);
+	input = pw_stream_new(core, "exact-latest-video-input", NULL);
+	spa_assert_se(input != NULL);
+	spa_assert_se(pw_stream_connect(input, PW_DIRECTION_INPUT, PW_ID_ANY,
+			PW_STREAM_FLAG_NO_CONVERT | PW_STREAM_FLAG_BUFFER_LATEST,
+			&param, 1) == 0);
+
+	output_port = pw_impl_node_find_port(output->node, PW_DIRECTION_OUTPUT, 0);
+	input_port = pw_impl_node_find_port(input->node, PW_DIRECTION_INPUT, 0);
+	spa_assert_se(output_port != NULL);
+	spa_assert_se(input_port != NULL);
+	spa_assert_se(pw_impl_node_register(output->node, NULL) == 0);
+	spa_assert_se(pw_impl_node_register(input->node, NULL) == 0);
+	props = pw_impl_port_get_properties(output_port);
+	spa_assert_se(pw_properties_get_bool(props,
+			PW_KEY_PORT_BUFFER_LATEST, false));
+	props = pw_impl_port_get_properties(input_port);
+	spa_assert_se(pw_properties_get_bool(props,
+			PW_KEY_PORT_BUFFER_LATEST, false));
+
+	link = pw_context_create_link(context, output_port, input_port,
+			NULL, NULL, 0);
+	spa_assert_se(link != NULL);
+	link_info = pw_impl_link_get_info(link);
+	spa_assert_se(link_info != NULL);
+	spa_assert_se(spa_dict_lookup(link_info->props,
+			PW_KEY_LINK_BUFFER_LATEST) != NULL);
+
+	pw_impl_link_destroy(link);
+	pw_stream_destroy(input);
+	pw_stream_destroy(output);
+	pw_context_destroy(context);
+	pw_main_loop_destroy(loop);
+}
+
 static void test_latest_buffer_input_poller(void)
 {
 	struct pw_main_loop *loop;
@@ -381,6 +453,7 @@ int main(int argc, char *argv[])
 	test_abi();
 	test_create();
 	test_properties();
+	test_exact_latest_video_streams();
 	test_latest_buffer_fanout();
 	test_latest_buffer_input_poller();
 

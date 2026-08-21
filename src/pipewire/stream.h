@@ -504,6 +504,8 @@ enum pw_stream_flags {
 	PW_STREAM_FLAG_RT_TRIGGER_DONE	= (1 << 12),	/**< Call trigger_done from the realtime
 							  *  thread. You MUST use RT safe functions
 							  *  in the trigger_done callback. Since 1.1.0 */
+	PW_STREAM_FLAG_BUFFER_LATEST	= (1 << 13),	/**< require graph-independent latest-buffer
+							  *  transport for every link */
 };
 
 /** Create a new unconnected \ref pw_stream
