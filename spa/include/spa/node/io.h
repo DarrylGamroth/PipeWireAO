@@ -409,59 +409,68 @@ struct spa_io_async_buffers {
 /**
  * Latest complete buffer independent of graph cycles.
  *
- * The output port publishes a complete buffer by atomically exchanging its ID
- * into ready_id. The input port claims the latest ID by atomically exchanging
- * ready_id with SPA_ID_INVALID. The output may reclaim and supersede an
- * unclaimed ID, but it must not reuse an ID claimed by the input until that ID
- * appears on the recycle ring.
+ * Each output-input link is a bidirectional buffer-reference channel. The
+ * output submits a complete buffer through a capacity-one leaky submission
+ * channel. The input returns a claimed lease through the bounded completion
+ * channel. Payload storage remains in the separately negotiated buffer pool.
  *
- * This gives the handoff latest-value semantics: an output never waits for an
- * input, and an input never receives a backlog of obsolete buffers. The input
- * must hold at most one claimed buffer at a time. If every buffer is claimed,
- * the output has no safe buffer and must drop new work instead of blocking.
+ * One atomic submission word contains a monotonically increasing sequence and
+ * a buffer ID. A new submission replaces an unclaimed older submission. The
+ * input claims the pair atomically, so the sequence always identifies the
+ * returned buffer. The input must hold at most one claimed buffer at a time.
+ * If every buffer is claimed, the output has no safe buffer and must drop new
+ * work instead of blocking.
  *
  * The host negotiates and configures the referenced buffers in the normal
  * way. This area changes only buffer ownership; it does not allocate payload
  * storage or define a graph scheduling policy.
  *
- * The ready handoff is intentionally contended by the output producer and
- * input consumer. The output also owns superseded. The input alone writes the
- * recycle producer index, and the output alone writes the recycle consumer
- * index. Those independently written indices occupy separate cache lines.
+ * The submission word is intentionally contended by the output producer and
+ * input consumer. The output also owns overflows. The input alone writes the
+ * completion producer index, and the output alone writes the completion
+ * consumer index. Those independently written indices occupy separate cache
+ * lines.
  */
-#define SPA_IO_BUFFERS_LATEST_CAPACITY	64u
+#define SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY	64u
 #define SPA_IO_BUFFERS_LATEST_MAX_LINKS	64u
+#define SPA_IO_BUFFERS_LATEST_SEQUENCE_MAX	UINT64_C(0x00ffffffffffffff)
 
-struct SPA_ALIGNED(SPA_CACHE_LINE_SIZE) spa_io_buffers_latest_ready {
-	uint32_t id;
-	uint32_t superseded;	/**< output-owned count of unclaimed buffers replaced */
-	uint8_t padding[SPA_CACHE_LINE_SIZE - 2u * sizeof(uint32_t)];
+#define SPA_IO_BUFFERS_LATEST_ID_BITS	8u
+#define SPA_IO_BUFFERS_LATEST_ID_MASK	UINT64_C(0xff)
+
+struct SPA_ALIGNED(SPA_CACHE_LINE_SIZE) spa_io_buffers_latest_submission {
+	uint64_t value;		/**< atomic packed sequence and buffer ID */
+	uint64_t overflows;	/**< output-owned count of unclaimed submissions replaced */
+	uint8_t padding[SPA_CACHE_LINE_SIZE - 2u * sizeof(uint64_t)];
 };
 
 struct SPA_ALIGNED(SPA_CACHE_LINE_SIZE) spa_io_buffers_latest {
-	struct spa_io_buffers_latest_ready ready;
-	struct spa_ringbuffer_shared recycle;
-	uint32_t recycle_ids[SPA_IO_BUFFERS_LATEST_CAPACITY];
+	struct spa_io_buffers_latest_submission submission;
+	struct spa_ringbuffer_shared completion;
+	uint32_t completion_ids[SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY];
 };
 
 #define SPA_IO_BUFFERS_LATEST_INIT ((struct spa_io_buffers_latest) { \
-	.ready.id = SPA_ID_INVALID, \
-	.recycle = SPA_RINGBUFFER_SHARED_INIT(), \
+	.submission.value = 0, \
+	.completion = SPA_RINGBUFFER_SHARED_INIT(), \
 })
 
-SPA_STATIC_ASSERT((SPA_IO_BUFFERS_LATEST_CAPACITY &
-		(SPA_IO_BUFFERS_LATEST_CAPACITY - 1u)) == 0u,
-		"buffer recycle capacity must be a power of two");
-SPA_STATIC_ASSERT(sizeof(struct spa_io_buffers_latest_ready) == SPA_CACHE_LINE_SIZE,
-		"latest ready slot must occupy one cache line");
-SPA_STATIC_ASSERT(offsetof(struct spa_io_buffers_latest, ready) % SPA_CACHE_LINE_SIZE == 0u,
-		"latest ready slot must be cache-line aligned");
-SPA_STATIC_ASSERT((offsetof(struct spa_io_buffers_latest, recycle) +
+SPA_STATIC_ASSERT((SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY &
+		(SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY - 1u)) == 0u,
+		"buffer completion capacity must be a power of two");
+SPA_STATIC_ASSERT(SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY <
+		SPA_IO_BUFFERS_LATEST_ID_MASK,
+		"every completion buffer ID must fit in the submission word");
+SPA_STATIC_ASSERT(sizeof(struct spa_io_buffers_latest_submission) == SPA_CACHE_LINE_SIZE,
+		"latest submission must occupy one cache line");
+SPA_STATIC_ASSERT(offsetof(struct spa_io_buffers_latest, submission) % SPA_CACHE_LINE_SIZE == 0u,
+		"latest submission must be cache-line aligned");
+SPA_STATIC_ASSERT((offsetof(struct spa_io_buffers_latest, completion) +
 		offsetof(struct spa_ringbuffer_shared, readindex)) % SPA_CACHE_LINE_SIZE == 0u,
-		"latest recycle consumer index must be cache-line aligned");
-SPA_STATIC_ASSERT((offsetof(struct spa_io_buffers_latest, recycle) +
+		"latest completion consumer index must be cache-line aligned");
+SPA_STATIC_ASSERT((offsetof(struct spa_io_buffers_latest, completion) +
 		offsetof(struct spa_ringbuffer_shared, writeindex)) % SPA_CACHE_LINE_SIZE == 0u,
-		"latest recycle producer index must be cache-line aligned");
+		"latest completion producer index must be cache-line aligned");
 
 /**
  * Process-local advisory notification for SPA_IO_BuffersLatest.
@@ -502,87 +511,119 @@ struct spa_io_buffers_latest_link {
 	uint32_t reserved;
 };
 
-/** Publish a complete buffer and return one superseded ID when present. */
-static inline int spa_io_buffers_latest_publish(struct spa_io_buffers_latest *latest,
-		uint32_t buffer_id, uint32_t *superseded_id)
+static inline uint64_t spa_io_buffers_latest_submission_pack(
+		uint64_t sequence, uint32_t buffer_id)
 {
-	uint32_t old;
+	return sequence << SPA_IO_BUFFERS_LATEST_ID_BITS |
+			((uint64_t)buffer_id + 1u);
+}
 
-	if (buffer_id == SPA_ID_INVALID)
+static inline uint64_t spa_io_buffers_latest_submission_sequence(uint64_t value)
+{
+	return value >> SPA_IO_BUFFERS_LATEST_ID_BITS;
+}
+
+static inline uint32_t spa_io_buffers_latest_submission_buffer_id(uint64_t value)
+{
+	return (uint32_t)(value & SPA_IO_BUFFERS_LATEST_ID_MASK) - 1u;
+}
+
+/** Submit a complete buffer and return one overflowed submission when present. */
+static inline int spa_io_buffers_latest_submit(struct spa_io_buffers_latest *latest,
+		uint64_t sequence, uint32_t buffer_id,
+		uint64_t *overflow_sequence, uint32_t *overflow_buffer_id)
+{
+	uint64_t old;
+
+	if (sequence == 0 || sequence > SPA_IO_BUFFERS_LATEST_SEQUENCE_MAX ||
+			buffer_id >= SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY)
 		return -EINVAL;
 
-	old = SPA_ATOMIC_XCHG(latest->ready.id, buffer_id);
-	if (old == SPA_ID_INVALID)
+	old = SPA_ATOMIC_XCHG(latest->submission.value,
+			spa_io_buffers_latest_submission_pack(sequence, buffer_id));
+	if ((old & SPA_IO_BUFFERS_LATEST_ID_MASK) == 0)
 		return 0;
 
-	SPA_ATOMIC_INC(latest->ready.superseded);
-	if (superseded_id != NULL)
-		*superseded_id = old;
+	SPA_ATOMIC_INC(latest->submission.overflows);
+	if (overflow_sequence != NULL)
+		*overflow_sequence = spa_io_buffers_latest_submission_sequence(old);
+	if (overflow_buffer_id != NULL)
+		*overflow_buffer_id = spa_io_buffers_latest_submission_buffer_id(old);
 	return 1;
 }
 
-/** Claim the latest complete input buffer. */
-static inline int spa_io_buffers_latest_acquire(struct spa_io_buffers_latest *latest,
-		uint32_t *buffer_id)
+/** Receive the latest complete submission. */
+static inline int spa_io_buffers_latest_receive(struct spa_io_buffers_latest *latest,
+		uint64_t *sequence, uint32_t *buffer_id)
 {
-	uint32_t id = __atomic_load_n(&latest->ready.id, __ATOMIC_ACQUIRE);
+	uint64_t value = __atomic_load_n(&latest->submission.value, __ATOMIC_ACQUIRE);
 
-	if (id == SPA_ID_INVALID)
+	if (sequence == NULL || buffer_id == NULL)
+		return -EINVAL;
+	if ((value & SPA_IO_BUFFERS_LATEST_ID_MASK) == 0)
 		return -EPIPE;
-	id = SPA_ATOMIC_XCHG(latest->ready.id, SPA_ID_INVALID);
-	if (id == SPA_ID_INVALID)
+	value = __atomic_fetch_and(&latest->submission.value,
+			~SPA_IO_BUFFERS_LATEST_ID_MASK, __ATOMIC_SEQ_CST);
+	if ((value & SPA_IO_BUFFERS_LATEST_ID_MASK) == 0)
 		return -EPIPE;
-	*buffer_id = id;
+	*sequence = spa_io_buffers_latest_submission_sequence(value);
+	*buffer_id = spa_io_buffers_latest_submission_buffer_id(value);
 	return 0;
 }
 
-/** Reclaim an unclaimed output buffer so that it may be overwritten. */
-static inline int spa_io_buffers_latest_withdraw(struct spa_io_buffers_latest *latest,
-		uint32_t *buffer_id)
+/** Withdraw one unclaimed submission so its buffer may be overwritten. */
+static inline int spa_io_buffers_latest_withdraw_submission(
+		struct spa_io_buffers_latest *latest,
+		uint64_t *sequence, uint32_t *buffer_id)
 {
-	int res = spa_io_buffers_latest_acquire(latest, buffer_id);
+	int res = spa_io_buffers_latest_receive(latest, sequence, buffer_id);
 
 	if (res == 0)
-		SPA_ATOMIC_INC(latest->ready.superseded);
+		SPA_ATOMIC_INC(latest->submission.overflows);
 	return res;
 }
 
-static inline int spa_io_buffers_latest_push_recycle(
+/** Complete one claimed submission and return its buffer lease. */
+static inline int spa_io_buffers_latest_complete(
 		struct spa_io_buffers_latest *latest, uint32_t buffer_id)
 {
 	uint32_t index;
 	int32_t filled;
 
-	if (buffer_id == SPA_ID_INVALID)
+	if (buffer_id >= SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY)
 		return -EINVAL;
-	filled = spa_ringbuffer_shared_get_write_index(&latest->recycle, &index);
+	filled = spa_ringbuffer_shared_get_write_index(&latest->completion, &index);
 
 	if (filled < 0)
 		return -EIO;
-	if ((uint32_t)filled >= SPA_IO_BUFFERS_LATEST_CAPACITY)
+	if ((uint32_t)filled >= SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY)
 		return -ENOSPC;
-	latest->recycle_ids[index & (SPA_IO_BUFFERS_LATEST_CAPACITY - 1u)] = buffer_id;
-	spa_ringbuffer_shared_write_update(&latest->recycle, index + 1u);
+	latest->completion_ids[index &
+			(SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY - 1u)] = buffer_id;
+	spa_ringbuffer_shared_write_update(&latest->completion, index + 1u);
 	return 0;
 }
 
-/** Acquire one returned output buffer. */
-static inline int spa_io_buffers_latest_pop_recycle(
+/** Reclaim one completed output buffer. */
+static inline int spa_io_buffers_latest_reclaim_completion(
 		struct spa_io_buffers_latest *latest, uint32_t *buffer_id)
 {
 	uint32_t index;
 	int32_t available;
 
-	available = spa_ringbuffer_shared_get_read_index(&latest->recycle, &index);
+	if (buffer_id == NULL)
+		return -EINVAL;
+	available = spa_ringbuffer_shared_get_read_index(&latest->completion, &index);
 
 	if (available < 0)
 		return -EIO;
 	if (available == 0)
 		return -EPIPE;
-	if ((uint32_t)available > SPA_IO_BUFFERS_LATEST_CAPACITY)
+	if ((uint32_t)available > SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY)
 		return -ENOSPC;
-	*buffer_id = latest->recycle_ids[index & (SPA_IO_BUFFERS_LATEST_CAPACITY - 1u)];
-	spa_ringbuffer_shared_read_update(&latest->recycle, index + 1u);
+	*buffer_id = latest->completion_ids[index &
+			(SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY - 1u)];
+	spa_ringbuffer_shared_read_update(&latest->completion, index + 1u);
 	return 0;
 }
 
