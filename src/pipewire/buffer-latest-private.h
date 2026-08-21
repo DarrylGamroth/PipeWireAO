@@ -62,6 +62,8 @@ int pw_buffer_latest_dequeue(struct pw_buffer_latest *latest, uint32_t *buffer_i
 		uint64_t *submission_sequence);
 int pw_buffer_latest_try_dequeue_reusable(struct pw_buffer_latest *latest,
 		uint32_t *buffer_id);
+int pw_buffer_latest_try_reclaim_submission(struct pw_buffer_latest *latest,
+		uint32_t *buffer_id);
 int pw_buffer_latest_try_dequeue(struct pw_buffer_latest *latest,
 		uint32_t *buffer_id, uint64_t *submission_sequence);
 int pw_buffer_latest_queue(struct pw_buffer_latest *latest, uint32_t buffer_id);
