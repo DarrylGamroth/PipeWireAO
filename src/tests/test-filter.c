@@ -984,6 +984,29 @@ static void test_complete_buffer_rendezvous(void)
 	spa_assert_se(ports[0] != NULL && ports[1] != NULL);
 	node = pw_impl_node_get_implementation(filter->node);
 	spa_assert_se(node != NULL);
+	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 1, 1,
+			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE) == -EINVAL);
+	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 2, 0,
+			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE) == -EINVAL);
+	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 2, 4,
+			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE) == -EINVAL);
+
+	/* Construction may precede live link installation. Until then all
+	 * required inputs are missing and the configured deadline still releases. */
+	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 2, 3,
+			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE) == 0);
+	rendezvous_set_acquisition(&target, 1, 1, 0);
+	spa_assert_se(pw_filter_rendezvous_begin(rendezvous, &target, 10,
+			false) == 0);
+	spa_assert_se(pw_filter_rendezvous_poll(rendezvous, 9, &result,
+			sizeof(result)) == 0);
+	spa_assert_se(pw_filter_rendezvous_poll(rendezvous, 10, &result,
+			sizeof(result)) == 1);
+	spa_assert_se(result.accepted_inputs == 0);
+	spa_assert_se(result.missing_required_inputs == 3);
+	spa_assert_se(result.cause == PW_FILTER_RENDEZVOUS_CAUSE_DEADLINE);
+	spa_assert_se(pw_filter_rendezvous_finish(rendezvous) == 0);
+
 	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_INPUT, 0,
 			SPA_IO_BuffersLatestLink, &links[0], sizeof(links[0])) == 0);
 	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_INPUT, 1,
@@ -993,14 +1016,6 @@ static void test_complete_buffer_rendezvous(void)
 	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_INPUT, 1,
 			0, buffers[1], SPA_N_ELEMENTS(buffers[1])) == 0);
 
-	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 1, 1,
-			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE) == -EINVAL);
-	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 2, 0,
-			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE) == -EINVAL);
-	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 2, 4,
-			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE) == -EINVAL);
-	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 2, 3,
-			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE) == 0);
 	spa_assert_se(pw_filter_buffer_latest_worker_begin(ports[0]) == -EBUSY);
 
 	/* An incomplete acquisition releases at its absolute deadline. */
@@ -1084,8 +1099,8 @@ static void test_complete_buffer_rendezvous(void)
 	spa_assert_se(stats.stale == 1);
 	spa_assert_se(stats.future == 1);
 	spa_assert_se(stats.complete_releases == 1);
-	spa_assert_se(stats.deadline_releases == 2);
-	spa_assert_se(stats.missing_required_inputs == 3);
+	spa_assert_se(stats.deadline_releases == 3);
+	spa_assert_se(stats.missing_required_inputs == 5);
 	spa_assert_se(stats.lease_returns == 5);
 
 	/* Version 1 progressive buffers are outside this complete-buffer facility. */
