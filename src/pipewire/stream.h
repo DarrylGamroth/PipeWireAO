@@ -515,6 +515,8 @@ enum pw_stream_flags {
 							  *  buffered field. It will then not be reported
 							  *  in pw_time delay and you must add it yourself
 							  *  to get the complete delay. Since 1.8.0 */
+	PW_STREAM_FLAG_BUFFER_LATEST	= (1 << 14),	/**< require graph-independent latest-buffer
+							  *  transport for every link */
 };
 
 /** Create a new unconnected \ref pw_stream

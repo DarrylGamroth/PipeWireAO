@@ -264,6 +264,7 @@ extern "C" {
 								  *  use "port.output-mode" instead. */
 #define PW_KEY_PORT_OUTPUT_MODE		"port.output-mode"	/**< Port tee recycle mode, one of "fast",
 								  *  "reliable", "refcounted". 1.8.0 */
+#define PW_KEY_PORT_BUFFER_LATEST	"port.buffer-latest"	/**< require graph-independent latest-buffer links */
 #define PW_KEY_PORT_BUFFER_LATEST_WAIT	"port.buffer-latest.wait" /**< latest-buffer receiver wait policy:
 								  *  "busy-spin", "eventfd", or "hybrid" */
 
