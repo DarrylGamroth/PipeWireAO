@@ -774,6 +774,30 @@ int pw_buffer_latest_try_dequeue_reusable(struct pw_buffer_latest *latest,
 	return 1;
 }
 
+int pw_buffer_latest_try_reclaim_submission(struct pw_buffer_latest *latest,
+		uint32_t *buffer_id)
+{
+	int res;
+
+	if (SPA_UNLIKELY(latest == NULL || buffer_id == NULL))
+		return -EINVAL;
+	*buffer_id = SPA_ID_INVALID;
+	if (SPA_UNLIKELY(latest->direction != SPA_DIRECTION_OUTPUT ||
+			!SPA_ATOMIC_LOAD(latest->enabled)))
+		return -ENOTSUP;
+	if ((res = pw_buffer_latest_service_retirements(latest)) < 0)
+		return res;
+	if (!pw_buffer_latest_has_links(latest))
+		return -EPIPE;
+	res = reclaim_submissions(latest, buffer_id);
+	if (res == -EPIPE)
+		return 0;
+	if (res < 0)
+		return res;
+	latest->buffers[*buffer_id].flags |= BUFFER_DEQUEUED;
+	return 1;
+}
+
 static inline void signal_notify(struct pw_buffer_latest *latest,
 		const struct latest_link_view *link)
 {

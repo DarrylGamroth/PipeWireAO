@@ -252,7 +252,7 @@ static void test_latest_buffer_fanout(void)
 	struct spa_buffer storage[2] = { 0 };
 	struct spa_buffer *buffers[2] = { &storage[0], &storage[1] };
 	struct pw_buffer_latest_stats stats;
-	struct pw_buffer *published, *camera_owned, *returned;
+	struct pw_buffer *published, *producer_owned, *returned;
 	uint64_t sequence[2];
 	uint32_t id[2];
 
@@ -283,8 +283,8 @@ static void test_latest_buffer_fanout(void)
 
 	published = pw_stream_dequeue_buffer(stream);
 	spa_assert_se(published != NULL);
-	camera_owned = pw_stream_dequeue_buffer(stream);
-	spa_assert_se(camera_owned != NULL);
+	producer_owned = pw_stream_dequeue_buffer(stream);
+	spa_assert_se(producer_owned != NULL);
 	spa_assert_se(pw_stream_queue_buffer(stream, published) == 0);
 	spa_assert_se(pw_stream_try_dequeue_buffer_reusable(stream,
 			&returned) == 0);
@@ -301,11 +301,21 @@ static void test_latest_buffer_fanout(void)
 	spa_assert_se(pw_stream_try_dequeue_buffer_reusable(stream,
 			&returned) == 1);
 	spa_assert_se(returned == published);
+	spa_assert_se(pw_stream_queue_buffer(stream, returned) == 0);
+	spa_assert_se(pw_stream_try_dequeue_buffer_reusable(stream,
+			&returned) == 0);
+	spa_assert_se(returned == NULL);
+	spa_assert_se(pw_stream_try_reclaim_buffer_latest(stream, &returned) == 1);
+	spa_assert_se(returned == published);
+	spa_assert_se(spa_io_buffers_latest_receive(&latest[0], &sequence[0],
+			&id[0]) == -EPIPE);
+	spa_assert_se(spa_io_buffers_latest_receive(&latest[1], &sequence[1],
+			&id[1]) == -EPIPE);
 	spa_assert_se(pw_stream_return_buffer(stream, returned) == 0);
-	spa_assert_se(pw_stream_return_buffer(stream, camera_owned) == 0);
+	spa_assert_se(pw_stream_return_buffer(stream, producer_owned) == 0);
 	spa_assert_se(pw_stream_get_buffer_latest_stats(stream, &stats,
 			sizeof(stats)) == 0);
-	spa_assert_se(stats.publications == 1);
+	spa_assert_se(stats.publications == 2);
 	spa_assert_se(stats.subscriber_deliveries == 2);
 
 	links[0].flags = 0;
