@@ -4,6 +4,7 @@ test_apps = [
   # 'test-remote',
   'test-stream',
   'test-filter',
+  'test-image-source',
   'test-rtc-data-loop',
   'test-security-context',
 ]

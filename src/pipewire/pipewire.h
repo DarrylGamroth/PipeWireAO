@@ -14,6 +14,7 @@
 #include <pipewire/context.h>
 #include <pipewire/device.h>
 #include <pipewire/buffers.h>
+#include <pipewire/image-source.h>
 #include <pipewire/core.h>
 #include <pipewire/factory.h>
 #include <pipewire/keys.h>

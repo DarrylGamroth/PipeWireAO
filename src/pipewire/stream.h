@@ -632,6 +632,19 @@ int pw_stream_try_dequeue_buffer_reusable(struct pw_stream *stream,
 		struct pw_buffer **buffer);
 
 /**
+ * Try to reclaim one visible, unclaimed latest-buffer submission. RT safe.
+ *
+ * Returns 1 with a reclaimed buffer, 0 when no submission can be reclaimed,
+ * or a negative errno-style result. Unlike
+ * \ref pw_stream_try_dequeue_buffer_reusable, this operation deliberately
+ * shortens a subscriber's visibility window and is intended only for an
+ * explicitly selected lossy starvation policy. The caller must own the
+ * stream's exclusive latest-buffer worker.
+ */
+int pw_stream_try_reclaim_buffer_latest(struct pw_stream *stream,
+		struct pw_buffer **buffer);
+
+/**
  * Try to receive one graph-independent latest-buffer submission. RT safe.
  *
  * Returns 1 with a claimed buffer and nonzero submission sequence, 0 when no
