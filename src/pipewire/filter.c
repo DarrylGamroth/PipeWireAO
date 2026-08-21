@@ -8,6 +8,7 @@
 #include <sched.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -20,6 +21,7 @@
 #include <spa/utils/string.h>
 #include <spa/pod/filter.h>
 #include <spa/pod/dynamic.h>
+#include <spa/pod/compare.h>
 #include <spa/debug/types.h>
 
 #include "pipewire/pipewire.h"
@@ -799,6 +801,31 @@ static void wait_latest_link_readers(struct port *port, struct latest_link *link
 	}
 }
 
+static void wait_latest_input_release(struct port *port)
+{
+	struct timespec start, now;
+	uint32_t yields = 0;
+	bool check_delay;
+
+	if (SPA_ATOMIC_LOAD(port->latest_input_claimed) == SPA_ID_INVALID)
+		return;
+	check_delay = clock_gettime(CLOCK_MONOTONIC, &start) == 0;
+	while (SPA_ATOMIC_LOAD(port->latest_input_claimed) != SPA_ID_INVALID) {
+		sched_yield();
+		if (check_delay && ++yields == 1024) {
+			yields = 0;
+			if (clock_gettime(CLOCK_MONOTONIC, &now) == 0 &&
+			    SPA_TIMESPEC_TO_NSEC(&now) - SPA_TIMESPEC_TO_NSEC(&start) >=
+					SPA_NSEC_PER_SEC) {
+				pw_log_warn("%p: latest input retirement waiting for buffer %u",
+						port->filter,
+						SPA_ATOMIC_LOAD(port->latest_input_claimed));
+				check_delay = false;
+			}
+		}
+	}
+}
+
 static int service_latest_retirements(struct port *port)
 {
 	uint32_t i, j;
@@ -865,10 +892,11 @@ static int update_latest_link(struct port *port,
 		__atomic_fetch_and(&port->latest_active_mask, ~bit,
 				__ATOMIC_SEQ_CST);
 		wait_latest_link_readers(port, link, "retirement");
+		if (port->direction == SPA_DIRECTION_INPUT)
+			wait_latest_input_release(port);
 		link->io = NULL;
 		SPA_ATOMIC_STORE(link->notify_fd, -1);
 		if (port->direction == SPA_DIRECTION_INPUT) {
-			SPA_ATOMIC_STORE(port->latest_input_claimed, SPA_ID_INVALID);
 			link->id = SPA_ID_INVALID;
 			SPA_ATOMIC_STORE(link->state, LATEST_LINK_EMPTY);
 		} else
@@ -1189,6 +1217,25 @@ static int handle_latency(struct filter *impl, struct port *port, const struct s
 	return 0;
 }
 
+static bool latest_worker_keeps_format(struct port *port,
+		const struct spa_pod *param)
+{
+	struct param *current;
+
+	if (!SPA_ATOMIC_LOAD(port->latest_worker_active))
+		return false;
+	/* Link retirement keeps the selected format so a live replacement can
+	 * attach without disrupting the exclusive worker. */
+	if (param == NULL)
+		return true;
+	spa_list_for_each(current, &port->param_list, link) {
+		if (current->id == SPA_PARAM_Format &&
+				spa_pod_compare(current->param, param) == 0)
+			return true;
+	}
+	return false;
+}
+
 static int impl_port_set_param(void *object,
 			       enum spa_direction direction, uint32_t port_id,
 			       uint32_t id, uint32_t flags,
@@ -1220,6 +1267,8 @@ static int impl_port_set_param(void *object,
 	params[0] = param;
 	n_params = param ? 1 : 0;
 	if (id == SPA_PARAM_Format && port->n_buffers > 0) {
+		if (latest_worker_keeps_format(port, param))
+			return 0;
 		if (port_has_latest(port))
 			return -EBUSY;
 		if ((res = begin_latest_worker_retirement(port)) < 0)
@@ -1260,6 +1309,52 @@ static int impl_port_set_param(void *object,
 	return res;
 }
 
+static bool same_buffer_pool(struct port *port,
+		struct spa_buffer **buffers, uint32_t n_buffers)
+{
+	uint32_t i, j;
+
+	if (buffers == NULL || n_buffers != port->n_buffers)
+		return false;
+	for (i = 0; i < n_buffers; i++) {
+		const struct spa_buffer *current = port->buffers[i].this.buffer;
+		const struct spa_buffer *candidate = buffers[i];
+
+		if (current == candidate)
+			continue;
+		if (current == NULL || candidate == NULL ||
+				current->n_metas != candidate->n_metas ||
+				current->n_datas != candidate->n_datas)
+			return false;
+		for (j = 0; j < current->n_metas; j++)
+			if (current->metas[j].type != candidate->metas[j].type ||
+					current->metas[j].size != candidate->metas[j].size)
+				return false;
+		for (j = 0; j < current->n_datas; j++) {
+			const struct spa_data *a = &current->datas[j];
+			const struct spa_data *b = &candidate->datas[j];
+			struct stat a_stat, b_stat;
+			bool same_storage;
+
+			if (a->type != b->type || a->flags != b->flags ||
+					a->mapoffset != b->mapoffset ||
+					a->maxsize != b->maxsize)
+				return false;
+			same_storage = a->data != NULL && a->data == b->data;
+			if (!same_storage && a->fd >= 0 && b->fd >= 0) {
+				same_storage = a->fd == b->fd ||
+					(fstat(a->fd, &a_stat) == 0 &&
+					 fstat(b->fd, &b_stat) == 0 &&
+					 a_stat.st_dev == b_stat.st_dev &&
+					 a_stat.st_ino == b_stat.st_ino);
+			}
+			if (!same_storage)
+				return false;
+		}
+	}
+	return true;
+}
+
 static int impl_port_use_buffers(void *object,
 		enum spa_direction direction, uint32_t port_id,
 		uint32_t flags,
@@ -1282,6 +1377,21 @@ static int impl_port_use_buffers(void *object,
 		return -EIO;
 	if (n_buffers > MAX_BUFFERS)
 		return -ENOSPC;
+	if (SPA_ATOMIC_LOAD(port->latest_worker_active) && port->n_buffers > 0) {
+		/* A quiescent, unlinked input may discard its mapping before a live
+		 * rebind. Otherwise only an identical pool may be reasserted. */
+		if (n_buffers == 0 && port->direction == SPA_DIRECTION_INPUT &&
+				SPA_ATOMIC_LOAD(port->latest_active_mask) == 0 &&
+				SPA_ATOMIC_LOAD(port->latest_input_claimed) == SPA_ID_INVALID) {
+			clear_buffers(port);
+			return 0;
+		}
+		if ((n_buffers == 0 &&
+				SPA_ATOMIC_LOAD(port->latest_active_mask) == 0) ||
+				same_buffer_pool(port, buffers, n_buffers))
+			return 0;
+		return -EBUSY;
+	}
 	if (port->n_buffers > 0) {
 		if (port_has_latest(port))
 			return -EBUSY;
@@ -3421,7 +3531,9 @@ int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer)
 				p->latest_input_claimed) != b->id))
 			res = -EPROTO;
 		else if ((active = SPA_ATOMIC_LOAD(p->latest_active_mask)) == 0)
-			res = -EPROTO;
+			/* Link retirement reclaims the producer lease. The worker still
+			 * owns the local claim and must be allowed to release it. */
+			res = 0;
 		else {
 			slot = (uint32_t)__builtin_ctzll(active);
 			if (!pin_latest_link(p, slot, &link))
