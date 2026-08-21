@@ -486,9 +486,11 @@ int pw_filter_rendezvous_get_stats(struct pw_filter_rendezvous *rendezvous,
 /**
  * Return all leases, end every worker lifetime, and free the rendezvous.
  *
- * This is a best-effort terminal operation. It returns the first worker-
- * lifetime cleanup error after visiting every input, and frees the rendezvous
- * even when it reports an invariant failure.
+ * If returning a retained lease fails, this returns that error without ending
+ * worker ownership or freeing the rendezvous. The caller must restore the
+ * buffer-return path and retry. Once every lease has been returned, this visits
+ * every input, frees the rendezvous, and returns the first worker-lifetime
+ * invariant error, if any.
  */
 int pw_filter_rendezvous_destroy(struct pw_filter_rendezvous *rendezvous);
 
