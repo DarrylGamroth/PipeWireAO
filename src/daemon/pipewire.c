@@ -4,10 +4,8 @@
 
 #include "config.h"
 
-#include <limits.h>
 #include <signal.h>
 #include <getopt.h>
-#include <libgen.h>
 #include <locale.h>
 
 #include <spa/utils/result.h>
@@ -51,16 +49,12 @@ int main(int argc, char *argv[])
 		{ NULL, 0, NULL, 0}
 	};
 	int c, res = 0;
-	char path[PATH_MAX];
-	const char *config_name;
+	const char *config_name = "pipewire.conf";
 	enum spa_log_level level;
 	struct spa_error_location loc;
 
 	if (setenv("PIPEWIREAO_INTERNAL", "1", 1) < 0)
 		fprintf(stderr, "can't set PIPEWIREAO_INTERNAL env: %m");
-
-	snprintf(path, sizeof(path), "%s.conf", argv[0]);
-	config_name = basename(path);
 
 	setlocale(LC_ALL, "");
 	pw_init(&argc, &argv);
