@@ -431,8 +431,10 @@ struct pw_filter_rendezvous;
  *
  * Preparation allocates the opaque state and begins exclusive latest-buffer
  * worker ownership on every supplied input port. It performs no graph
- * scheduling and does not infer activation from topology. The caller must not
- * perform another buffer operation on these ports until destroy succeeds.
+ * scheduling and does not infer activation from topology. Supplied input ports
+ * may be unlinked during preparation; they remain missing until a compatible
+ * latest-buffer link is installed. The caller must not perform another buffer
+ * operation on these ports until destroy succeeds.
  */
 int pw_filter_rendezvous_new(struct pw_filter_rendezvous **rendezvous,
 		void *const *port_data, uint32_t n_ports, uint64_t required_inputs,
