@@ -355,12 +355,14 @@ int pw_filter_get_buffer_latest_stats(void *port_data,
 /**
  * Begin exclusive latest-buffer worker ownership of a port. RT safe.
  *
- * This lifetime barrier prevents filter disconnect, port removal, and
- * replacement of an installed buffer pool until the worker calls
- * \ref pw_filter_buffer_latest_worker_end. It does not make concurrent buffer
- * operations safe: the successful caller remains the port's only buffer
- * worker. Returns -EBUSY for a second worker and -EPIPE while teardown is
- * retiring the filter or port.
+ * This lifetime barrier prevents filter disconnect and port removal until the
+ * worker calls \ref pw_filter_buffer_latest_worker_end. An unlinked input may
+ * replace its installed buffer pool after its outstanding claim is released;
+ * this permits live link recreation without stopping the worker. Other pool
+ * replacements remain blocked. It does not make concurrent buffer operations
+ * safe: the successful caller remains the port's only buffer worker. Returns
+ * -EBUSY for a second worker and -EPIPE while teardown is retiring the filter
+ * or port.
  */
 int pw_filter_buffer_latest_worker_begin(void *port_data);
 
