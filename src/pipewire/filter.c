@@ -46,6 +46,7 @@ struct buffer {
 #define BUFFER_FLAG_LATEST_REUSABLE	(1 << 4)
 	uint32_t flags;
 	uint64_t latest_leases;
+	uint64_t latest_submission_sequence;
 };
 
 struct latest_link {
@@ -119,8 +120,9 @@ struct port {
 	uint32_t latest_worker_active;
 	uint32_t latest_worker_retiring;
 	uint32_t latest_input_claimed;
-	uint32_t latest_recycle_hint;
+	uint32_t latest_completion_hint;
 	uint32_t latest_scan_hint;
+	uint64_t latest_submission_sequence;
 	struct pw_filter_buffer_latest_stats latest_stats;
 
 	struct buffer buffers[MAX_BUFFERS];
@@ -483,6 +485,7 @@ static void set_latest_output_mode(struct port *port, bool active)
 		SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_LATEST_REUSABLE |
 				BUFFER_FLAG_PROGRESSIVE | BUFFER_FLAG_DEQUEUED);
 		b->latest_leases = 0;
+		b->latest_submission_sequence = 0;
 		if (active)
 			SPA_FLAG_SET(b->flags, BUFFER_FLAG_LATEST_REUSABLE);
 		else
@@ -1301,6 +1304,7 @@ static int impl_port_use_buffers(void *object,
 
 		b->flags = 0;
 		b->latest_leases = 0;
+		b->latest_submission_sequence = 0;
 		b->id = i;
 
 		if (SPA_FLAG_IS_SET(impl_flags, PW_FILTER_PORT_FLAG_MAP_BUFFERS)) {
@@ -2679,10 +2683,11 @@ static int rendezvous_scan_input(struct pw_filter_rendezvous *rendezvous,
 	struct spa_meta_acquisition *acquisition;
 	struct pw_buffer *buffer;
 	struct spa_meta *meta;
+	uint64_t submission_sequence;
 	int comparison, res;
 
 	res = pw_filter_try_dequeue_buffer_latest(rendezvous->ports[input_index],
-			&buffer);
+			&buffer, &submission_sequence);
 	if (res <= 0)
 		return res;
 	if (buffer->buffer == NULL ||
@@ -2920,11 +2925,11 @@ static int release_latest_lease(struct port *p, uint32_t slot, uint32_t id,
 	return 0;
 }
 
-static int recycle_latest_output(struct port *p)
+static int drain_latest_completions(struct port *p)
 {
 	uint32_t returns = 0;
-	uint32_t slot = p->latest_recycle_hint < MAX_LATEST_LINKS
-		? p->latest_recycle_hint : 0;
+	uint32_t slot = p->latest_completion_hint < MAX_LATEST_LINKS
+		? p->latest_completion_hint : 0;
 	uint64_t remaining = SPA_ATOMIC_LOAD(p->latest_active_mask);
 
 	while (remaining != 0 && returns < p->n_buffers) {
@@ -2938,14 +2943,14 @@ static int recycle_latest_output(struct port *p)
 		slot = (uint32_t)__builtin_ctzll(candidates);
 		remaining &= ~(UINT64_C(1) << slot);
 		if (pin_latest_link(p, slot, &link)) {
-			res = spa_io_buffers_latest_pop_recycle(link.io, &id);
+			res = spa_io_buffers_latest_reclaim_completion(link.io, &id);
 			if (res != -EPIPE) {
 				if (res < 0) {
 					unpin_latest_link(p, &link);
 					return res;
 				}
 				returns++;
-				p->latest_stats.recycle_returns++;
+				p->latest_stats.completions++;
 				if ((res = release_latest_lease(p, slot, id,
 						NULL)) < 0) {
 					unpin_latest_link(p, &link);
@@ -2957,9 +2962,9 @@ static int recycle_latest_output(struct port *p)
 		if (++slot == MAX_LATEST_LINKS)
 			slot = 0;
 	}
-	p->latest_recycle_hint = slot;
-	p->latest_stats.max_recycle_returns = SPA_MAX(
-			p->latest_stats.max_recycle_returns, returns);
+	p->latest_completion_hint = slot;
+	p->latest_stats.max_completions = SPA_MAX(
+			p->latest_stats.max_completions, returns);
 	return 0;
 }
 
@@ -2996,7 +3001,7 @@ static int scan_latest_output(struct port *p, struct buffer **buffer)
 	return -EPIPE;
 }
 
-static int reclaim_latest_ready(struct port *p, struct buffer **buffer)
+static int reclaim_latest_submissions(struct port *p, struct buffer **buffer)
 {
 	uint32_t i, withdrawals = 0;
 	uint64_t active = SPA_ATOMIC_LOAD(p->latest_active_mask);
@@ -3005,6 +3010,7 @@ static int reclaim_latest_ready(struct port *p, struct buffer **buffer)
 		struct latest_link_view link;
 		struct buffer *b;
 		uint32_t id;
+		uint64_t sequence;
 		bool reusable = false;
 		int res;
 
@@ -3012,7 +3018,8 @@ static int reclaim_latest_ready(struct port *p, struct buffer **buffer)
 		active &= active - 1;
 		if (!pin_latest_link(p, i, &link))
 			continue;
-		res = spa_io_buffers_latest_withdraw(link.io, &id);
+		res = spa_io_buffers_latest_withdraw_submission(link.io,
+				&sequence, &id);
 		if (res == -EPIPE) {
 			unpin_latest_link(p, &link);
 			continue;
@@ -3022,18 +3029,20 @@ static int reclaim_latest_ready(struct port *p, struct buffer **buffer)
 			return -EPROTO;
 		}
 		withdrawals++;
-		p->latest_stats.ready_withdrawals++;
+		p->latest_stats.submission_withdrawals++;
 		b = &p->buffers[id];
+		if (SPA_UNLIKELY(sequence != b->latest_submission_sequence)) {
+			unpin_latest_link(p, &link);
+			return -EPROTO;
+		}
 		if (SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED)) {
-			uint32_t superseded_id;
-
 			if (SPA_UNLIKELY(!SPA_FLAG_IS_SET(b->flags,
 					BUFFER_FLAG_PROGRESSIVE))) {
 				unpin_latest_link(p, &link);
 				return -EPROTO;
 			}
-			res = spa_io_buffers_latest_publish(link.io, id,
-					&superseded_id);
+			res = spa_io_buffers_latest_submit(link.io, sequence, id,
+					NULL, NULL);
 			if (SPA_UNLIKELY(res != 0)) {
 				unpin_latest_link(p, &link);
 				return -EPROTO;
@@ -3049,24 +3058,26 @@ static int reclaim_latest_ready(struct port *p, struct buffer **buffer)
 		if (reusable) {
 			SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_LATEST_REUSABLE);
 			p->latest_scan_hint = ++id == p->n_buffers ? 0 : id;
-			p->latest_stats.ready_reclaims++;
+			p->latest_stats.submission_reclaims++;
 			*buffer = b;
 			break;
 		}
 	}
-	p->latest_stats.max_ready_withdrawals = SPA_MAX(
-			p->latest_stats.max_ready_withdrawals, withdrawals);
+	p->latest_stats.max_submission_withdrawals = SPA_MAX(
+			p->latest_stats.max_submission_withdrawals, withdrawals);
 	return *buffer != NULL ? 0 : -EPIPE;
 }
 
 static int claim_latest_input(struct port *p,
-		const struct latest_link_view *link, struct buffer **buffer)
+		const struct latest_link_view *link, struct buffer **buffer,
+		uint64_t *submission_sequence)
 {
 	uint32_t id;
+	uint64_t sequence;
 	int res;
 
 	*buffer = NULL;
-	res = spa_io_buffers_latest_acquire(link->io, &id);
+	res = spa_io_buffers_latest_receive(link->io, &sequence, &id);
 	if (res == -EPIPE)
 		return 0;
 	if (SPA_UNLIKELY(res < 0 || id >= p->n_buffers))
@@ -3078,11 +3089,15 @@ static int claim_latest_input(struct port *p,
 		return -EPROTO;
 	}
 	SPA_FLAG_SET((*buffer)->flags, BUFFER_FLAG_DEQUEUED);
+	(*buffer)->latest_submission_sequence = sequence;
 	SPA_ATOMIC_STORE(p->latest_input_claimed, id);
+	if (submission_sequence != NULL)
+		*submission_sequence = sequence;
 	return 1;
 }
 
-static int try_dequeue_latest_input(struct port *p, struct buffer **buffer)
+static int try_dequeue_latest_input(struct port *p, struct buffer **buffer,
+		uint64_t *submission_sequence)
 {
 	struct latest_link_view link;
 	uint32_t slot;
@@ -3102,23 +3117,24 @@ static int try_dequeue_latest_input(struct port *p, struct buffer **buffer)
 	slot = (uint32_t)__builtin_ctzll(active);
 	if (!pin_latest_link(p, slot, &link))
 		return 0;
-	res = claim_latest_input(p, &link, buffer);
+	res = claim_latest_input(p, &link, buffer, submission_sequence);
 	unpin_latest_link(p, &link);
 	return res;
 }
 
 SPA_EXPORT
 int pw_filter_try_dequeue_buffer_latest(void *port_data,
-		struct pw_buffer **buffer)
+		struct pw_buffer **buffer, uint64_t *submission_sequence)
 {
 	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
 	struct buffer *b;
 	int res;
 
-	if (SPA_UNLIKELY(buffer == NULL))
+	if (SPA_UNLIKELY(buffer == NULL || submission_sequence == NULL))
 		return -EINVAL;
 	*buffer = NULL;
-	res = try_dequeue_latest_input(p, &b);
+	*submission_sequence = 0;
+	res = try_dequeue_latest_input(p, &b, submission_sequence);
 	if (res <= 0)
 		return res;
 
@@ -3166,7 +3182,7 @@ int pw_filter_buffer_latest_poller_init(
 SPA_EXPORT
 int pw_filter_buffer_latest_poller_try_dequeue(
 		struct pw_filter_buffer_latest_poller *poller,
-		struct pw_buffer **buffer)
+		struct pw_buffer **buffer, uint64_t *submission_sequence)
 {
 	struct port *p;
 	struct buffer *b;
@@ -3176,9 +3192,11 @@ int pw_filter_buffer_latest_poller_try_dequeue(
 	uint32_t slot;
 	int res;
 
-	if (SPA_UNLIKELY(poller == NULL || buffer == NULL))
+	if (SPA_UNLIKELY(poller == NULL || buffer == NULL ||
+			submission_sequence == NULL))
 		return -EINVAL;
 	*buffer = NULL;
+	*submission_sequence = 0;
 	if (SPA_UNLIKELY(poller->port_data == NULL || poller->reserved != 0))
 		return -EINVAL;
 	p = SPA_CONTAINER_OF(poller->port_data, struct port, user_data);
@@ -3207,7 +3225,7 @@ int pw_filter_buffer_latest_poller_try_dequeue(
 		poller->slot = link.slot;
 	}
 
-	res = claim_latest_input(p, &link, &b);
+	res = claim_latest_input(p, &link, &b, submission_sequence);
 	if (res != 0) {
 		clear_latest_input_poller_pin(poller);
 		poller->port_data = NULL;
@@ -3245,14 +3263,14 @@ struct pw_buffer *pw_filter_dequeue_buffer(void *port_data)
 			goto latest_error;
 		}
 		p->latest_stats.dequeue_attempts++;
-		if ((res = recycle_latest_output(p)) < 0)
+		if ((res = drain_latest_completions(p)) < 0)
 			goto latest_error;
 		if ((res = scan_latest_output(p, &b)) == 0)
 			goto latest_done;
 		if (res != -EPIPE)
 			goto latest_error;
 
-		if ((res = reclaim_latest_ready(p, &b)) < 0) {
+		if ((res = reclaim_latest_submissions(p, &b)) < 0) {
 			if (res == -EPIPE)
 				p->latest_stats.pool_exhaustions++;
 			goto latest_error;
@@ -3261,7 +3279,7 @@ struct pw_buffer *pw_filter_dequeue_buffer(void *port_data)
 	} else {
 		b = pop_queue(p, &p->dequeued);
 		if (b == NULL && SPA_ATOMIC_LOAD(p->latest_mode)) {
-			res = try_dequeue_latest_input(p, &b);
+			res = try_dequeue_latest_input(p, &b, NULL);
 			if (res <= 0) {
 				if (res == 0)
 					res = -EPIPE;
@@ -3303,20 +3321,34 @@ static inline void signal_latest_notify(struct port *p,
 	}
 }
 
+static uint64_t next_latest_submission_sequence(struct port *p)
+{
+	uint64_t sequence = p->latest_submission_sequence + 1u;
+
+	if (SPA_UNLIKELY(sequence == 0 ||
+			sequence > SPA_IO_BUFFERS_LATEST_SEQUENCE_MAX))
+		sequence = 1;
+	p->latest_submission_sequence = sequence;
+	return sequence;
+}
+
 static int publish_latest_output(struct port *p, struct buffer *published)
 {
 	uint32_t i, visits = 0;
-	uint64_t active;
+	uint64_t active, sequence;
 	int res;
 
 	if (SPA_UNLIKELY(published->latest_leases != 0))
 		return -EPROTO;
 	if ((res = service_latest_retirements(p)) < 0)
 		return res;
+	sequence = next_latest_submission_sequence(p);
+	published->latest_submission_sequence = sequence;
 	active = SPA_ATOMIC_LOAD(p->latest_active_mask);
 	while (active != 0) {
 		struct latest_link_view link;
-		uint32_t superseded_id;
+		uint32_t overflow_buffer_id;
+		uint64_t overflow_sequence;
 
 		i = (uint32_t)__builtin_ctzll(active);
 		active &= active - 1;
@@ -3324,8 +3356,8 @@ static int publish_latest_output(struct port *p, struct buffer *published)
 			continue;
 		visits++;
 		p->latest_stats.subscriber_visits++;
-		res = spa_io_buffers_latest_publish(link.io, published->id,
-				&superseded_id);
+		res = spa_io_buffers_latest_submit(link.io, sequence, published->id,
+				&overflow_sequence, &overflow_buffer_id);
 		if (SPA_UNLIKELY(res < 0)) {
 			unpin_latest_link(p, &link);
 			return res;
@@ -3333,12 +3365,15 @@ static int publish_latest_output(struct port *p, struct buffer *published)
 		published->latest_leases |= UINT64_C(1) << i;
 		p->latest_stats.subscriber_deliveries++;
 		if (res > 0) {
-			if (SPA_UNLIKELY(superseded_id == published->id)) {
+			if (SPA_UNLIKELY(overflow_buffer_id == published->id ||
+					overflow_buffer_id >= p->n_buffers ||
+					overflow_sequence != p->buffers[
+						overflow_buffer_id].latest_submission_sequence)) {
 				unpin_latest_link(p, &link);
 				return -EPROTO;
 			}
-			p->latest_stats.subscriber_supersessions++;
-			if ((res = release_latest_lease(p, i, superseded_id,
+			p->latest_stats.submission_overflows++;
+			if ((res = release_latest_lease(p, i, overflow_buffer_id,
 					NULL)) < 0) {
 				unpin_latest_link(p, &link);
 				return res;
@@ -3389,8 +3424,7 @@ int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer)
 			if (!pin_latest_link(p, slot, &link))
 				res = -EPIPE;
 			else {
-				res = spa_io_buffers_latest_push_recycle(link.io,
-						b->id);
+				res = spa_io_buffers_latest_complete(link.io, b->id);
 				unpin_latest_link(p, &link);
 			}
 		}

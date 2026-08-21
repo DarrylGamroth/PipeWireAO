@@ -82,14 +82,14 @@ PWTEST(node_io_abi)
 	pwtest_int_eq(offsetof(struct spa_io_buffers_latest_link, id), 0U);
 	pwtest_int_eq(offsetof(struct spa_io_buffers_latest_link, io), 8U);
 	pwtest_int_eq(SPA_ALIGNOF(struct spa_io_buffers_latest), SPA_CACHE_LINE_SIZE);
-	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, ready), 0U);
-	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, recycle) +
-		offsetof(struct spa_ringbuffer_shared, readindex),
+	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, submission), 0U);
+	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, completion) +
+			offsetof(struct spa_ringbuffer_shared, readindex),
 		SPA_CACHE_LINE_SIZE);
-	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, recycle) +
-		offsetof(struct spa_ringbuffer_shared, writeindex),
+	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, completion) +
+			offsetof(struct spa_ringbuffer_shared, writeindex),
 		2U * SPA_CACHE_LINE_SIZE);
-	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, recycle_ids),
+	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, completion_ids),
 		3U * SPA_CACHE_LINE_SIZE);
 
 	/* position state */
@@ -103,37 +103,53 @@ PWTEST(node_io_abi)
 PWTEST(node_io_buffers_latest)
 {
 	struct spa_io_buffers_latest latest = SPA_IO_BUFFERS_LATEST_INIT;
-	uint32_t id, superseded, i;
+	uint64_t sequence, overflow_sequence;
+	uint32_t id, overflow_id, i;
 
-	pwtest_int_eq(spa_io_buffers_latest_acquire(&latest, &id), -EPIPE);
-	pwtest_int_eq(spa_io_buffers_latest_withdraw(&latest, &id), -EPIPE);
-	pwtest_int_eq(spa_io_buffers_latest_pop_recycle(&latest, &id), -EPIPE);
-	pwtest_int_eq(spa_io_buffers_latest_publish(&latest,
-			SPA_ID_INVALID, NULL), -EINVAL);
+	pwtest_int_eq(spa_io_buffers_latest_receive(&latest, &sequence, &id), -EPIPE);
+	pwtest_int_eq(spa_io_buffers_latest_withdraw_submission(&latest,
+			&sequence, &id), -EPIPE);
+	pwtest_int_eq(spa_io_buffers_latest_reclaim_completion(&latest, &id), -EPIPE);
+	pwtest_int_eq(spa_io_buffers_latest_submit(&latest, 0, 0,
+			NULL, NULL), -EINVAL);
+	pwtest_int_eq(spa_io_buffers_latest_submit(&latest,
+			SPA_IO_BUFFERS_LATEST_SEQUENCE_MAX + 1u, 0,
+			NULL, NULL), -EINVAL);
+	pwtest_int_eq(spa_io_buffers_latest_submit(&latest, 1,
+			SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY, NULL, NULL), -EINVAL);
+	pwtest_int_eq(spa_io_buffers_latest_receive(&latest, NULL, &id), -EINVAL);
+	pwtest_int_eq(spa_io_buffers_latest_receive(&latest, &sequence, NULL), -EINVAL);
 
-	pwtest_int_eq(spa_io_buffers_latest_publish(&latest, 3, NULL), 0);
-	pwtest_int_eq(spa_io_buffers_latest_acquire(&latest, &id), 0);
+	pwtest_int_eq(spa_io_buffers_latest_submit(&latest, 1, 3,
+			NULL, NULL), 0);
+	pwtest_int_eq(spa_io_buffers_latest_receive(&latest, &sequence, &id), 0);
+	pwtest_int_eq(sequence, 1U);
 	pwtest_int_eq(id, 3U);
 
-	pwtest_int_eq(spa_io_buffers_latest_publish(&latest, 5, NULL), 0);
-	pwtest_int_eq(spa_io_buffers_latest_publish(&latest, 7, &superseded), 1);
-	pwtest_int_eq(superseded, 5U);
-	pwtest_int_eq(SPA_ATOMIC_LOAD(latest.ready.superseded), 1U);
-	pwtest_int_eq(spa_io_buffers_latest_withdraw(&latest, &id), 0);
+	pwtest_int_eq(spa_io_buffers_latest_submit(&latest, 2, 5,
+			NULL, NULL), 0);
+	pwtest_int_eq(spa_io_buffers_latest_submit(&latest, 3, 7,
+			&overflow_sequence, &overflow_id), 1);
+	pwtest_int_eq(overflow_sequence, 2U);
+	pwtest_int_eq(overflow_id, 5U);
+	pwtest_int_eq(SPA_ATOMIC_LOAD(latest.submission.overflows), 1U);
+	pwtest_int_eq(spa_io_buffers_latest_withdraw_submission(&latest,
+			&sequence, &id), 0);
+	pwtest_int_eq(sequence, 3U);
 	pwtest_int_eq(id, 7U);
-	pwtest_int_eq(SPA_ATOMIC_LOAD(latest.ready.superseded), 2U);
+	pwtest_int_eq(SPA_ATOMIC_LOAD(latest.submission.overflows), 2U);
 
-	for (i = 0; i < SPA_IO_BUFFERS_LATEST_CAPACITY; i++)
-		pwtest_int_eq(spa_io_buffers_latest_push_recycle(&latest, i), 0);
-	pwtest_int_eq(spa_io_buffers_latest_push_recycle(&latest, 64), -ENOSPC);
-	pwtest_int_eq(spa_io_buffers_latest_push_recycle(&latest,
+	for (i = 0; i < SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY; i++)
+		pwtest_int_eq(spa_io_buffers_latest_complete(&latest, i), 0);
+	pwtest_int_eq(spa_io_buffers_latest_complete(&latest, 0), -ENOSPC);
+	pwtest_int_eq(spa_io_buffers_latest_complete(&latest,
 			SPA_ID_INVALID), -EINVAL);
 
-	for (i = 0; i < SPA_IO_BUFFERS_LATEST_CAPACITY; i++) {
-		pwtest_int_eq(spa_io_buffers_latest_pop_recycle(&latest, &id), 0);
+	for (i = 0; i < SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY; i++) {
+		pwtest_int_eq(spa_io_buffers_latest_reclaim_completion(&latest, &id), 0);
 		pwtest_int_eq(id, i);
 	}
-	pwtest_int_eq(spa_io_buffers_latest_pop_recycle(&latest, &id), -EPIPE);
+	pwtest_int_eq(spa_io_buffers_latest_reclaim_completion(&latest, &id), -EPIPE);
 
 	return PWTEST_PASS;
 }
