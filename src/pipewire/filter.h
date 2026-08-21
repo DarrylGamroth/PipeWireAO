@@ -406,7 +406,8 @@ SPA_STATIC_ASSERT(sizeof(struct pw_filter_rendezvous_result) ==
 /** Single-writer accounting for one client-side buffer rendezvous. */
 struct pw_filter_rendezvous_stats {
 	uint64_t accepted;
-	uint64_t duplicate;
+	/** Reserved for ABI-compatible extension. Always zero. */
+	uint64_t reserved0;
 	uint64_t stale;
 	uint64_t future;
 	uint64_t rejected;
