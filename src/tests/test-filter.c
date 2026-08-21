@@ -958,6 +958,20 @@ static void test_complete_buffer_rendezvous(void)
 	struct pw_filter_rendezvous *rendezvous;
 	struct pw_filter_rendezvous_result result, repeated;
 	struct pw_filter_rendezvous_stats stats;
+	uint8_t format_buffer[256], different_format_buffer[256];
+	struct spa_pod_builder format_builder =
+		SPA_POD_BUILDER_INIT(format_buffer, sizeof(format_buffer));
+	struct spa_pod_builder different_format_builder =
+		SPA_POD_BUILDER_INIT(different_format_buffer,
+				sizeof(different_format_buffer));
+	const struct spa_pod *format = spa_pod_builder_add_object(&format_builder,
+		SPA_TYPE_OBJECT_Format, SPA_PARAM_Format,
+		SPA_FORMAT_mediaType, SPA_POD_Id(SPA_MEDIA_TYPE_application),
+		SPA_FORMAT_mediaSubtype, SPA_POD_Id(SPA_MEDIA_SUBTYPE_control));
+	const struct spa_pod *different_format = spa_pod_builder_add_object(
+		&different_format_builder, SPA_TYPE_OBJECT_Format, SPA_PARAM_Format,
+		SPA_FORMAT_mediaType, SPA_POD_Id(SPA_MEDIA_TYPE_application),
+		SPA_FORMAT_mediaSubtype, SPA_POD_Id(SPA_MEDIA_SUBTYPE_raw));
 	struct {
 		struct pw_filter_rendezvous_result result;
 		uint64_t canary;
@@ -984,6 +998,8 @@ static void test_complete_buffer_rendezvous(void)
 	spa_assert_se(ports[0] != NULL && ports[1] != NULL);
 	node = pw_impl_node_get_implementation(filter->node);
 	spa_assert_se(node != NULL);
+	spa_assert_se(spa_node_port_set_param(node, SPA_DIRECTION_INPUT, 0,
+			SPA_PARAM_Format, 0, format) == 0);
 	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 1, 1,
 			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE) == -EINVAL);
 	spa_assert_se(pw_filter_rendezvous_new(&rendezvous, ports, 2, 0,
@@ -1015,6 +1031,30 @@ static void test_complete_buffer_rendezvous(void)
 			0, buffers[0], SPA_N_ELEMENTS(buffers[0])) == 0);
 	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_INPUT, 1,
 			0, buffers[1], SPA_N_ELEMENTS(buffers[1])) == 0);
+	/* Live retirement and reinstallation retain an identical selected format
+	 * and pool while rejecting a true format replacement. */
+	spa_assert_se(spa_node_port_set_param(node, SPA_DIRECTION_INPUT, 0,
+			SPA_PARAM_Format, 0, format) == 0);
+	spa_assert_se(spa_node_port_set_param(node, SPA_DIRECTION_INPUT, 0,
+			SPA_PARAM_Format, 0, NULL) == 0);
+	spa_assert_se(spa_node_port_set_param(node, SPA_DIRECTION_INPUT, 0,
+			SPA_PARAM_Format, 0, different_format) == -EBUSY);
+	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_INPUT, 0,
+			0, NULL, 0) == -EBUSY);
+	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_INPUT, 0,
+			0, buffers[0], SPA_N_ELEMENTS(buffers[0])) == 0);
+	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_INPUT, 0,
+			0, buffers[0], 1) == -EBUSY);
+	links[0].flags = 0;
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_INPUT, 0,
+			SPA_IO_BuffersLatestLink, &links[0], sizeof(links[0])) == 0);
+	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_INPUT, 0,
+			0, NULL, 0) == 0);
+	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_INPUT, 0,
+			0, buffers[0], SPA_N_ELEMENTS(buffers[0])) == 0);
+	links[0].flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE;
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_INPUT, 0,
+			SPA_IO_BuffersLatestLink, &links[0], sizeof(links[0])) == 0);
 
 	spa_assert_se(pw_filter_buffer_latest_worker_begin(ports[0]) == -EBUSY);
 
