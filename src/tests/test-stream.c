@@ -4,6 +4,7 @@
 
 #include <pipewire/pipewire.h>
 #include <pipewire/main-loop.h>
+#include <pipewire/private.h>
 #include <pipewire/stream.h>
 
 #include <spa/utils/string.h>
@@ -223,6 +224,156 @@ static void test_properties(void)
 	pw_main_loop_destroy(loop);
 }
 
+static void test_latest_buffer_fanout(void)
+{
+	struct pw_main_loop *loop;
+	struct pw_context *context;
+	struct pw_core *core;
+	struct pw_stream *stream;
+	struct spa_node *node;
+	struct spa_io_buffers_latest latest[2] = {
+		SPA_IO_BUFFERS_LATEST_INIT,
+		SPA_IO_BUFFERS_LATEST_INIT,
+	};
+	struct spa_io_buffers_latest_link links[2] = {
+		{
+			.id = 10,
+			.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+			.io = &latest[0],
+			.notify_fd = -1,
+		}, {
+			.id = 11,
+			.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+			.io = &latest[1],
+			.notify_fd = -1,
+		},
+	};
+	struct spa_buffer storage[2] = { 0 };
+	struct spa_buffer *buffers[2] = { &storage[0], &storage[1] };
+	struct pw_buffer_latest_stats stats;
+	struct pw_buffer *published, *returned;
+	uint64_t sequence[2];
+	uint32_t id[2];
+
+	loop = pw_main_loop_new(NULL);
+	spa_assert_se(loop != NULL);
+	context = pw_context_new(pw_main_loop_get_loop(loop), NULL, 12);
+	spa_assert_se(context != NULL);
+	core = pw_context_connect_self(context, NULL, 0);
+	spa_assert_se(core != NULL);
+	stream = pw_stream_new(core, "latest-stream-test", NULL);
+	spa_assert_se(stream != NULL);
+	spa_assert_se(pw_stream_connect(stream, PW_DIRECTION_OUTPUT, PW_ID_ANY,
+			PW_STREAM_FLAG_NONE, NULL, 0) == 0);
+	node = pw_impl_node_get_implementation(stream->node);
+	spa_assert_se(node != NULL);
+
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_IO_BuffersLatestLink, &links[0], sizeof(links[0])) == 0);
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_IO_BuffersLatestLink, &links[1], sizeof(links[1])) == 0);
+	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_OUTPUT, 0,
+			0, buffers, SPA_N_ELEMENTS(buffers)) == 0);
+	spa_assert_se(pw_stream_buffer_latest_worker_begin(stream) == 0);
+	spa_assert_se(pw_stream_buffer_latest_worker_begin(stream) == -EBUSY);
+	spa_assert_se(pw_stream_disconnect(stream) == -EBUSY);
+	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_OUTPUT, 0,
+			0, buffers, SPA_N_ELEMENTS(buffers)) == 0);
+
+	published = pw_stream_dequeue_buffer(stream);
+	spa_assert_se(published != NULL);
+	spa_assert_se(pw_stream_queue_buffer(stream, published) == 0);
+	spa_assert_se(spa_io_buffers_latest_receive(&latest[0], &sequence[0],
+			&id[0]) == 0);
+	spa_assert_se(spa_io_buffers_latest_receive(&latest[1], &sequence[1],
+			&id[1]) == 0);
+	spa_assert_se(sequence[0] == sequence[1]);
+	spa_assert_se(id[0] == id[1]);
+	spa_assert_se(spa_io_buffers_latest_complete(&latest[0], id[0]) == 0);
+	spa_assert_se(spa_io_buffers_latest_complete(&latest[1], id[1]) == 0);
+
+	returned = pw_stream_dequeue_buffer(stream);
+	spa_assert_se(returned != NULL);
+	spa_assert_se(pw_stream_return_buffer(stream, returned) == 0);
+	spa_assert_se(pw_stream_get_buffer_latest_stats(stream, &stats,
+			sizeof(stats)) == 0);
+	spa_assert_se(stats.publications == 1);
+	spa_assert_se(stats.subscriber_deliveries == 2);
+
+	links[0].flags = 0;
+	links[1].flags = 0;
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_IO_BuffersLatestLink, &links[0], sizeof(links[0])) == 0);
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_IO_BuffersLatestLink, &links[1], sizeof(links[1])) == 0);
+	spa_assert_se(pw_stream_buffer_latest_worker_end(stream) == 0);
+	spa_assert_se(pw_stream_buffer_latest_worker_end(stream) == -EINVAL);
+
+	pw_stream_destroy(stream);
+	pw_context_destroy(context);
+	pw_main_loop_destroy(loop);
+}
+
+static void test_latest_buffer_input_poller(void)
+{
+	struct pw_main_loop *loop;
+	struct pw_context *context;
+	struct pw_core *core;
+	struct pw_stream *stream;
+	struct spa_node *node;
+	struct spa_io_buffers_latest latest = SPA_IO_BUFFERS_LATEST_INIT;
+	struct spa_io_buffers_latest_link link = {
+		.id = 10,
+		.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+		.io = &latest,
+		.notify_fd = -1,
+	};
+	struct spa_buffer storage = { 0 };
+	struct spa_buffer *buffers[1] = { &storage };
+	struct pw_stream_buffer_latest_poller poller;
+	struct pw_buffer *buffer;
+	uint64_t sequence;
+	uint32_t id;
+
+	loop = pw_main_loop_new(NULL);
+	spa_assert_se(loop != NULL);
+	context = pw_context_new(pw_main_loop_get_loop(loop), NULL, 12);
+	spa_assert_se(context != NULL);
+	core = pw_context_connect_self(context, NULL, 0);
+	spa_assert_se(core != NULL);
+	stream = pw_stream_new(core, "latest-input-stream-test", NULL);
+	spa_assert_se(stream != NULL);
+	spa_assert_se(pw_stream_connect(stream, PW_DIRECTION_INPUT, PW_ID_ANY,
+			PW_STREAM_FLAG_NONE, NULL, 0) == 0);
+	node = pw_impl_node_get_implementation(stream->node);
+	spa_assert_se(node != NULL);
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_INPUT, 0,
+			SPA_IO_BuffersLatestLink, &link, sizeof(link)) == 0);
+	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_INPUT, 0,
+			0, buffers, SPA_N_ELEMENTS(buffers)) == 0);
+	spa_assert_se(pw_stream_buffer_latest_worker_begin(stream) == 0);
+	spa_assert_se(pw_stream_buffer_latest_poller_init(&poller, stream) == 0);
+	spa_assert_se(pw_stream_buffer_latest_poller_try_dequeue(&poller,
+			&buffer, &sequence) == 0);
+	spa_assert_se(spa_io_buffers_latest_submit(&latest, 7, 0,
+			NULL, NULL) == 0);
+	spa_assert_se(pw_stream_buffer_latest_poller_try_dequeue(&poller,
+			&buffer, &sequence) == 1);
+	spa_assert_se(buffer != NULL);
+	spa_assert_se(sequence == 7);
+	spa_assert_se(pw_stream_queue_buffer(stream, buffer) == 0);
+	spa_assert_se(spa_io_buffers_latest_reclaim_completion(&latest, &id) == 0);
+	spa_assert_se(id == 0);
+
+	link.flags = 0;
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_INPUT, 0,
+			SPA_IO_BuffersLatestLink, &link, sizeof(link)) == 0);
+	spa_assert_se(pw_stream_buffer_latest_worker_end(stream) == 0);
+	pw_stream_destroy(stream);
+	pw_context_destroy(context);
+	pw_main_loop_destroy(loop);
+}
+
 int main(int argc, char *argv[])
 {
 	pw_init(&argc, &argv);
@@ -230,6 +381,8 @@ int main(int argc, char *argv[])
 	test_abi();
 	test_create();
 	test_properties();
+	test_latest_buffer_fanout();
+	test_latest_buffer_input_poller();
 
 	pw_deinit();
 
