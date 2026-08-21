@@ -2184,6 +2184,8 @@ pw_stream_connect(struct pw_stream *stream,
 	impl->port_info = SPA_PORT_INFO_INIT();
 	impl->port_info.change_mask = impl->port_change_mask_all;
 	impl->port_info.flags = 0;
+	if (SPA_FLAG_IS_SET(flags, PW_STREAM_FLAG_BUFFER_LATEST))
+		pw_properties_set(impl->port_props, PW_KEY_PORT_BUFFER_LATEST, "true");
 	if (SPA_FLAG_IS_SET(flags, PW_STREAM_FLAG_ALLOC_BUFFERS))
 		impl->port_info.flags |= SPA_PORT_FLAG_CAN_ALLOC_BUFFERS;
 	impl->port_params[PORT_EnumFormat] = SPA_PARAM_INFO(SPA_PARAM_EnumFormat, 0);
@@ -2332,8 +2334,9 @@ pw_stream_connect(struct pw_stream *stream,
 	if (pw_properties_get(props, PW_KEY_PORT_GROUP) == NULL)
 		pw_properties_set(props, PW_KEY_PORT_GROUP, "stream.0");
 
-	if (impl->media_type == SPA_MEDIA_TYPE_audio ||
-	    impl->media_type == SPA_MEDIA_TYPE_video) {
+	if ((impl->media_type == SPA_MEDIA_TYPE_audio ||
+	     impl->media_type == SPA_MEDIA_TYPE_video) &&
+	    !SPA_FLAG_IS_SET(impl->flags, PW_STREAM_FLAG_NO_CONVERT)) {
 		factory = pw_context_find_factory(impl->context, "adapter");
 		if (factory == NULL) {
 			pw_log_error("%p: no adapter factory found", stream);
