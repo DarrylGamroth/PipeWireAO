@@ -6,6 +6,7 @@ project('pipewire-ao', ['c' ],
                       'c_std=gnu11',
                       'cpp_std=c++20',
                       'b_pie=true',
+                      'auto_features=disabled',
                       #'b_sanitize=address,undefined',
                       'buildtype=debugoptimized' ])
 

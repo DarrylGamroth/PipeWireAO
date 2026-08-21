@@ -92,7 +92,7 @@ option('alsa',
 option('audiomixer',
        description: 'Enable audiomixer spa plugin integration',
        type: 'feature',
-       value: 'enabled')
+       value: 'disabled')
 option('audioconvert',
        description: 'Enable audioconvert spa plugin integration',
        type: 'feature',
@@ -168,11 +168,11 @@ option('bluez5-plc-spandsp',
 option('control',
        description: 'Enable control spa plugin integration',
        type: 'feature',
-       value: 'enabled')
+       value: 'disabled')
 option('audiotestsrc',
        description: 'Enable audiotestsrc spa plugin integration',
        type: 'feature',
-       value: 'enabled')
+       value: 'disabled')
 option('ffmpeg',
        description: 'Enable ffmpeg spa plugin integration',
        type: 'feature',
@@ -200,7 +200,7 @@ option('v4l2',
 option('dbus',
        description: 'Enable code that depends on dbus',
        type: 'feature',
-       value: 'enabled')
+       value: 'disabled')
 option('libcamera',
        description: 'Enable libcamera spa plugin integration',
        type: 'feature',
@@ -208,11 +208,11 @@ option('libcamera',
 option('videoconvert',
        description: 'Enable videoconvert spa plugin integration',
        type: 'feature',
-       value: 'enabled')
+       value: 'disabled')
 option('videotestsrc',
        description: 'Enable videotestsrc spa plugin integration',
        type: 'feature',
-       value: 'enabled')
+       value: 'disabled')
 option('volume',
        description: 'Build the legacy volume spa plugin',
        type: 'feature',
