@@ -1080,6 +1080,7 @@ static void test_complete_buffer_rendezvous(void)
 	spa_assert_se(pw_filter_rendezvous_get_stats(rendezvous, &stats,
 			sizeof(stats) - 1) == -ENOSPC);
 	spa_assert_se(stats.accepted == 3);
+	spa_assert_se(stats.reserved0 == 0);
 	spa_assert_se(stats.stale == 1);
 	spa_assert_se(stats.future == 1);
 	spa_assert_se(stats.complete_releases == 1);
