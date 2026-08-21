@@ -247,16 +247,18 @@ struct pw_loop *pw_filter_get_data_loop(struct pw_filter *filter);
 struct pw_buffer *pw_filter_dequeue_buffer(void *port_data);
 
 /**
- * Try to claim a buffer directly from an input latest-buffer mailbox. RT safe.
+ * Try to receive a buffer directly from an input latest-buffer submission
+ * channel. RT safe.
  *
  * This skips the ordinary port queue and does not read or write errno. Returns
- * 1 and stores the claimed buffer in \a buffer, 0 when no publication is
- * currently visible, or a negative errno-style result for invalid state. The
- * caller must own the port's serialized buffer worker and must return a
- * claimed buffer before trying again.
+ * 1 and stores the claimed buffer and its nonzero transport sequence in
+ * \a buffer and \a submission_sequence, 0 when no submission is currently
+ * visible, or a negative errno-style result for invalid state. The caller must
+ * own the port's serialized buffer worker and must complete a claimed buffer
+ * before trying again.
  */
 int pw_filter_try_dequeue_buffer_latest(void *port_data,
-		struct pw_buffer **buffer);
+		struct pw_buffer **buffer, uint64_t *submission_sequence);
 
 /**
  * Caller-owned state for one continuous latest-input polling interval.
@@ -292,11 +294,11 @@ int pw_filter_buffer_latest_poller_init(
  * errno-style error. A successful claim or an error automatically releases
  * the retained link pin and finishes the polling interval. Empty polls retain
  * the pin while the link remains active. Link retirement is observed before
- * dereferencing its shared mailbox and releases the pin before returning 0.
+ * dereferencing its shared channel and releases the pin before returning 0.
  */
 int pw_filter_buffer_latest_poller_try_dequeue(
 		struct pw_filter_buffer_latest_poller *poller,
-		struct pw_buffer **buffer);
+		struct pw_buffer **buffer, uint64_t *submission_sequence);
 
 /**
  * Finish a polling interval and release any retained live-link pin. RT safe.
@@ -316,21 +318,21 @@ void pw_filter_buffer_latest_poller_clear(
  */
 struct pw_filter_buffer_latest_stats {
 	uint64_t dequeue_attempts;	/**< output acquisition duty cycles */
-	uint64_t recycle_returns;	/**< returned consumer leases examined */
+	uint64_t completions;		/**< completed consumer leases examined */
 	uint64_t buffer_probes;		/**< reusable pool slots examined */
 	uint64_t pool_exhaustions;	/**< attempts with no safe allocation */
-	uint64_t ready_reclaims;	/**< unclaimed publications reclaimed */
-	uint64_t ready_withdrawals;	/**< subscriber ready slots withdrawn */
+	uint64_t submission_reclaims;	/**< unclaimed submissions reclaimed */
+	uint64_t submission_withdrawals; /**< subscriber submissions withdrawn */
 	uint64_t publications;		/**< output buffers offered to fan-out */
-	uint64_t subscriber_visits;	/**< subscriber mailboxes visited */
+	uint64_t subscriber_visits;	/**< subscriber channels visited */
 	uint64_t subscriber_deliveries;	/**< subscriber leases created */
-	uint64_t subscriber_supersessions; /**< subscriber-local ready IDs replaced */
+	uint64_t submission_overflows;	/**< unclaimed submissions replaced */
 	uint64_t subscriber_retirements; /**< retired slots acknowledged by producer */
 	uint64_t retired_leases;	/**< leases recovered during retirement */
 	uint64_t zero_recipient_publications; /**< offers delivered to no active slot */
 	uint32_t max_buffer_probes;	/**< largest single bounded scan */
-	uint32_t max_recycle_returns;	/**< largest aggregate drain per attempt */
-	uint32_t max_ready_withdrawals; /**< largest reclaim fan-out per attempt */
+	uint32_t max_completions;	/**< largest aggregate drain per attempt */
+	uint32_t max_submission_withdrawals; /**< largest reclaim fan-out per attempt */
 	uint32_t max_subscriber_visits; /**< largest publication fan-out */
 };
 
@@ -510,9 +512,9 @@ int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer);
  *
  * The caller must own the port's serialized output worker. Fan-out publication
  * is latest-value delivery to independent subscribers, not an atomic multicast:
- * subscribers may claim or supersede an offered buffer at different times.
+ * subscribers may receive or overflow an offered buffer at different times.
  * Per-subscriber leases keep the allocation unavailable for reuse until every
- * subscriber has returned or superseded it and the producer lease has ended.
+ * subscriber has completed or overflowed it and the producer lease has ended.
  *
  * This operation is supported only on an output port configured with
  * SPA_IO_BuffersLatest.
