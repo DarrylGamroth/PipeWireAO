@@ -2710,6 +2710,30 @@ int pw_stream_get_buffer_latest_fd(struct pw_stream *stream)
 }
 
 SPA_EXPORT
+int pw_stream_try_dequeue_buffer_reusable(struct pw_stream *stream,
+		struct pw_buffer **buffer)
+{
+	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
+	uint32_t id;
+	int res;
+
+	if (buffer == NULL)
+		return -EINVAL;
+	*buffer = NULL;
+	if (impl->latest == NULL)
+		return -ENOTCONN;
+	res = pw_buffer_latest_try_dequeue_reusable(impl->latest, &id);
+	if (res <= 0)
+		return res;
+	if (SPA_UNLIKELY(id >= impl->n_buffers ||
+			SPA_FLAG_IS_SET(impl->buffers[id].flags, BUFFER_FLAG_DEQUEUED)))
+		return -EPROTO;
+	SPA_FLAG_SET(impl->buffers[id].flags, BUFFER_FLAG_DEQUEUED);
+	*buffer = &impl->buffers[id].this;
+	return 1;
+}
+
+SPA_EXPORT
 int pw_stream_try_dequeue_buffer_latest(struct pw_stream *stream,
 		struct pw_buffer **buffer, uint64_t *submission_sequence)
 {
