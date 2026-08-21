@@ -2606,8 +2606,7 @@ int pw_filter_rendezvous_new(struct pw_filter_rendezvous **rendezvous,
 		if (port_data[i] == NULL)
 			return -EINVAL;
 		port = SPA_CONTAINER_OF(port_data[i], struct port, user_data);
-		if (!SPA_ATOMIC_LOAD(port->latest_mode) ||
-				port->direction != SPA_DIRECTION_INPUT)
+		if (port->direction != SPA_DIRECTION_INPUT)
 			return -ENOTSUP;
 	}
 	state = calloc(1, sizeof(*state));
@@ -2688,6 +2687,10 @@ static int rendezvous_scan_input(struct pw_filter_rendezvous *rendezvous,
 
 	res = pw_filter_try_dequeue_buffer_latest(rendezvous->ports[input_index],
 			&buffer, &submission_sequence);
+	/* Preparation is allowed before the first latest-buffer link. An
+	 * unlinked input participates as missing data until a link is installed. */
+	if (res == -ENOTSUP)
+		return 0;
 	if (res <= 0)
 		return res;
 	if (buffer->buffer == NULL ||
