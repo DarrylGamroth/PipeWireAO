@@ -238,9 +238,12 @@ extern "C" {
 struct pw_stream;
 
 #include <spa/buffer/buffer.h>
+#include <spa/node/io.h>
 #include <spa/param/param.h>
 #include <spa/pod/command.h>
 #include <spa/pod/event.h>
+
+#include <pipewire/buffer-latest.h>
 
 /** \enum pw_stream_state The state of a stream */
 enum pw_stream_state {
@@ -615,8 +618,59 @@ int pw_stream_get_time(struct pw_stream *stream, struct pw_time *time);
  * for capture streams. RT safe. */
 struct pw_buffer *pw_stream_dequeue_buffer(struct pw_stream *stream);
 
+/**
+ * Try to receive one graph-independent latest-buffer submission. RT safe.
+ *
+ * Returns 1 with a claimed buffer and nonzero submission sequence, 0 when no
+ * submission is visible, or a negative errno-style result. The caller must
+ * own the stream's exclusive latest-buffer worker.
+ */
+int pw_stream_try_dequeue_buffer_latest(struct pw_stream *stream,
+		struct pw_buffer **buffer, uint64_t *submission_sequence);
+
+/** Private state for one continuous latest-input polling interval. */
+struct pw_stream_buffer_latest_poller {
+	void *private_data;
+	struct spa_io_buffers_latest *io;
+	uint32_t slot;
+	uint32_t reserved;
+};
+
+#define PW_STREAM_BUFFER_LATEST_POLLER_INIT \
+	((struct pw_stream_buffer_latest_poller) { NULL, NULL, SPA_ID_INVALID, 0 })
+
+int pw_stream_buffer_latest_poller_init(
+		struct pw_stream_buffer_latest_poller *poller,
+		struct pw_stream *stream);
+int pw_stream_buffer_latest_poller_try_dequeue(
+		struct pw_stream_buffer_latest_poller *poller,
+		struct pw_buffer **buffer, uint64_t *submission_sequence);
+void pw_stream_buffer_latest_poller_clear(
+		struct pw_stream_buffer_latest_poller *poller);
+
+/** Begin exclusive graph-independent buffer ownership for this stream. */
+int pw_stream_buffer_latest_worker_begin(struct pw_stream *stream);
+
+/** End exclusive graph-independent buffer ownership for this stream. */
+int pw_stream_buffer_latest_worker_end(struct pw_stream *stream);
+
+/** Snapshot output latest-buffer accounting from its exclusive worker. */
+int pw_stream_get_buffer_latest_stats(struct pw_stream *stream,
+		struct pw_buffer_latest_stats *stats, size_t stats_size);
+
+/** Get the borrowed advisory notification descriptor for a latest stream. */
+int pw_stream_get_buffer_latest_fd(struct pw_stream *stream);
+
 /** Submit a buffer for playback or recycle a buffer for capture. RT safe. */
 int pw_stream_queue_buffer(struct pw_stream *stream, struct pw_buffer *buffer);
+
+/** Announce a progressive output buffer while retaining its producer lease. */
+int pw_stream_begin_progressive_buffer(struct pw_stream *stream,
+		struct pw_buffer *buffer);
+
+/** End the producer lease of an announced progressive output buffer. */
+int pw_stream_end_progressive_buffer(struct pw_stream *stream,
+		struct pw_buffer *buffer);
 
 /** Return a buffer to the queue without using it. This makes the buffer
  * immediately available to dequeue again. RT safe. */
