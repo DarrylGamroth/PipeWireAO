@@ -316,7 +316,7 @@ static void test_latest_buffer_fanout(void)
 	spa_assert_se(pw_stream_get_buffer_latest_stats(stream, &stats,
 			sizeof(stats)) == 0);
 	spa_assert_se(stats.publications == 2);
-	spa_assert_se(stats.subscriber_deliveries == 2);
+	spa_assert_se(stats.subscriber_deliveries == 4);
 
 	links[0].flags = 0;
 	links[1].flags = 0;
