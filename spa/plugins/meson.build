@@ -55,6 +55,7 @@ if libcamera_dep.found()
 endif
 
 subdir('aec')
+plugin_dependencies = []
 if get_option('audioconvert').allowed()
   subdir('filter-graph')
 endif
