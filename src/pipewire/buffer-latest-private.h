@@ -38,6 +38,7 @@ void pw_buffer_latest_destroy(struct pw_buffer_latest *latest);
 void *pw_buffer_latest_get_data(const struct pw_buffer_latest *latest);
 
 bool pw_buffer_latest_is_enabled(const struct pw_buffer_latest *latest);
+void pw_buffer_latest_enable(struct pw_buffer_latest *latest);
 bool pw_buffer_latest_has_links(const struct pw_buffer_latest *latest);
 bool pw_buffer_latest_worker_is_active(const struct pw_buffer_latest *latest);
 uint64_t pw_buffer_latest_active_mask(const struct pw_buffer_latest *latest);
