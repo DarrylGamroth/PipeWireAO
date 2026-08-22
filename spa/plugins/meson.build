@@ -55,4 +55,6 @@ if libcamera_dep.found()
 endif
 
 subdir('aec')
-subdir('filter-graph')
+if get_option('audioconvert').allowed()
+  subdir('filter-graph')
+endif
