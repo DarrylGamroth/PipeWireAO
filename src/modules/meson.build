@@ -77,14 +77,16 @@ pipewire_module_loopback = shared_library('pipewire-module-loopback',
   dependencies : [spa_dep, mathlib, dl_lib, pipewire_dep],
 )
 
-pipewire_module_filter_chain = shared_library('pipewire-module-filter-chain',
-  [ 'module-filter-chain.c' ],
-  include_directories : [configinc],
-  install : true,
-  install_dir : modules_install_dir,
-  install_rpath: modules_install_dir,
-  dependencies : [spa_dep, mathlib, dl_lib, pipewire_dep],
-)
+if get_option('audioconvert').allowed()
+  pipewire_module_filter_chain = shared_library('pipewire-module-filter-chain',
+    [ 'module-filter-chain.c' ],
+    include_directories : [configinc],
+    install : true,
+    install_dir : modules_install_dir,
+    install_rpath: modules_install_dir,
+    dependencies : [spa_dep, mathlib, dl_lib, pipewire_dep],
+  )
+endif
 
 pipewire_module_combine_stream = shared_library('pipewire-module-combine-stream',
   [ 'module-combine-stream.c' ],
@@ -95,14 +97,16 @@ pipewire_module_combine_stream = shared_library('pipewire-module-combine-stream'
   dependencies : [spa_dep, dl_lib, pipewire_dep],
 )
 
-pipewire_module_echo_cancel = shared_library('pipewire-module-echo-cancel',
-  [ 'module-echo-cancel.c' ],
-  include_directories : [configinc],
-  install : true,
-  install_dir : modules_install_dir,
-  install_rpath: modules_install_dir,
-  dependencies : [mathlib, dl_lib, pipewire_dep, plugin_dependencies],
-)
+if get_option('audioconvert').allowed()
+  pipewire_module_echo_cancel = shared_library('pipewire-module-echo-cancel',
+    [ 'module-echo-cancel.c' ],
+    include_directories : [configinc],
+    install : true,
+    install_dir : modules_install_dir,
+    install_rpath: modules_install_dir,
+    dependencies : [mathlib, dl_lib, pipewire_dep, plugin_dependencies],
+  )
+endif
 
 build_module_jack_tunnel = jack_dep.found()
 if build_module_jack_tunnel
