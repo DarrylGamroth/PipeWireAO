@@ -316,11 +316,96 @@ static void test_image_source_capacity(void)
 	pw_main_loop_destroy(loop);
 }
 
+static void test_image_source_live_join(void)
+{
+	struct pw_main_loop *loop;
+	struct pw_context *context;
+	struct pw_core *core;
+	struct pw_stream *stream;
+	struct spa_node *node;
+	struct spa_io_buffers_latest latest = SPA_IO_BUFFERS_LATEST_INIT;
+	struct spa_io_buffers_latest_link link = {
+		.id = 21,
+		.flags = SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE,
+		.io = &latest,
+		.notify_fd = -1,
+	};
+	struct test_buffer storage[N_BUFFERS];
+	struct spa_buffer *buffers[N_BUFFERS];
+	struct pw_image_source_config config = {
+		.version = PW_VERSION_IMAGE_SOURCE_CONFIG,
+		.min_buffers = N_BUFFERS,
+		.max_buffers = N_BUFFERS,
+	};
+	struct pw_image_source *source;
+	struct pw_image_buffer *acquired[N_BUFFERS], *returned;
+	struct pw_image_frame frame = {
+		.version = PW_VERSION_IMAGE_FRAME,
+		.size = PAYLOAD_SIZE,
+		.stride = 16,
+		.pts = SPA_TIME_INVALID,
+	};
+	uint64_t submission_sequence;
+	uint32_t id, i;
+
+	for (i = 0; i < N_BUFFERS; i++) {
+		init_buffer(&storage[i]);
+		buffers[i] = &storage[i].buffer;
+	}
+	loop = pw_main_loop_new(NULL);
+	spa_assert_se(loop != NULL);
+	context = pw_context_new(pw_main_loop_get_loop(loop), NULL, 12);
+	spa_assert_se(context != NULL);
+	core = pw_context_connect_self(context, NULL, 0);
+	spa_assert_se(core != NULL);
+	stream = pw_stream_new(core, "image-source-live-join-test", NULL);
+	spa_assert_se(stream != NULL);
+	spa_assert_se(pw_stream_connect(stream, PW_DIRECTION_OUTPUT, PW_ID_ANY,
+			PW_STREAM_FLAG_BUFFER_LATEST, NULL, 0) == 0);
+	node = pw_impl_node_get_implementation(stream->node);
+	spa_assert_se(node != NULL);
+	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_OUTPUT, 0,
+			0, buffers, SPA_N_ELEMENTS(buffers)) == 0);
+
+	source = pw_image_source_new(stream, &config);
+	spa_assert_se(source != NULL);
+	spa_assert_se(pw_image_source_prepare(source) == N_BUFFERS);
+	for (i = 0; i < N_BUFFERS; i++)
+		spa_assert_se(pw_image_source_try_acquire(source, &acquired[i]) == 1);
+	spa_assert_se(pw_image_source_try_acquire(source, &returned) == 0);
+	spa_assert_se(returned == NULL);
+
+	/* Installing the first live link must not make producer-owned slots
+	 * appear reusable to the latest-buffer engine. */
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_IO_BuffersLatestLink, &link, sizeof(link)) == 0);
+	spa_assert_se(pw_image_source_try_acquire(source, &returned) == 0);
+	spa_assert_se(returned == NULL);
+	spa_assert_se(pw_image_source_publish_complete(source, acquired[0],
+			&frame) == 0);
+	spa_assert_se(spa_io_buffers_latest_receive(&latest, &submission_sequence,
+			&id) == 0);
+	spa_assert_se(id == 0);
+	spa_assert_se(spa_io_buffers_latest_complete(&latest, id) == 0);
+	spa_assert_se(pw_image_source_try_acquire(source, &returned) == 1);
+	spa_assert_se(returned == acquired[0]);
+
+	spa_assert_se(pw_image_source_teardown(source) == 0);
+	pw_image_source_destroy(source);
+	link.flags = 0;
+	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_IO_BuffersLatestLink, &link, sizeof(link)) == 0);
+	pw_stream_destroy(stream);
+	pw_context_destroy(context);
+	pw_main_loop_destroy(loop);
+}
+
 int main(int argc, char *argv[])
 {
 	pw_init(&argc, &argv);
 	test_image_source();
 	test_image_source_capacity();
+	test_image_source_live_join();
 	pw_deinit();
 	return 0;
 }
