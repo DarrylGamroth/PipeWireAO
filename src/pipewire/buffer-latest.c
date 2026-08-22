@@ -133,6 +133,14 @@ bool pw_buffer_latest_is_enabled(const struct pw_buffer_latest *latest)
 	return latest != NULL && SPA_ATOMIC_LOAD(latest->enabled);
 }
 
+void pw_buffer_latest_enable(struct pw_buffer_latest *latest)
+{
+	if (latest == NULL || SPA_ATOMIC_XCHG(latest->enabled, true))
+		return;
+	if (latest->direction == SPA_DIRECTION_OUTPUT)
+		reset_output_buffers(latest, true);
+}
+
 bool pw_buffer_latest_has_links(const struct pw_buffer_latest *latest)
 {
 	return latest != NULL && SPA_ATOMIC_LOAD(latest->active_mask) != 0;
@@ -473,11 +481,7 @@ static int update_link(struct pw_buffer_latest *latest,
 	if (slot == MAX_LATEST_LINKS)
 		return -ENOSPC;
 	link = &latest->links[slot];
-	if (!SPA_ATOMIC_LOAD(latest->enabled)) {
-		SPA_ATOMIC_STORE(latest->enabled, true);
-		if (latest->direction == SPA_DIRECTION_OUTPUT)
-			reset_output_buffers(latest, true);
-	}
+	pw_buffer_latest_enable(latest);
 	link->id = desc->id;
 	link->io = desc->io;
 	SPA_ATOMIC_STORE(link->notify_fd, desc->notify_fd);
@@ -763,8 +767,6 @@ int pw_buffer_latest_try_dequeue_reusable(struct pw_buffer_latest *latest,
 		return -ENOTSUP;
 	if ((res = pw_buffer_latest_service_retirements(latest)) < 0)
 		return res;
-	if (!pw_buffer_latest_has_links(latest))
-		return -EPIPE;
 	latest->stats.dequeue_attempts++;
 	if ((res = drain_completions(latest)) < 0)
 		return res;
