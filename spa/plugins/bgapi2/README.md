@@ -98,7 +98,10 @@ queue before the handler is enabled again.
 Returning a subscriber lease still calls `BGAPI2_DataStream_QueueBuffer` from
 the RTC owner. This preserves direct buffer ownership and avoids another bridge
 thread, but the GenTL producer's queue implementation is part of the real-time
-contract.
+contract. Each process duty observes progressive state and publishes one ready
+completion before returning released leases. Queue latency therefore consumes
+future pool headroom instead of preceding data that was already ready when the
+duty began.
 
 ## Progressive ownership
 
@@ -253,6 +256,27 @@ producer/query combinations. These measurements motivate the filled-size
 baseline algorithm; they do not qualify a Coaxlink data path that is not present
 on this host.
 
+The operation benchmark also measures `BGAPI2_DataStream_QueueBuffer` using
+actual completed buffers. It waits for each completion outside the timed
+boundary, performs 32 untimed frame/requeue warmups, and then records the queue
+call without subtracting the clock-pair baseline. Three independent 1,000-frame
+runs per producer on CPU 15 produced:
+
+| Producer | p50 range | p99 range | Maximum range |
+| --- | ---: | ---: | ---: |
+| Euresys Gigelink | 1.13–1.18 us | 4.35–4.82 us | 8.12–11.0 us |
+| Baumer GigE | 0.76–1.10 us | 3.43–8.21 us | 6.72–17.4 us |
+
+The clock-pair baseline was 20 ns p50 and 30 ns p99. A 1,000-sample run does
+not support a stable p99.9 claim, so the table reports p99 and the observed
+maximum. The central cost is small compared with a 1 ms frame period, while the
+run-to-run movement in the Baumer tail confirms that the producer call is not a
+strict deterministic primitive. These service-time results do not include
+completion waiting and do not replace open-loop end-to-end qualification. They
+also do not justify adding a requeue handoff: a helper could move allocation off
+the RTC owner, but it would add scheduling latency and another bounded queue
+without removing the producer work.
+
 Heaptrack attributes no allocation to callback-mode
 `bgapi2_camera_try_get_completion` for either producer. Polling calls
 `GetLastTLError` on every empty dequeue. Euresys reaches `GCGetLastError`; Baumer
@@ -292,6 +316,8 @@ taskset -c 15 build/spa/plugins/bgapi2/spa-bgapi2-completion-benchmark \
   /opt/euresys/egrabber/lib/x86_64/gigelink.cti polling 200000
 taskset -c 15 build/spa/plugins/bgapi2/spa-bgapi2-completion-benchmark \
   /opt/euresys/egrabber/lib/x86_64/gigelink.cti size-filled 200000
+taskset -c 15 build/spa/plugins/bgapi2/spa-bgapi2-completion-benchmark \
+  /opt/euresys/egrabber/lib/x86_64/gigelink.cti queue 1000
 ```
 
 ## Remaining work
@@ -307,6 +333,6 @@ taskset -c 15 build/spa/plugins/bgapi2/spa-bgapi2-completion-benchmark \
   rates and scheduling profiles.
 - Resolve or formally exclude the Baumer CTI repeated-process stream failure
   before claiming that producer for unattended lifecycle operation.
-- Decide whether a dedicated SDK-owning requeue agent is justified for strict
-  zero-allocation operation. It should only be added with evidence that its
-  extra handoff and scheduling cost improves the end-to-end deadline result.
+- Reconsider a dedicated SDK-owning requeue agent only if open-loop end-to-end
+  evidence shows that producer queue tails violate the deadline. The current
+  service-time evidence does not justify its extra handoff and scheduling cost.
