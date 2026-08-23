@@ -18,6 +18,8 @@ The `api.bgapi2.source` factory provides complete-frame capture with:
 - mapped `MemPtr` or `MemFd` buffers announced directly to BGAPI2, with no
   image copy;
 - `Mono8` and unpacked `Mono10`, `Mono12`, `Mono14`, and `Mono16` formats;
+- dynamic GenICam Boolean, Integer, Float, Enumeration, and String controls
+  through `SPA_PARAM_PropInfo` and `SPA_PARAM_Props`;
 - fixed `SPA_META_Header` and initialized Version 1 `SPA_META_Acquisition`
   metadata; and
 - synchronous acquisition stop and event-thread shutdown before pool teardown.
@@ -33,6 +35,15 @@ The optional `api.bgapi2.interface-index`, `api.bgapi2.device-index`, and
 searches all interfaces and selects device and stream zero. The actual indices,
 model, serial number, and producer path are published as node properties.
 
+The plugin discovers scalar controls from the remote GenICam NodeMap instead of
+maintaining a camera-specific list. Properties use canonical names such as
+`genicam.ExposureTime` and `genicam.PixelFormat`; enumeration labels, numeric
+ranges, descriptions, and current access state come from the camera. A write
+contains exactly one typed property and is accepted only while acquisition is
+stopped. Layout-changing controls also require all buffers to be released and
+invalidate format and buffer negotiation. GenICam command nodes are not exposed
+as persistent SPA properties.
+
 The plugin uses `spa_image_source`, `spa_image_source_latest`, and
 `spa_buffer_latest` directly. It has no `pw_stream`, libpipewire client,
 private image pool, payload copy, or graph scheduling path.
@@ -45,13 +56,19 @@ model.
 
 ## Completion ownership
 
-`BGAPI2_DataStream_GetFilledBuffer(stream, ..., 0)` is not a suitable BusySpin
-poll. Both tested producers construct error details when its output queue is
-empty. The source therefore uses BGAPI2's new-buffer event handler. The vendor
-event thread reads the completed buffer's owner and dynamic frame metadata,
-then publishes one fixed-size completion descriptor through SPA's
-cache-line-isolated SPSC ring. The PipeWireAO RTC data loop is the sole consumer
-and remains responsible for validating and publishing the frame.
+The default `api.bgapi2.completion-mode=callback` profile uses BGAPI2's
+new-buffer event handler. The vendor event thread reads the completed buffer's
+owner and dynamic frame metadata, then publishes one fixed-size completion
+descriptor through SPA's cache-line-isolated SPSC ring. The PipeWireAO RTC data
+loop is the sole consumer and remains responsible for validating and publishing
+the frame.
+
+The construction-time `api.bgapi2.completion-mode=polling` profile instead
+calls `BGAPI2_DataStream_GetFilledBuffer(stream, ..., 0)` from the RTC process
+function. It is provided for controlled latency comparisons and avoids an
+event-thread handoff. It is not the default because both tested producers build
+error details on empty polls; Euresys in particular allocates on this path.
+Completion mode cannot change while the node is alive.
 
 The ring contains at most the 64 buffers allowed by `spa_image_source`; overflow
 is a fatal acquisition error, not a lossy overwrite. An overflow would mean the
@@ -86,8 +103,8 @@ respectively. The source test captures ten frames, returns every subscriber
 lease, pauses and restarts halfway through the run, and performs ordered
 teardown.
 
-On 2026-08-23 all five tests passed against the connected 640x480 Mono8 GE34GM
-camera through both:
+On 2026-08-23 the factory, camera, callback-source, and polling-source tests
+passed against the connected 640x480 Mono8 GE34GM camera through both:
 
 ```text
 /opt/euresys/egrabber/lib/x86_64/gigelink.cti
@@ -138,8 +155,6 @@ Repeat the same commands with the Baumer CTI to compare producers.
 ## Remaining work
 
 - Add manager and device factories for live camera discovery and reconciliation.
-- Expose typed GenICam controls through `SPA_PARAM_PropInfo` and
-  `SPA_PARAM_Props` for GUI discovery and paused control writes.
 - Map a hardware or producer timestamp into the PipeWireAO acquisition clock
   contract before claiming exposure timing.
 - Extend pixel-format coverage where a deterministic direct SPA mapping exists.
