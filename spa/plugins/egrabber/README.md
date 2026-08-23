@@ -14,6 +14,8 @@ The `api.egrabber.source` factory currently provides complete-frame capture:
 - standard device-to-source object creation with stable selector, vendor,
   model, serial, user-ID, and transport properties;
 - standard SPA node, port, format, buffer, metadata, I/O, and command methods;
+- typed scalar GenICam discovery and readback through `SPA_PARAM_PropInfo` and
+  `SPA_PARAM_Props`;
 - immutable `SPA_NODE_FLAG_RTC_PROCESS` ownership;
 - `SPA_IO_BuffersLatestLink` fan-out without graph-ready callbacks;
 - mapped `MemPtr` or `MemFd` buffers announced directly to eGrabber;
@@ -40,6 +42,14 @@ parity. The migrated event bridge no longer copies `std::function` callbacks
 per event, and the node tracks queued buffers locally instead of querying the
 SDK on every empty RTC poll.
 
+Control writes are serialized on the SPA control path and are never performed
+by `process()`. Version 1 accepts one scalar write per `SPA_PARAM_Props` object.
+The node must be paused for every write. A layout-changing write also requires
+the output pool to be released; after it succeeds, the old Format is
+invalidated and EnumFormat, Format, and Buffers are marked serial so the host
+must renegotiate before the next Start. Writes while running or while a layout
+is still bound return `-EBUSY` without changing the camera.
+
 ## Current qualification
 
 The factory test loads and enumerates the plugin without opening hardware. The
@@ -61,8 +71,6 @@ profile.
 ## Remaining migration
 
 - Add serialized live discovery and removal events to the SPA manager.
-- Expose scalar GenICam controls through `SPA_PARAM_PropInfo` and
-  `SPA_PARAM_Props`, including fenced layout-changing writes.
 - Qualify acquisition-domain identity on Grablink/Coaxlink hardware and
   physical exposure-start mapping and uncertainty. The current completion-time
   anchor restores generic Header PTS behavior but does not claim an

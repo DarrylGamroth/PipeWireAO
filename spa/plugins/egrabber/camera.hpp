@@ -139,6 +139,11 @@ public:
                      bool allow_buffer_change = false);
     void execute_command(const Feature &feature);
     std::string feature_text(const Feature &feature);
+    FeatureValue feature_value(const Feature &feature);
+    std::optional<std::pair<std::int64_t, std::int64_t>>
+        feature_integer_range(const Feature &feature);
+    std::optional<std::pair<double, double>>
+        feature_float_range(const Feature &feature);
 
 private:
     struct Impl;
