@@ -1,5 +1,6 @@
 egrabber_sources = [
   'acquisition_key.cpp',
+  'buffer_memory.cpp',
   'camera.cpp',
   'device.cpp',
   'feature.cpp',
@@ -15,16 +16,31 @@ egrabber_sources = [
   'timestamp_mapper.cpp',
 ]
 
+egrabber_dependencies = [spa_dep, egrabber_dep, pthread_lib]
+egrabber_cpp_args = ['-Wno-pedantic']
+if drm_dep.found()
+  egrabber_sources += 'dma_buf_sync.cpp'
+  egrabber_dependencies += drm_dep
+  egrabber_cpp_args += '-DHAVE_EGRABBER_DRM'
+endif
+
 egrabber_lib = shared_library(
   'spa-egrabber',
   egrabber_sources,
-  dependencies: [spa_dep, egrabber_dep, pthread_lib],
-  cpp_args: ['-Wno-pedantic'],
+  dependencies: egrabber_dependencies,
+  cpp_args: egrabber_cpp_args,
   install: true,
   install_dir: spa_plugindir / 'egrabber',
 )
 
 if get_option('tests').allowed()
+  egrabber_buffer_memory_test = executable(
+    'spa-egrabber-buffer-memory-test',
+    ['test-buffer-memory.cpp', 'buffer_memory.cpp'],
+    dependencies: [spa_dep],
+  )
+  test('spa-egrabber-buffer-memory', egrabber_buffer_memory_test)
+
   egrabber_acquisition_key_test = executable(
     'spa-egrabber-acquisition-key-test',
     ['test-acquisition-key.cpp', 'acquisition_key.cpp'],
