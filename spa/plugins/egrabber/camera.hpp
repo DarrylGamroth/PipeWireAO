@@ -14,7 +14,6 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <span>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -72,7 +71,6 @@ struct BufferMetadata {
 };
 
 struct BufferProgress {
-    std::size_t position = 0;
     std::size_t size_filled = 0;
     std::optional<std::uint64_t> frame_id;
 };
@@ -100,8 +98,6 @@ public:
     const std::vector<Feature> &features() const;
     const CameraIdentity &identity() const;
     bool progressive_supported() const;
-    std::size_t queued_buffer_count();
-
     bool dma_buf_supported();
     void set_frame_callback(FrameCallback callback);
     void clear_frame_callback();
@@ -113,8 +109,6 @@ public:
                                        std::uint32_t offset, bool direct_dma_buf,
                                        void *user_pointer);
     BufferMetadata buffer_metadata(Euresys::Buffer &buffer);
-    std::optional<BufferProgress> find_acquiring_buffer(
-        std::span<const Euresys::BufferIndexRange> ranges);
     std::optional<BufferProgress> buffer_progress(
         const Euresys::BufferIndexRange &range);
     std::optional<double> frame_rate();
