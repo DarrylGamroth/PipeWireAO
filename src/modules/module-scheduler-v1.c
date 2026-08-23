@@ -113,6 +113,19 @@ static int ensure_state(struct pw_impl_node *node, bool running, bool idle)
 	return pw_impl_node_set_state(node, state);
 }
 
+static int ensure_rtc_state(struct pw_impl_node *node)
+{
+	enum pw_node_state state = node->info.state;
+	bool need_config = SPA_FLAG_IS_SET(node->spa_flags,
+			SPA_NODE_FLAG_NEED_CONFIGURE);
+
+	if (node->active && !need_config)
+		state = PW_NODE_STATE_RUNNING;
+	else if (!need_config || state > PW_NODE_STATE_IDLE)
+		state = PW_NODE_STATE_IDLE;
+	return pw_impl_node_set_state(node, state);
+}
+
 /* Make a node runnable. Peer nodes are also made runnable when the passive_mode
  * of the peer port is !TRUE.
  *
@@ -994,6 +1007,14 @@ again:
 
 		/* now that all the followers are ready, start the driver */
 		ensure_state(n, running, false);
+	}
+
+	/* RTC-owned nodes use normal control-plane state transitions, but their
+	 * process function is owned by pw_rtc_data_loop rather than a graph
+	 * driver. Keep this independent of graph grouping and rate/quantum work. */
+	spa_list_for_each(n, &context->node_list, link) {
+		if (!n->exported && is_rtc_process(n))
+			ensure_rtc_state(n);
 	}
 }
 
