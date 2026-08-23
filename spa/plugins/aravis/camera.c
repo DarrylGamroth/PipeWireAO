@@ -238,6 +238,6 @@ int aravis_camera_try_get_completion(struct aravis_camera *camera,
 		.image_size = (uint32_t)image_size,
 		.incomplete = arv_buffer_get_status(buffer) != ARV_BUFFER_STATUS_SUCCESS,
 	};
-	completion->result = completion->frame.incomplete ? -EIO : 0;
+	completion->result = 0;
 	return 1;
 }
