@@ -208,7 +208,7 @@ static int discover_enum_entries(struct bgapi2_camera *camera,
 				&implemented)) < 0 || !implemented ||
 				checked(camera, BGAPI2_Node_GetAvailable(entry,
 				&available)) < 0 || !available ||
-				get_node_text(entry, BGAPI2_Node_GetName, name) < 0)
+				get_node_text(entry, BGAPI2_Node_GetValue, name) < 0)
 			continue;
 		feature.enum_entries.push_back(std::move(name));
 	}
