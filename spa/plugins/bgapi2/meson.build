@@ -93,4 +93,13 @@ if get_option('tests').allowed()
     is_parallel: false,
     timeout: 10,
   )
+
+  executable(
+    'spa-bgapi2-completion-benchmark',
+    ['benchmark-completion.c', 'camera.cpp'],
+    dependencies: bgapi2_dependencies,
+    c_args: bgapi2_c_args,
+    cpp_args: bgapi2_cpp_args,
+    build_rpath: bgapi2_install_rpath,
+  )
 endif
