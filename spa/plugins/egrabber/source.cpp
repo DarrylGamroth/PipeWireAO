@@ -1300,7 +1300,7 @@ int process(void *object)
 		if (res < 0)
 			return res;
 		changed = res > 0;
-		const bool processed = self->camera->process_event(0);
+		const bool processed = self->camera->process_event();
 		changed = poll_readout(self) || changed;
 		res = recycle_buffers(self, false);
 		if (res < 0)
@@ -1356,7 +1356,7 @@ int send_command(void *object, const struct spa_command *command)
 					self->progressive_slot != nullptr &&
 					count < self->output.n_buffers * 4u + 16u;
 					count++) {
-				if (!self->camera->process_event(0))
+				if (!self->camera->process_event())
 					break;
 				(void) poll_readout(self);
 			}
