@@ -54,6 +54,21 @@ if libcamera_dep.found()
   subdir('libcamera')
 endif
 
+egrabber_found = false
+if have_cpp and get_option('egrabber').allowed()
+  egrabber_include = include_directories(get_option('egrabber-prefix') / 'include')
+  egrabber_dep = declare_dependency(include_directories: egrabber_include)
+  egrabber_found = cxx.has_header(
+    'EGrabber.h',
+    dependencies: egrabber_dep,
+    required: get_option('egrabber'),
+  )
+endif
+summary({'eGrabber': egrabber_found}, bool_yn: true, section: 'Backend')
+if egrabber_found
+  subdir('egrabber')
+endif
+
 subdir('aec')
 plugin_dependencies = []
 if get_option('audioconvert').allowed()
