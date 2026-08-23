@@ -11,8 +11,11 @@
 #include <unistd.h>
 
 #include <pipewire/pipewire.h>
+#include <pipewire/impl-module.h>
+#include <pipewire/private.h>
 #include <pipewire/thread.h>
 
+#include <spa/node/utils.h>
 #include <spa/utils/atomic.h>
 
 struct test_thread_utils {
@@ -363,6 +366,188 @@ static void test_start_failures(void)
 	fixture_clear(&fixture);
 }
 
+struct synthetic_rtc_node {
+	struct spa_node node;
+	struct spa_hook_list hooks;
+	struct spa_node_info info;
+	uint32_t starts;
+	uint32_t pauses;
+	uint32_t suspends;
+	uint32_t process_calls;
+};
+
+static void synthetic_emit_info(struct synthetic_rtc_node *node)
+{
+	spa_node_emit_info(&node->hooks, &node->info);
+}
+
+static int synthetic_add_listener(void *object, struct spa_hook *listener,
+		const struct spa_node_events *events, void *data)
+{
+	struct synthetic_rtc_node *node = object;
+	struct spa_hook_list save;
+
+	spa_hook_list_isolate(&node->hooks, &save, listener, events, data);
+	synthetic_emit_info(node);
+	spa_hook_list_join(&node->hooks, &save);
+	return 0;
+}
+
+static int synthetic_set_callbacks(void *object,
+		const struct spa_node_callbacks *callbacks, void *data)
+{
+	return 0;
+}
+
+static int synthetic_set_io(void *object, uint32_t id, void *data, size_t size)
+{
+	return 0;
+}
+
+static int synthetic_send_command(void *object, const struct spa_command *command)
+{
+	struct synthetic_rtc_node *node = object;
+
+	switch (SPA_NODE_COMMAND_ID(command)) {
+	case SPA_NODE_COMMAND_Start:
+		SPA_ATOMIC_INC(node->starts);
+		break;
+	case SPA_NODE_COMMAND_Pause:
+		SPA_ATOMIC_INC(node->pauses);
+		break;
+	case SPA_NODE_COMMAND_Suspend:
+		SPA_ATOMIC_INC(node->suspends);
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
+static int synthetic_process(void *object)
+{
+	struct synthetic_rtc_node *node = object;
+
+	SPA_ATOMIC_INC(node->process_calls);
+	return SPA_STATUS_OK;
+}
+
+static const struct spa_node_methods synthetic_methods = {
+	SPA_VERSION_NODE_METHODS,
+	.add_listener = synthetic_add_listener,
+	.set_callbacks = synthetic_set_callbacks,
+	.set_io = synthetic_set_io,
+	.send_command = synthetic_send_command,
+	.process = synthetic_process,
+};
+
+static void synthetic_init(struct synthetic_rtc_node *node)
+{
+	spa_zero(*node);
+	spa_hook_list_init(&node->hooks);
+	node->node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
+			SPA_VERSION_NODE, &synthetic_methods, node);
+	node->info = SPA_NODE_INFO_INIT();
+	node->info.change_mask = SPA_NODE_CHANGE_MASK_FLAGS;
+	node->info.flags = SPA_NODE_FLAG_RT | SPA_NODE_FLAG_RTC_PROCESS;
+}
+
+static void wait_for_node_state(struct fixture *fixture,
+		struct pw_impl_node *node, enum pw_node_state state)
+{
+	struct timespec start, now;
+	uint64_t elapsed;
+
+	spa_assert_se(clock_gettime(CLOCK_MONOTONIC, &start) == 0);
+	while (node->info.state != state) {
+		struct pw_loop *loop = pw_main_loop_get_loop(fixture->main_loop);
+
+		pw_loop_enter(loop);
+		pw_loop_iterate(loop, 0);
+		pw_loop_leave(loop);
+		sched_yield();
+		spa_assert_se(clock_gettime(CLOCK_MONOTONIC, &now) == 0);
+		elapsed = (uint64_t)(now.tv_sec - start.tv_sec) * SPA_NSEC_PER_SEC +
+			(uint64_t)(now.tv_nsec - start.tv_nsec);
+		spa_assert_se(elapsed < 2 * SPA_NSEC_PER_SEC);
+	}
+}
+
+static struct pw_impl_node *create_synthetic_node(struct fixture *fixture,
+		struct synthetic_rtc_node *synthetic)
+{
+	struct pw_impl_node *node;
+
+	synthetic_init(synthetic);
+	node = pw_context_create_node(fixture->context,
+			pw_properties_new(
+				PW_KEY_NODE_NAME, "synthetic-rtc",
+				PW_KEY_NODE_PAUSE_ON_IDLE, "false",
+				NULL), 0);
+	spa_assert_se(node != NULL);
+	spa_assert_se(pw_impl_node_set_implementation(node, &synthetic->node) == 0);
+	spa_assert_se(SPA_FLAG_IS_SET(node->spa_flags, SPA_NODE_FLAG_RTC_PROCESS));
+	spa_assert_se(node->rtc_loop == NULL);
+	spa_assert_se(pw_impl_node_register(node, NULL) == 0);
+	spa_assert_se(pw_impl_node_set_active(node, true) == 0);
+	return node;
+}
+
+static void test_rtc_node_lifecycle(void)
+{
+	struct fixture fixture;
+	struct synthetic_rtc_node synthetic;
+	struct pw_impl_module *scheduler;
+	struct pw_impl_node *node;
+
+	fixture_init(&fixture, true);
+	scheduler = pw_context_load_module(fixture.context,
+			"libpipewire-module-scheduler-v1", NULL, NULL);
+	spa_assert_se(scheduler != NULL);
+	node = create_synthetic_node(&fixture, &synthetic);
+	wait_for_node_state(&fixture, node, PW_NODE_STATE_RUNNING);
+	wait_until_at_least(&synthetic.process_calls, 1);
+	spa_assert_se(node->rtc_loop != NULL);
+	spa_assert_se(pw_rtc_data_loop_is_running(node->rtc_loop));
+	spa_assert_se(!node->rt.prepared);
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.starts) == 1);
+
+	spa_assert_se(pw_impl_node_set_active(node, false) == 0);
+	wait_for_node_state(&fixture, node, PW_NODE_STATE_IDLE);
+	spa_assert_se(!pw_rtc_data_loop_is_running(node->rtc_loop));
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.pauses) == 1);
+
+	synthetic.info.flags = SPA_NODE_FLAG_RT;
+	synthetic_emit_info(&synthetic);
+	spa_assert_se(SPA_FLAG_IS_SET(node->spa_flags, SPA_NODE_FLAG_RTC_PROCESS));
+
+	pw_impl_node_destroy(node);
+	fixture_clear(&fixture);
+}
+
+static void test_rtc_node_requires_thread_utils(void)
+{
+	struct fixture fixture;
+	struct synthetic_rtc_node synthetic;
+	struct pw_impl_module *scheduler;
+	struct pw_impl_node *node;
+
+	fixture_init(&fixture, false);
+	scheduler = pw_context_load_module(fixture.context,
+			"libpipewire-module-scheduler-v1", NULL, NULL);
+	spa_assert_se(scheduler != NULL);
+	node = create_synthetic_node(&fixture, &synthetic);
+	wait_for_node_state(&fixture, node, PW_NODE_STATE_ERROR);
+	spa_assert_se(node->rtc_loop != NULL);
+	spa_assert_se(!pw_rtc_data_loop_is_running(node->rtc_loop));
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.process_calls) == 0);
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.starts) == 1);
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.pauses) == 1);
+
+	pw_impl_node_destroy(node);
+	fixture_clear(&fixture);
+}
+
 int main(int argc, char *argv[])
 {
 	pw_init(&argc, &argv);
@@ -373,6 +558,8 @@ int main(int argc, char *argv[])
 	test_process_error();
 	test_config_validation();
 	test_start_failures();
+	test_rtc_node_lifecycle();
+	test_rtc_node_requires_thread_utils();
 
 	pw_deinit();
 	return 0;
