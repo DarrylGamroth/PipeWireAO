@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 
 #include "egrabber_control.hpp"
+#include "egrabber.hpp"
 
 #include <algorithm>
-#include <iostream>
 #include <stdexcept>
 #include <utility>
 
@@ -29,7 +29,8 @@ FeatureKind feature_kind(const std::vector<std::string> &interfaces, bool comman
 
 class RemoteControlBackend final : public ControlBackend {
 public:
-    explicit RemoteControlBackend(EGrabberOnDemand &grabber) : grabber_(grabber) {
+    RemoteControlBackend(EGrabberOnDemand &grabber, struct spa_log *log)
+        : grabber_(grabber), log_(log) {
         features_ = inspect_features();
     }
 
@@ -104,14 +105,15 @@ private:
                         Euresys::query::enumEntries(name, false));
                 result.push_back(std::move(feature));
             } catch (const std::exception &error) {
-                std::cerr << "Skipping GenICam feature " << name << ": "
-                          << error.what() << '\n';
+                spa_log_warn(log_, "skipping GenICam feature %s: %s",
+                             name.c_str(), error.what());
             }
         }
         return result;
     }
 
     EGrabberOnDemand &grabber_;
+    struct spa_log *log_;
     std::vector<Feature> features_;
 };
 
@@ -143,8 +145,8 @@ private:
 } // namespace
 
 std::unique_ptr<ControlBackend> make_remote_control_backend(
-        EGrabberOnDemand &grabber) {
-    return std::make_unique<RemoteControlBackend>(grabber);
+        EGrabberOnDemand &grabber, struct spa_log *log) {
+    return std::make_unique<RemoteControlBackend>(grabber, log);
 }
 
 std::unique_ptr<ControlBackend> make_null_control_backend() {

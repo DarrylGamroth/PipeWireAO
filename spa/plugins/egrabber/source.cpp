@@ -822,17 +822,21 @@ int release_buffers(impl *self)
 	if (spa_buffer_latest_has_links(self->latest))
 		return -EBUSY;
 
-	try {
-		self->camera->clear_frame_callback();
-		self->camera->set_transport_event_callback({});
-		self->camera->disable_events();
-		for (auto &slot : self->slots)
-			slot.completed.reset();
-		if (!self->ranges.empty())
-			self->camera->release(self->ranges);
-	} catch (...) {
-		res = -EIO;
-	}
+	const auto cleanup = [&res](auto &&operation) noexcept {
+		try {
+			operation();
+		} catch (...) {
+			if (res == 0)
+				res = -EIO;
+		}
+	};
+	cleanup([&] { self->camera->clear_frame_callback(); });
+	cleanup([&] { self->camera->set_transport_event_callback({}); });
+	cleanup([&] { self->camera->disable_events(); });
+	for (uint32_t index = 0; index < self->output.n_buffers; index++)
+		self->slots[index].completed.reset();
+	if (!self->ranges.empty())
+		cleanup([&] { self->camera->release(self->ranges); });
 	self->ranges.clear();
 	self->queued_buffers = 0;
 	for (uint32_t index = 0; index < self->output.n_buffers; index++) {
@@ -1104,13 +1108,16 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 				throw std::runtime_error("eGrabber reported a data-stream failure");
 		});
 	} catch (...) {
-		try {
-			self->camera->clear_frame_callback();
-			self->camera->set_transport_event_callback({});
-			if (!self->ranges.empty())
-				self->camera->release(self->ranges);
-		} catch (...) {
-		}
+		const auto cleanup = [](auto &&operation) noexcept {
+			try {
+				operation();
+			} catch (...) {
+			}
+		};
+		cleanup([&] { self->camera->clear_frame_callback(); });
+		cleanup([&] { self->camera->set_transport_event_callback({}); });
+		if (!self->ranges.empty())
+			cleanup([&] { self->camera->release(self->ranges); });
 		self->ranges.clear();
 		self->queued_buffers = 0;
 		self->progressive_slot = nullptr;
@@ -1469,7 +1476,7 @@ int init(const struct spa_handle_factory *, struct spa_handle *handle,
 		read_options(self->options, info);
 		self->acquisition_keys = AcquisitionKeySequence(
 				self->options.acquisition_generation);
-		self->camera = std::make_unique<Camera>(self->options);
+		self->camera = std::make_unique<Camera>(self->options, self->log);
 #ifdef HAVE_EGRABBER_DRM
 		if (self->camera->dma_buf_supported()) {
 			self->dma_sync = std::make_unique<
