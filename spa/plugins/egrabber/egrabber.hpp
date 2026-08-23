@@ -1,0 +1,29 @@
+/* Simple Plugin API */
+/* SPDX-FileCopyrightText: Copyright © 2026 PipeWireAO contributors */
+/* SPDX-License-Identifier: MIT */
+
+#pragma once
+
+#include <spa/support/log.h>
+#include <spa/support/plugin.h>
+
+#define SPA_NAME_API_EGRABBER_SOURCE "api.egrabber.source"
+
+#define SPA_KEY_API_EGRABBER_PRODUCER "api.egrabber.producer"
+#define SPA_KEY_API_EGRABBER_SERIAL "api.egrabber.serial"
+#define SPA_KEY_API_EGRABBER_USER_ID "api.egrabber.user-id"
+#define SPA_KEY_API_EGRABBER_INTERFACE_INDEX "api.egrabber.interface-index"
+#define SPA_KEY_API_EGRABBER_DEVICE_INDEX "api.egrabber.device-index"
+#define SPA_KEY_API_EGRABBER_STREAM_INDEX "api.egrabber.stream-index"
+#define SPA_KEY_API_EGRABBER_BUFFER_COUNT "api.egrabber.buffer-count"
+#define SPA_KEY_API_EGRABBER_CONTROL "api.egrabber.control"
+
+extern "C" {
+
+extern const struct spa_handle_factory spa_egrabber_source_factory;
+
+#undef SPA_LOG_TOPIC_DEFAULT
+#define SPA_LOG_TOPIC_DEFAULT &egrabber_log_topic
+extern struct spa_log_topic egrabber_log_topic;
+
+}
