@@ -187,11 +187,13 @@ static uint64_t monotonic_nsec(void)
 }
 
 static int capture(const struct spa_handle_factory *factory,
-		const char *producer)
+		const char *producer, const char *completion_mode)
 {
-	const struct spa_dict_item item = SPA_DICT_ITEM_INIT(
-			SPA_KEY_API_BGAPI2_PRODUCER, producer);
-	const struct spa_dict info = SPA_DICT_INIT(&item, 1);
+	const struct spa_dict_item items[] = {
+		SPA_DICT_ITEM_INIT(SPA_KEY_API_BGAPI2_PRODUCER, producer),
+		SPA_DICT_ITEM_INIT(SPA_KEY_API_BGAPI2_COMPLETION_MODE, completion_mode),
+	};
+	const struct spa_dict info = SPA_DICT_INIT(items, SPA_N_ELEMENTS(items));
 	struct test_buffer storage[REQUESTED_BUFFERS] = { 0 };
 	struct spa_buffer *buffers[REQUESTED_BUFFERS];
 	struct spa_io_buffers_latest io = { 0 };
@@ -342,7 +344,7 @@ int main(int argc, char *argv[])
 	void *library;
 	int res;
 
-	spa_assert_se(argc == 3);
+	spa_assert_se(argc == 3 || argc == 4);
 	library = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
 	spa_assert_se(library != NULL);
 	enumerate = (spa_handle_factory_enum_func_t)dlsym(library,
@@ -351,7 +353,7 @@ int main(int argc, char *argv[])
 	spa_assert_se(enumerate(&factory, &index) == 1);
 	spa_assert_se(factory != NULL &&
 			spa_streq(factory->name, SPA_NAME_API_BGAPI2_SOURCE));
-	res = capture(factory, argv[2]);
+	res = capture(factory, argv[2], argc == 4 ? argv[3] : "callback");
 	spa_assert_se(dlclose(library) == 0);
 	return res;
 }

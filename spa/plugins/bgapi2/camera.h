@@ -14,6 +14,11 @@ extern "C" {
 
 #define BGAPI2_CAMERA_ANY_INTERFACE UINT32_MAX
 
+enum bgapi2_camera_completion_mode {
+	BGAPI2_CAMERA_COMPLETION_CALLBACK,
+	BGAPI2_CAMERA_COMPLETION_POLLING,
+};
+
 struct bgapi2_camera_options {
 	const char *producer_path;
 	uint32_t interface_index;
@@ -21,6 +26,7 @@ struct bgapi2_camera_options {
 	uint32_t stream_index;
 	uint64_t interface_timeout_ms;
 	uint64_t device_timeout_ms;
+	enum bgapi2_camera_completion_mode completion_mode;
 };
 
 struct bgapi2_camera_info {
