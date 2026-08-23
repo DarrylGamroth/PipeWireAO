@@ -23,4 +23,13 @@ bool changes_payload_layout(const Feature &feature) {
     });
 }
 
+bool is_scalar_feature(const Feature &feature) noexcept
+{
+	return feature.kind == FeatureKind::boolean ||
+		feature.kind == FeatureKind::integer ||
+		feature.kind == FeatureKind::floating ||
+		feature.kind == FeatureKind::enumeration ||
+		feature.kind == FeatureKind::string;
+}
+
 } // namespace egrabber_pipewire

@@ -7,6 +7,7 @@ egrabber_sources = [
   'frame_sequence.cpp',
   'manager.cpp',
   'options.cpp',
+  'params.cpp',
   'pixel_format.cpp',
   'plugin.cpp',
   'remote_control.cpp',
