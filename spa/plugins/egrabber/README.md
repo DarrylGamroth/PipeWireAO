@@ -10,8 +10,9 @@ does not inspect or include the proprietary SDK.
 The `api.egrabber.source` factory currently provides complete-frame capture and
 mapped-host progressive publication:
 
-- `api.egrabber.enum.manager` snapshot discovery and one
-  `api.egrabber.device` object per discovered camera;
+- `api.egrabber.enum.manager` serialized discovery reconciliation and one
+  `api.egrabber.device` object per discovered camera, with standard add,
+  property-update, and removal events from a non-RTC loop timer;
 - standard device-to-source object creation with stable selector, vendor,
   model, serial, user-ID, and transport properties;
 - standard SPA node, port, format, buffer, metadata, I/O, and command methods;
@@ -60,10 +61,13 @@ is still bound return `-EBUSY` without changing the camera.
 ## Current qualification
 
 The factory test loads and enumerates the plugin without opening hardware. The
-device test discovers the connected producer and verifies the standard
-manager-to-device-to-node property chain; it skips when no camera is present.
-Discovery is a construction-time snapshot, not a live-hotplug claim. The
-capture test skips when no selected camera is available. With the connected
+device test discovers the connected producer, verifies an unchanged rescan
+emits no duplicate object, and checks the standard manager-to-device-to-node
+property chain; it skips when no camera is present. A normal PipeWireAO host
+supplies loop utilities and receives one-second serialized discovery
+reconciliation. A minimal host without loop utilities can request the same
+reconciliation through the device `sync()` method. The capture test skips when
+no selected camera is available. With the connected
 Gigelink camera it negotiates the live format, announces eight aligned
 PipeWireAO-owned buffers, captures ten frames, validates Acquisition metadata,
 returns every subscriber lease, and performs ordered teardown.
@@ -90,7 +94,9 @@ profile.
 
 ## Remaining migration
 
-- Add serialized live discovery and removal events to the SPA manager.
+- Qualify physical camera add, property-change, removal, and reappearance with
+  each supported producer. Automated tests currently cover initial discovery
+  and unchanged reconciliation on the connected Gigelink producer.
 - Qualify acquisition-domain identity on Grablink/Coaxlink hardware and
   physical exposure-start mapping and uncertainty. The current completion-time
   anchor restores generic Header PTS behavior but does not claim an
