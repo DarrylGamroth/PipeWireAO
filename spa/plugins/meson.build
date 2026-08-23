@@ -69,6 +69,30 @@ if egrabber_found
   subdir('egrabber')
 endif
 
+bgapi2_found = false
+if get_option('bgapi2').allowed()
+  bgapi2_prefix = get_option('bgapi2-prefix')
+  bgapi2_include = include_directories(bgapi2_prefix / 'include')
+  bgapi2_library = cc.find_library(
+    'bgapi2_genicam',
+    dirs: [bgapi2_prefix / 'lib'],
+    required: get_option('bgapi2'),
+  )
+  bgapi2_dep = declare_dependency(
+    include_directories: bgapi2_include,
+    dependencies: bgapi2_library,
+  )
+  bgapi2_found = bgapi2_library.found() and cc.has_header(
+    'bgapi2_genicam/bgapi2_genicam.h',
+    dependencies: bgapi2_dep,
+    required: get_option('bgapi2'),
+  )
+endif
+summary({'BGAPI2': bgapi2_found}, bool_yn: true, section: 'Backend')
+if bgapi2_found
+  subdir('bgapi2')
+endif
+
 subdir('aec')
 plugin_dependencies = []
 if get_option('audioconvert').allowed()
