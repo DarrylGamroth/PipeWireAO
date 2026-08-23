@@ -236,6 +236,9 @@ int capture(const struct spa_handle_factory *factory)
 			SPA_IO_BuffersLatestLink, &link, sizeof(link)) == 0);
 	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_OUTPUT, 0, 0,
 			buffers.data(), buffers.size()) == 0);
+	format = enum_one(node, params, SPA_PARAM_Format);
+	spa_assert_se(spa_node_port_set_param(node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_PARAM_Format, 0, format) == 0);
 	props = enum_node_one(node, params, SPA_PARAM_Props);
 	spa_assert_se(props != nullptr);
 	if (struct spa_pod *width = find_control_value(props, "genicam.Width")) {
@@ -281,8 +284,13 @@ int capture(const struct spa_handle_factory *factory)
 	link.flags = 0;
 	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_OUTPUT, 0,
 			SPA_IO_BuffersLatestLink, &link, sizeof(link)) == 0);
+	format = enum_one(node, params, SPA_PARAM_Format);
+	spa_assert_se(spa_node_port_set_param(node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_PARAM_Format, 0, format) == 0);
 	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_OUTPUT, 0, 0,
-			nullptr, 0) == 0);
+			buffers.data(), buffers.size()) == 0);
+	spa_assert_se(spa_node_port_set_param(node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_PARAM_Format, 0, nullptr) == 0);
 	props = enum_node_one(node, params, SPA_PARAM_Props);
 	spa_assert_se(props != nullptr);
 	struct spa_pod *width = find_control_value(props, "genicam.Width");
