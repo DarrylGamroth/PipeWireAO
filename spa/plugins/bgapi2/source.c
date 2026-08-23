@@ -16,6 +16,7 @@
 #include <spa/param/format-utils.h>
 #include <spa/param/video/format-utils.h>
 #include <spa/param/video/raw-utils.h>
+#include <spa/pod/dynamic.h>
 #include <spa/pod/filter.h>
 #include <spa/support/plugin.h>
 #include <spa/utils/keys.h>
@@ -23,6 +24,7 @@
 
 #include "bgapi2.h"
 #include "camera.h"
+#include "params.h"
 
 #define MIN_BUFFERS 2u
 #define MAX_BUFFERS SPA_IMAGE_SOURCE_MAX_BUFFERS
@@ -50,6 +52,7 @@ struct impl {
 	struct spa_callbacks callbacks;
 	uint64_t info_all;
 	struct spa_node_info info;
+	struct spa_param_info params[2];
 	struct spa_dict props;
 	struct spa_dict_item prop_items[11];
 	char node_name[192];
@@ -161,11 +164,45 @@ static int impl_node_set_callbacks(void *object,
 	return 0;
 }
 
-static int impl_node_enum_params(void *object SPA_UNUSED, int seq SPA_UNUSED,
-		uint32_t id SPA_UNUSED, uint32_t start SPA_UNUSED,
-		uint32_t num SPA_UNUSED, const struct spa_pod *filter SPA_UNUSED)
+static int impl_node_enum_params(void *object, int seq, uint32_t id,
+		uint32_t start, uint32_t num, const struct spa_pod *filter)
 {
-	return -ENOENT;
+	struct impl *this = object;
+	struct spa_pod_dynamic_builder dynamic;
+	struct spa_pod_builder_state state;
+	struct spa_result_node_params result = { 0 };
+	uint8_t storage[4096];
+	uint32_t count = 0;
+
+	spa_return_val_if_fail(this != NULL && num > 0, -EINVAL);
+	if (id != SPA_PARAM_PropInfo && id != SPA_PARAM_Props)
+		return -ENOENT;
+	spa_pod_dynamic_builder_init(&dynamic, storage, sizeof(storage), 4096);
+	spa_pod_builder_get_state(&dynamic.b, &state);
+	result.id = id;
+	result.next = start;
+	while (count < num) {
+		struct spa_pod *param;
+
+		result.index = result.next++;
+		spa_pod_builder_reset(&dynamic.b, &state);
+		if (id == SPA_PARAM_PropInfo)
+			param = bgapi2_build_feature_prop_info(this->camera,
+					result.index, &dynamic.b);
+		else if (result.index == 0)
+			param = bgapi2_build_feature_props(this->camera, &dynamic.b);
+		else
+			param = NULL;
+		if (param == NULL)
+			break;
+		if (spa_pod_filter(&dynamic.b, &result.param, param, filter) < 0)
+			continue;
+		spa_node_emit_result(&this->hooks, seq, 0,
+				SPA_RESULT_TYPE_NODE_PARAMS, &result);
+		count++;
+	}
+	spa_pod_dynamic_builder_clean(&dynamic);
+	return 0;
 }
 
 static int impl_node_set_param(void *object SPA_UNUSED, uint32_t id SPA_UNUSED,
@@ -799,10 +836,17 @@ static int impl_init(const struct spa_handle_factory *factory SPA_UNUSED,
 	this->camera_info = *camera_info;
 	this->node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
 			SPA_VERSION_NODE, &impl_node, this);
-	this->info_all = SPA_NODE_CHANGE_MASK_FLAGS | SPA_NODE_CHANGE_MASK_PROPS;
+	this->info_all = SPA_NODE_CHANGE_MASK_FLAGS | SPA_NODE_CHANGE_MASK_PROPS |
+			SPA_NODE_CHANGE_MASK_PARAMS;
 	this->info = SPA_NODE_INFO_INIT();
 	this->info.max_output_ports = 1;
 	this->info.flags = SPA_NODE_FLAG_RT | SPA_NODE_FLAG_RTC_PROCESS;
+	this->params[0] = SPA_PARAM_INFO(SPA_PARAM_PropInfo,
+			SPA_PARAM_INFO_READ);
+	this->params[1] = SPA_PARAM_INFO(SPA_PARAM_Props,
+			SPA_PARAM_INFO_READ);
+	this->info.params = this->params;
+	this->info.n_params = SPA_N_ELEMENTS(this->params);
 	configure_props(this, &options);
 	this->info.props = &this->props;
 	this->port.info_all = SPA_PORT_CHANGE_MASK_FLAGS |
