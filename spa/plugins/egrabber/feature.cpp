@@ -7,19 +7,6 @@
 
 namespace egrabber_pipewire {
 
-const char *kind_name(FeatureKind kind) {
-    switch (kind) {
-    case FeatureKind::boolean: return "boolean";
-    case FeatureKind::integer: return "integer";
-    case FeatureKind::floating: return "float";
-    case FeatureKind::enumeration: return "enum";
-    case FeatureKind::string: return "string";
-    case FeatureKind::command: return "command";
-    case FeatureKind::unsupported: return "unsupported";
-    }
-    return "unsupported";
-}
-
 bool changes_payload_layout(const Feature &feature) {
     const auto &name = feature.name;
     static constexpr std::string_view exact[] = {

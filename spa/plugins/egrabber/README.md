@@ -9,6 +9,10 @@ does not inspect or include the proprietary SDK.
 
 The `api.egrabber.source` factory currently provides complete-frame capture:
 
+- `api.egrabber.enum.manager` snapshot discovery and one
+  `api.egrabber.device` object per discovered camera;
+- standard device-to-source object creation with stable selector, vendor,
+  model, serial, user-ID, and transport properties;
 - standard SPA node, port, format, buffer, metadata, I/O, and command methods;
 - immutable `SPA_NODE_FLAG_RTC_PROCESS` ownership;
 - `SPA_IO_BuffersLatestLink` fan-out without graph-ready callbacks;
@@ -32,6 +36,9 @@ SDK on every empty RTC poll.
 ## Current qualification
 
 The factory test loads and enumerates the plugin without opening hardware. The
+device test discovers the connected producer and verifies the standard
+manager-to-device-to-node property chain; it skips when no camera is present.
+Discovery is a construction-time snapshot, not a live-hotplug claim. The
 capture test skips when no selected camera is available. With the connected
 Gigelink camera it negotiates the live format, announces eight aligned
 PipeWireAO-owned buffers, captures ten frames, validates Acquisition metadata,
@@ -46,7 +53,7 @@ profile.
 
 ## Remaining migration
 
-- Add the standard SPA device manager and live discovery.
+- Add serialized live discovery and removal events to the SPA manager.
 - Expose scalar GenICam controls through `SPA_PARAM_PropInfo` and
   `SPA_PARAM_Props`, including fenced layout-changing writes.
 - Restore the standalone adapter's timestamp mapping and configurable
