@@ -23,18 +23,24 @@ static uint64_t monotonic_nsec(void)
 	return (uint64_t)now.tv_sec * 1000000000u + (uint64_t)now.tv_nsec;
 }
 
-static void release_slots(struct bgapi2_camera *camera,
+static int release_slots(struct bgapi2_camera *camera,
 		struct test_slot slots[N_BUFFERS])
 {
+	int first_error = 0, res;
 	uint32_t i;
 
-	bgapi2_camera_stop(camera);
-	bgapi2_camera_discard_buffers(camera);
+	if ((res = bgapi2_camera_stop(camera)) < 0)
+		first_error = res;
+	if ((res = bgapi2_camera_discard_buffers(camera)) < 0 && first_error == 0)
+		first_error = res;
 	for (i = 0; i < N_BUFFERS; i++) {
-		if (slots[i].buffer != NULL)
-			bgapi2_camera_revoke(camera, &slots[i].buffer);
+		if (slots[i].buffer != NULL &&
+				(res = bgapi2_camera_revoke(camera, &slots[i].buffer)) < 0 &&
+				first_error == 0)
+			first_error = res;
 		free(slots[i].memory);
 	}
+	return first_error;
 }
 
 int main(int argc, char *argv[])
@@ -155,7 +161,11 @@ int main(int argc, char *argv[])
 			(unsigned long long)frame->frame_id,
 			(unsigned long long)frame->size_filled,
 			(struct test_slot *)completion.user_data - slots);
-	release_slots(camera, slots);
+	res = release_slots(camera, slots);
 	bgapi2_camera_close(camera);
+	if (res < 0) {
+		fprintf(stderr, "camera teardown failed: %d\n", res);
+		return EXIT_FAILURE;
+	}
 	return EXIT_SUCCESS;
 }
