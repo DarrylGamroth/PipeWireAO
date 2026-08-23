@@ -13,6 +13,7 @@
 #include <new>
 #include <numeric>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <time.h>
 #include <vector>
@@ -87,6 +88,52 @@ struct buffer_slot {
 	bool recycle_pending = false;
 };
 
+/* EGrabber acquires user buffers in the order they are submitted. */
+struct buffer_submission_queue {
+	buffer_slot *slots[max_buffers] = {};
+	uint32_t head = 0;
+	uint32_t tail = 0;
+	uint32_t size = 0;
+
+	void clear()
+	{
+		for (auto &slot : slots)
+			slot = nullptr;
+		head = 0;
+		tail = 0;
+		size = 0;
+	}
+
+	bool empty() const { return size == 0; }
+
+	buffer_slot *front() const
+	{
+		return empty() ? nullptr : slots[head];
+	}
+
+	void submit(buffer_slot &slot)
+	{
+		if (size == max_buffers)
+			throw std::runtime_error("eGrabber submission queue is full");
+		slots[tail] = &slot;
+		tail = tail + 1 == max_buffers ? 0 : tail + 1;
+		size++;
+	}
+
+	void complete(buffer_slot &slot)
+	{
+		if (empty())
+			throw std::runtime_error(
+					"eGrabber completed an unsubmitted image slot");
+		if (slots[head] != &slot)
+			throw std::runtime_error(
+					"eGrabber completed buffers out of submission order");
+		slots[head] = nullptr;
+		head = head + 1 == max_buffers ? 0 : head + 1;
+		size--;
+	}
+};
+
 uint64_t monotonic_nsec()
 {
 	struct timespec now;
@@ -135,6 +182,7 @@ struct impl {
 	struct spa_image_source_latest transport = {};
 	struct spa_image_source source = {};
 	buffer_slot slots[max_buffers];
+	buffer_submission_queue submissions;
 	std::vector<BufferIndexRange> ranges;
 	FrameSequence frame_sequence;
 	TimestampMapper timestamp_mapper;
@@ -143,7 +191,6 @@ struct impl {
 	buffer_slot *progressive_slot = nullptr;
 	spa_fraction frame_rate = SPA_FRACTION(0, 1);
 	uint32_t video_format = SPA_VIDEO_FORMAT_UNKNOWN;
-	uint32_t queued_buffers = 0;
 	bool started = false;
 	bool progressive_offered = false;
 	bool progressive_active = false;
@@ -271,15 +318,14 @@ bool poll_readout(impl *self)
 {
 	bool changed = false;
 	if (self->pending_readout) {
-		const auto observation = self->camera->find_acquiring_buffer(self->ranges);
+		auto *slot = self->submissions.front();
+		if (slot == nullptr)
+			throw std::runtime_error(
+					"StartOfCameraReadout has no submitted image slot");
+		const auto observation = self->camera->buffer_progress(slot->range);
 		if (observation) {
-			if (observation->position >= self->output.n_buffers)
-				throw std::runtime_error(
-						"eGrabber acquiring buffer index is out of range");
-			prepare_readout(self, self->slots[observation->position],
-					*self->pending_readout, *observation);
-			begin_progressive(self, self->slots[observation->position],
-					*observation);
+			prepare_readout(self, *slot, *self->pending_readout, *observation);
+			begin_progressive(self, *slot, *observation);
 			self->pending_readout.reset();
 			changed = true;
 		}
@@ -849,7 +895,7 @@ int release_buffers(impl *self)
 	if (!self->ranges.empty())
 		cleanup([&] { self->camera->release(self->ranges); });
 	self->ranges.clear();
-	self->queued_buffers = 0;
+	self->submissions.clear();
 	for (uint32_t index = 0; index < self->output.n_buffers; index++) {
 		auto &slot = self->slots[index];
 		if (slot.image != nullptr)
@@ -993,15 +1039,13 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 					self->camera->payload_size(), data->mapoffset,
 					self->direct_dma_buf, &slot);
 			self->ranges.push_back(slot.range);
-			self->queued_buffers++;
+			self->submissions.submit(slot);
 		}
 		self->camera->set_frame_callback([self](const NewBufferData &data) {
 			auto *slot = static_cast<buffer_slot *>(data.userPointer);
 			if (slot == nullptr || slot->image == nullptr)
 				throw std::runtime_error("eGrabber completion has no image slot");
-			if (self->queued_buffers == 0)
-				throw std::runtime_error("eGrabber completed an unqueued image slot");
-			self->queued_buffers--;
+			self->submissions.complete(*slot);
 
 			Buffer completed(data);
 			const BufferMetadata metadata = self->camera->buffer_metadata(completed);
@@ -1097,7 +1141,7 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 				auto failed = std::move(slot->completed);
 				reset_observation(*slot);
 				self->camera->recycle(*failed);
-				self->queued_buffers++;
+				self->submissions.submit(*slot);
 				throw std::runtime_error("could not publish eGrabber image");
 			}
 		});
@@ -1129,7 +1173,7 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 		if (!self->ranges.empty())
 			cleanup([&] { self->camera->release(self->ranges); });
 		self->ranges.clear();
-		self->queued_buffers = 0;
+		self->submissions.clear();
 		self->progressive_slot = nullptr;
 		self->progressive_active = false;
 		self->direct_dma_buf = false;
@@ -1200,7 +1244,7 @@ int recycle_slot(impl *self, buffer_slot &slot)
 	slot.recycle_pending = false;
 	reset_observation(slot);
 	self->camera->recycle(*completed);
-	self->queued_buffers++;
+	self->submissions.submit(slot);
 	return 1;
 }
 
@@ -1262,7 +1306,7 @@ int process(void *object)
 		if (res < 0)
 			return res;
 		changed = changed || processed || res > 0;
-		if (!processed && self->queued_buffers == 0) {
+		if (!processed && self->submissions.empty()) {
 			res = recycle_buffers(self, true);
 			if (res < 0)
 				return res;
