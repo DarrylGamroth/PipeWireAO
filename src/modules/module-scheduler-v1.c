@@ -144,6 +144,7 @@ static void check_rtc_runnable(struct pw_impl_node *node)
 	struct pw_impl_link *link;
 	bool have_data_port = false;
 
+	node->runnable = false;
 	spa_list_for_each(port, &node->output_ports, link) {
 		have_data_port = true;
 		spa_list_for_each(link, &port->links, output_link) {
