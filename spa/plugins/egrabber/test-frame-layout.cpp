@@ -38,6 +38,12 @@ DeliveredFrameLayout delivered()
 
 int main()
 {
+	spa_assert_se(committed_prefix(0, 24, 8) == 0);
+	spa_assert_se(committed_prefix(7, 24, 8) == 0);
+	spa_assert_se(committed_prefix(17, 24, 8) == 16);
+	spa_assert_se(committed_prefix(24, 24, 8) == 24);
+	spa_assert_se(committed_prefix(30, 24, 8) == 24);
+
 	auto frame = resolve_frame_layout(negotiated(), delivered());
 	spa_assert_se(frame.image_offset == 0 && frame.data_size == 12);
 	spa_assert_se(frame.line_pitch == 4 && !frame.incomplete && !frame.corrupted);
