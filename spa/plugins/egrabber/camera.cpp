@@ -20,7 +20,6 @@
 namespace egrabber_pipewire {
 namespace gc = Euresys::gc;
 using Euresys::Buffer;
-using Euresys::BufferInfo;
 using Euresys::BufferIndexRange;
 using Euresys::DmaBufMemory;
 using Euresys::EGenTL;
@@ -225,10 +224,6 @@ public:
         return grabber_.process_event(timeout_ms);
     }
 
-    std::size_t queued_buffer_count() {
-        return grabber_.getInfo<StreamModule, std::size_t>(gc::STREAM_INFO_NUM_QUEUED);
-    }
-
     void cancel_event_wait() { grabber_.cancelPop(); }
 
     void select_memory_type(bool direct_dma_buf) {
@@ -305,35 +300,6 @@ public:
         metadata.incomplete = optional_buffer_flag(
             buffer, gc::BUFFER_INFO_IS_INCOMPLETE, incomplete_support_);
         return metadata;
-    }
-
-    std::optional<BufferProgress> find_acquiring_buffer(
-            std::span<const BufferIndexRange> ranges) {
-        std::lock_guard lock(mutex_);
-        std::optional<BufferProgress> found;
-        for (std::size_t position = 0; position < ranges.size(); ++position) {
-            const auto index = ranges[position].indexAt(0);
-            bool acquiring = false;
-            try {
-                acquiring = grabber_.getBufferInfo<bool8_t>(
-                    index, gc::BUFFER_INFO_IS_ACQUIRING) != 0;
-            } catch (...) {
-                continue;
-            }
-            if (!acquiring) continue;
-            if (found)
-                throw std::runtime_error("eGrabber reports more than one acquiring buffer");
-            BufferProgress progress;
-            progress.position = position;
-            progress.size_filled = grabber_.getBufferInfo<std::size_t>(
-                index, gc::BUFFER_INFO_SIZE_FILLED);
-            try {
-                progress.frame_id = grabber_.getBufferInfo<std::uint64_t>(
-                    index, gc::BUFFER_INFO_FRAMEID);
-            } catch (...) {}
-            found = progress;
-        }
-        return found;
     }
 
     std::optional<BufferProgress> buffer_progress(const BufferIndexRange &range) {
@@ -910,7 +876,6 @@ const std::string &Camera::pixel_format() const { return impl_->pixel_format(); 
 const std::vector<Feature> &Camera::features() const { return impl_->features(); }
 const CameraIdentity &Camera::identity() const { return impl_->identity(); }
 bool Camera::progressive_supported() const { return impl_->progressive_supported(); }
-std::size_t Camera::queued_buffer_count() { return impl_->queued_buffer_count(); }
 bool Camera::dma_buf_supported() { return impl_->dma_buf_supported(); }
 void Camera::set_frame_callback(FrameCallback callback) { impl_->set_frame_callback(std::move(callback)); }
 void Camera::clear_frame_callback() { impl_->clear_frame_callback(); }
@@ -927,10 +892,6 @@ Euresys::BufferIndexRange Camera::announce(void *base, int fd, std::size_t size,
 }
 BufferMetadata Camera::buffer_metadata(Euresys::Buffer &buffer) {
     return impl_->buffer_metadata(buffer);
-}
-std::optional<BufferProgress> Camera::find_acquiring_buffer(
-        std::span<const Euresys::BufferIndexRange> ranges) {
-    return impl_->find_acquiring_buffer(ranges);
 }
 std::optional<BufferProgress> Camera::buffer_progress(
         const Euresys::BufferIndexRange &range) {
