@@ -125,6 +125,9 @@ int main(int argc, char **argv)
 			spa_hook_remove(&manager_listener);
 			result = 77;
 		} else {
+			const size_t discovered_count = manager_observation.objects.size();
+			spa_assert_se(spa_device_sync(manager.device, 7) == 0);
+			spa_assert_se(manager_observation.objects.size() == discovered_count);
 			const auto &camera = manager_observation.objects.front();
 			spa_assert_se(camera.type == SPA_TYPE_INTERFACE_Device);
 			spa_assert_se(camera.factory == SPA_NAME_API_EGRABBER_DEVICE);
