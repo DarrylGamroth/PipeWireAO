@@ -56,6 +56,7 @@ struct bgapi2_camera {
 	struct bgapi2_camera_completion completions[SPA_IMAGE_SOURCE_MAX_BUFFERS];
 	uint32_t announced_count;
 	uint32_t completion_error;
+	enum bgapi2_camera_completion_mode completion_mode;
 	bool system_open;
 	bool interface_open;
 	bool device_open;
@@ -419,12 +420,16 @@ int bgapi2_camera_open(struct bgapi2_camera **camera_ptr,
 
 	if (camera_ptr == NULL || options == NULL || options->producer_path == NULL)
 		return -EINVAL;
+	if (options->completion_mode != BGAPI2_CAMERA_COMPLETION_CALLBACK &&
+			options->completion_mode != BGAPI2_CAMERA_COMPLETION_POLLING)
+		return -EINVAL;
 	*camera_ptr = NULL;
 	if (posix_memalign(&storage, SPA_CACHE_LINE_SIZE, sizeof(*camera)) != 0)
 		return -ENOMEM;
 	camera = static_cast<struct bgapi2_camera *>(storage);
 	memset(camera, 0, sizeof(*camera));
 	spa_ringbuffer_shared_init(&camera->completion_ring);
+	camera->completion_mode = options->completion_mode;
 	if ((res = checked(camera, BGAPI2_LoadSystemFromPath(
 			options->producer_path, &camera->system))) < 0 ||
 			(res = checked(camera, BGAPI2_System_Open(camera->system))) < 0)
@@ -760,8 +765,13 @@ int bgapi2_camera_start(struct bgapi2_camera *camera)
 		return 0;
 	spa_ringbuffer_shared_init(&camera->completion_ring);
 	__atomic_store_n(&camera->completion_error, 0u, __ATOMIC_RELAXED);
-	if ((res = enable_completion_handler(camera)) < 0)
+	if (camera->completion_mode == BGAPI2_CAMERA_COMPLETION_CALLBACK) {
+		if ((res = enable_completion_handler(camera)) < 0)
+			return res;
+	} else if ((res = checked(camera, BGAPI2_DataStream_SetNewBufferEventMode(
+			camera->stream, EVENTMODE_POLLING))) < 0) {
 		return res;
+	}
 	if ((res = checked(camera, BGAPI2_DataStream_StartAcquisitionContinuous(
 			camera->stream))) < 0)
 		goto disable_handler;
@@ -810,12 +820,27 @@ int bgapi2_camera_queue(struct bgapi2_camera *camera, BGAPI2_Buffer *buffer)
 int bgapi2_camera_try_get_completion(struct bgapi2_camera *camera,
 		struct bgapi2_camera_completion *completion)
 {
+	BGAPI2_Buffer *buffer = nullptr;
+	BGAPI2_RESULT result;
 	uint32_t index;
 	int32_t available;
 
 	if (camera == NULL || completion == NULL)
 		return -EINVAL;
 	memset(completion, 0, sizeof(*completion));
+	if (camera->completion_mode == BGAPI2_CAMERA_COMPLETION_POLLING) {
+		result = BGAPI2_CALL(BGAPI2_DataStream_GetFilledBuffer(camera->stream,
+				&buffer, 0));
+		if (result == BGAPI2_RESULT_NO_DATA || result == BGAPI2_RESULT_TIMEOUT)
+			return 0;
+		if (result != BGAPI2_RESULT_SUCCESS)
+			return fail(result);
+		if (buffer == nullptr)
+			return -EIO;
+		completion->buffer = buffer;
+		completion->result = read_completion(camera, buffer, completion);
+		return 1;
+	}
 	if (__atomic_load_n(&camera->completion_error, __ATOMIC_ACQUIRE) != 0)
 		return -EOVERFLOW;
 	available = spa_ringbuffer_shared_get_read_index(

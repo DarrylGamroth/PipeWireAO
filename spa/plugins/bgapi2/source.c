@@ -56,13 +56,14 @@ struct impl {
 	struct spa_node_info info;
 	struct spa_param_info params[2];
 	struct spa_dict props;
-	struct spa_dict_item prop_items[11];
+	struct spa_dict_item prop_items[12];
 	char node_name[192];
 	char node_description[256];
 	char producer_path[PATH_MAX];
 	char interface_index[16];
 	char device_index[16];
 	char stream_index[16];
+	char completion_mode[16];
 	struct port port;
 	struct spa_buffer_latest *latest;
 	struct spa_image_source_latest transport;
@@ -904,6 +905,9 @@ static void configure_props(struct impl *this,
 			this->camera_info.device_index);
 	snprintf(this->stream_index, sizeof(this->stream_index), "%u",
 			this->camera_info.stream_index);
+	snprintf(this->completion_mode, sizeof(this->completion_mode), "%s",
+			options->completion_mode == BGAPI2_CAMERA_COMPLETION_POLLING ?
+			"polling" : "callback");
 #define ADD_ITEM(key, value) \
 	this->prop_items[n_items++] = SPA_DICT_ITEM_INIT((key), (value))
 	ADD_ITEM(SPA_KEY_DEVICE_API, "bgapi2");
@@ -917,6 +921,7 @@ static void configure_props(struct impl *this,
 	ADD_ITEM(SPA_KEY_API_BGAPI2_INTERFACE_INDEX, this->interface_index);
 	ADD_ITEM(SPA_KEY_API_BGAPI2_DEVICE_INDEX, this->device_index);
 	ADD_ITEM(SPA_KEY_API_BGAPI2_STREAM_INDEX, this->stream_index);
+	ADD_ITEM(SPA_KEY_API_BGAPI2_COMPLETION_MODE, this->completion_mode);
 #undef ADD_ITEM
 	this->props = SPA_DICT_INIT(this->prop_items, n_items);
 }
@@ -939,12 +944,21 @@ static int impl_init(const struct spa_handle_factory *factory SPA_UNUSED,
 			SPA_IMAGE_SOURCE_FLAG_REQUIRE_ACQUISITION,
 	};
 	const struct bgapi2_camera_info *camera_info;
+	const char *completion_mode;
 	int res;
 
 	spa_return_val_if_fail(handle != NULL, -EINVAL);
 	memset(this, 0, sizeof(*this));
 	options.producer_path = info == NULL ? NULL :
 			spa_dict_lookup(info, SPA_KEY_API_BGAPI2_PRODUCER);
+	completion_mode = info == NULL ? NULL :
+			spa_dict_lookup(info, SPA_KEY_API_BGAPI2_COMPLETION_MODE);
+	if (completion_mode == NULL || spa_streq(completion_mode, "callback"))
+		options.completion_mode = BGAPI2_CAMERA_COMPLETION_CALLBACK;
+	else if (spa_streq(completion_mode, "polling"))
+		options.completion_mode = BGAPI2_CAMERA_COMPLETION_POLLING;
+	else
+		return -EINVAL;
 	if (options.producer_path == NULL ||
 			parse_index(info, SPA_KEY_API_BGAPI2_INTERFACE_INDEX,
 				BGAPI2_CAMERA_ANY_INTERFACE, &options.interface_index) < 0 ||
