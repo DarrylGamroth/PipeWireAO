@@ -824,10 +824,12 @@ static int node_send_command(void *object, const struct spa_command *command)
 
 	switch (id) {
 	case SPA_NODE_COMMAND_Suspend:
-		res = suspend_node(node);
+		res = is_rtc_process(node)
+			? pw_impl_node_send_command(node, command)
+			: suspend_node(node);
 		break;
 	default:
-		res = spa_node_send_command(node->node, command);
+		res = pw_impl_node_send_command(node, command);
 		break;
 	}
 	return res;
@@ -3078,6 +3080,19 @@ int pw_impl_node_send_command(struct pw_impl_node *node, const struct spa_comman
 {
 	uint32_t id = SPA_NODE_COMMAND_ID(command);
 	int res = 0;
+
+	if (is_rtc_process(node)) {
+		switch (id) {
+		case SPA_NODE_COMMAND_Start:
+			return pw_impl_node_set_state(node, PW_NODE_STATE_RUNNING);
+		case SPA_NODE_COMMAND_Pause:
+			return pw_impl_node_set_state(node, PW_NODE_STATE_IDLE);
+		case SPA_NODE_COMMAND_Suspend:
+			return pw_impl_node_set_state(node, PW_NODE_STATE_SUSPENDED);
+		default:
+			break;
+		}
+	}
 
 	switch (id) {
 	case SPA_NODE_COMMAND_RequestProcess:

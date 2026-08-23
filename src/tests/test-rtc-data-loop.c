@@ -374,6 +374,9 @@ struct synthetic_rtc_node {
 	uint32_t pauses;
 	uint32_t suspends;
 	uint32_t process_calls;
+	uint32_t processing;
+	uint32_t lifecycle_overlap;
+	uint32_t process_delay_us;
 	int process_result;
 };
 
@@ -414,9 +417,13 @@ static int synthetic_send_command(void *object, const struct spa_command *comman
 		SPA_ATOMIC_INC(node->starts);
 		break;
 	case SPA_NODE_COMMAND_Pause:
+		if (SPA_ATOMIC_LOAD(node->processing) != 0)
+			SPA_ATOMIC_INC(node->lifecycle_overlap);
 		SPA_ATOMIC_INC(node->pauses);
 		break;
 	case SPA_NODE_COMMAND_Suspend:
+		if (SPA_ATOMIC_LOAD(node->processing) != 0)
+			SPA_ATOMIC_INC(node->lifecycle_overlap);
 		SPA_ATOMIC_INC(node->suspends);
 		break;
 	default:
@@ -428,8 +435,14 @@ static int synthetic_send_command(void *object, const struct spa_command *comman
 static int synthetic_process(void *object)
 {
 	struct synthetic_rtc_node *node = object;
+	uint32_t delay;
 
+	SPA_ATOMIC_INC(node->processing);
 	SPA_ATOMIC_INC(node->process_calls);
+	delay = SPA_ATOMIC_LOAD(node->process_delay_us);
+	if (delay != 0)
+		usleep(delay);
+	SPA_ATOMIC_DEC(node->processing);
 	return node->process_result;
 }
 
@@ -514,10 +527,27 @@ static void test_rtc_node_lifecycle(void)
 	spa_assert_se(!node->rt.prepared);
 	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.starts) == 1);
 
+	SPA_ATOMIC_STORE(synthetic.process_delay_us, 20000);
+	wait_until_at_least(&synthetic.processing, 1);
+	spa_assert_se(pw_impl_node_send_command(node,
+			&SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Pause)) == 0);
+	wait_for_node_state(&fixture, node, PW_NODE_STATE_IDLE);
+	spa_assert_se(!pw_rtc_data_loop_is_running(node->rtc_loop));
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.processing) == 0);
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.lifecycle_overlap) == 0);
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.pauses) == 1);
+
+	SPA_ATOMIC_STORE(synthetic.process_delay_us, 0);
+	spa_assert_se(pw_impl_node_send_command(node,
+			&SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Start)) == 0);
+	wait_for_node_state(&fixture, node, PW_NODE_STATE_RUNNING);
+	spa_assert_se(pw_rtc_data_loop_is_running(node->rtc_loop));
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.starts) == 2);
+
 	spa_assert_se(pw_impl_node_set_active(node, false) == 0);
 	wait_for_node_state(&fixture, node, PW_NODE_STATE_IDLE);
 	spa_assert_se(!pw_rtc_data_loop_is_running(node->rtc_loop));
-	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.pauses) == 1);
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.pauses) == 2);
 
 	synthetic.info.flags = SPA_NODE_FLAG_RT;
 	synthetic_emit_info(&synthetic);
