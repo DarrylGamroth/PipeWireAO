@@ -21,6 +21,10 @@ The `api.egrabber.source` factory currently provides complete-frame capture:
 - monotonic `SPA_META_Header.pts` mapping from the vendor camera timestamp,
   reset on every Start and marked discontinuous when the camera clock resets or
   departs from the local monotonic anchor;
+- configurable acquisition domain, initial generation, and
+  StartOfCameraReadout context selection for Grablink/Coaxlink sources; the
+  source advances generation on restart or a non-increasing trigger sequence
+  and mirrors a valid acquisition sequence into `SPA_META_Header.seq`;
 - bounded pool scans and explicit reclaim of only an unclaimed visible
   submission when the camera has no queued buffer; and
 - synchronous camera stop and buffer release before pool teardown.
@@ -59,9 +63,9 @@ profile.
 - Add serialized live discovery and removal events to the SPA manager.
 - Expose scalar GenICam controls through `SPA_PARAM_PropInfo` and
   `SPA_PARAM_Props`, including fenced layout-changing writes.
-- Add configurable acquisition-domain identity and qualify physical
-  exposure-start mapping and uncertainty. The current completion-time anchor
-  restores generic Header PTS behavior but does not claim an
+- Qualify acquisition-domain identity on Grablink/Coaxlink hardware and
+  physical exposure-start mapping and uncertainty. The current completion-time
+  anchor restores generic Header PTS behavior but does not claim an
   `SPA_META_Acquisition.exposure_start` value.
 - Add StartOfCameraReadout progressive publication for Grablink and Coaxlink;
   Gigelink remains complete-only.

@@ -108,6 +108,12 @@ int main(int argc, char **argv)
 	{
 		const struct spa_dict_item manager_items[] = {
 			{ SPA_KEY_API_EGRABBER_PRODUCER, "gigelink" },
+			{ SPA_KEY_API_EGRABBER_BUFFER_COUNT, "12" },
+			{ SPA_KEY_API_EGRABBER_PROGRESSIVE, "offer" },
+			{ SPA_KEY_API_EGRABBER_ACQUISITION_DOMAIN,
+					"00112233445566778899aabbccddeeff" },
+			{ SPA_KEY_API_EGRABBER_ACQUISITION_GENERATION, "42" },
+			{ SPA_KEY_API_EGRABBER_ACQUISITION_SEQUENCE_CONTEXT, "2" },
 		};
 		const struct spa_dict manager_info = SPA_DICT_INIT_ARRAY(manager_items);
 		instance manager(manager_factory, &manager_info);
@@ -126,6 +132,15 @@ int main(int argc, char **argv)
 			spa_assert_se(property(camera, SPA_KEY_API_EGRABBER_INTERFACE_INDEX) != nullptr);
 			spa_assert_se(property(camera, SPA_KEY_API_EGRABBER_DEVICE_INDEX) != nullptr);
 			spa_assert_se(property(camera, SPA_KEY_API_EGRABBER_STREAM_INDEX) != nullptr);
+			spa_assert_se(*property(camera, SPA_KEY_API_EGRABBER_BUFFER_COUNT) == "12");
+			spa_assert_se(*property(camera, SPA_KEY_API_EGRABBER_PROGRESSIVE) == "offer");
+			spa_assert_se(*property(camera,
+					SPA_KEY_API_EGRABBER_ACQUISITION_DOMAIN) ==
+					"00112233445566778899aabbccddeeff");
+			spa_assert_se(*property(camera,
+					SPA_KEY_API_EGRABBER_ACQUISITION_GENERATION) == "42");
+			spa_assert_se(*property(camera,
+					SPA_KEY_API_EGRABBER_ACQUISITION_SEQUENCE_CONTEXT) == "2");
 			std::vector<struct spa_dict_item> device_items;
 			device_items.reserve(camera.props.size());
 			for (const auto &[key, value] : camera.props)
@@ -145,6 +160,13 @@ int main(int argc, char **argv)
 					SPA_KEY_API_EGRABBER_PRODUCER) != nullptr);
 			spa_assert_se(property(device_observation.objects[0],
 					SPA_KEY_API_EGRABBER_INTERFACE_INDEX) != nullptr);
+			spa_assert_se(*property(device_observation.objects[0],
+					SPA_KEY_API_EGRABBER_BUFFER_COUNT) == "12");
+			spa_assert_se(*property(device_observation.objects[0],
+					SPA_KEY_API_EGRABBER_PROGRESSIVE) == "offer");
+			spa_assert_se(*property(device_observation.objects[0],
+					SPA_KEY_API_EGRABBER_ACQUISITION_DOMAIN) ==
+					"00112233445566778899aabbccddeeff");
 			spa_hook_remove(&device_listener);
 			spa_hook_remove(&manager_listener);
 		}

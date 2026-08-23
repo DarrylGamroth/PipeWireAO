@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <memory>
 #include <new>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -48,7 +49,15 @@ int emit_camera(impl *self, uint32_t id)
 {
 	const auto &camera = self->cameras[id];
 	const auto &identity = camera.camera.identity;
-	struct spa_dict_item items[16];
+	const std::string buffer_count = std::to_string(self->options.buffer_count);
+	const std::string acquisition_domain = self->options.acquisition_domain
+		? egrabber_pipewire::format_acquisition_domain(
+				*self->options.acquisition_domain) : std::string{};
+	const std::string acquisition_generation = std::to_string(
+			self->options.acquisition_generation);
+	const std::string acquisition_sequence_context = std::to_string(
+			self->options.acquisition_sequence_context);
+	struct spa_dict_item items[24];
 	uint32_t n_items = 0;
 
 #define ADD_ITEM(key, value) items[n_items++] = SPA_DICT_ITEM_INIT(key, value)
@@ -62,6 +71,18 @@ int emit_camera(impl *self, uint32_t id)
 	ADD_ITEM(SPA_KEY_API_EGRABBER_INTERFACE_INDEX, camera.interface_index.c_str());
 	ADD_ITEM(SPA_KEY_API_EGRABBER_DEVICE_INDEX, camera.device_index.c_str());
 	ADD_ITEM(SPA_KEY_API_EGRABBER_STREAM_INDEX, camera.stream_index.c_str());
+	ADD_ITEM(SPA_KEY_API_EGRABBER_BUFFER_COUNT, buffer_count.c_str());
+	ADD_ITEM(SPA_KEY_API_EGRABBER_CONTROL, self->options.control.c_str());
+	ADD_ITEM(SPA_KEY_API_EGRABBER_PROGRESSIVE,
+			egrabber_pipewire::progressive_policy_name(self->options.progressive));
+	if (self->options.acquisition_domain) {
+		ADD_ITEM(SPA_KEY_API_EGRABBER_ACQUISITION_DOMAIN,
+				acquisition_domain.c_str());
+		ADD_ITEM(SPA_KEY_API_EGRABBER_ACQUISITION_GENERATION,
+				acquisition_generation.c_str());
+		ADD_ITEM(SPA_KEY_API_EGRABBER_ACQUISITION_SEQUENCE_CONTEXT,
+				acquisition_sequence_context.c_str());
+	}
 	if (!identity.vendor.empty())
 		ADD_ITEM(SPA_KEY_DEVICE_VENDOR_NAME, identity.vendor.c_str());
 	if (!identity.model.empty())
@@ -180,8 +201,8 @@ int init(const struct spa_handle_factory *, struct spa_handle *handle,
 	spa_hook_list_init(&self->hooks);
 	self->device.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Device,
 			SPA_VERSION_DEVICE, &device_methods, self);
-	egrabber_pipewire::read_options(self->options, info);
 	try {
+		egrabber_pipewire::read_options(self->options, info);
 		for (auto &&camera : egrabber_pipewire::discover_cameras(self->options)) {
 			camera_descriptor descriptor;
 			descriptor.camera = std::move(camera);
@@ -204,6 +225,9 @@ int init(const struct spa_handle_factory *, struct spa_handle *handle,
 			descriptor.path = "egrabber:" + self->options.producer + ":" + stable;
 			self->cameras.push_back(std::move(descriptor));
 		}
+	} catch (const std::invalid_argument &) {
+		self->~impl();
+		return -EINVAL;
 	} catch (...) {
 		self->~impl();
 		return -EIO;
