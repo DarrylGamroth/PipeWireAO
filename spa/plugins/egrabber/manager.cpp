@@ -3,8 +3,10 @@
 /* SPDX-License-Identifier: MIT */
 
 #include <cerrno>
+#include <algorithm>
 #include <memory>
 #include <new>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -13,6 +15,7 @@
 #include <spa/monitor/device.h>
 #include <spa/monitor/utils.h>
 #include <spa/support/plugin.h>
+#include <spa/support/loop.h>
 #include <spa/utils/keys.h>
 #include <spa/utils/names.h>
 #include <spa/utils/string.h>
@@ -28,6 +31,7 @@ using egrabber_pipewire::Options;
 
 struct camera_descriptor {
 	DiscoveredCamera camera;
+	std::string key;
 	std::string interface_index;
 	std::string device_index;
 	std::string stream_index;
@@ -41,14 +45,75 @@ struct impl {
 	struct spa_device device = {};
 	struct spa_hook_list hooks = {};
 	struct spa_device_info info = SPA_DEVICE_INFO_INIT();
+	struct spa_log *log = nullptr;
+	struct spa_loop_utils *loop_utils = nullptr;
+	struct spa_source *discovery_timer = nullptr;
 	Options options;
-	std::vector<camera_descriptor> cameras;
+	std::vector<std::optional<camera_descriptor>> cameras;
 };
+
+std::string camera_key(const Options &options, const DiscoveredCamera &camera)
+{
+	const auto &identity = camera.identity;
+	if (!identity.serial.empty())
+		return options.producer + "\x1fserial\x1f" + identity.serial +
+				'\x1f' + identity.stream_id + '\x1f' +
+				std::to_string(camera.stream_index);
+	if (!identity.interface_id.empty() || !identity.device_id.empty() ||
+			!identity.stream_id.empty())
+		return options.producer + "\x1ftransport\x1f" +
+				identity.interface_id + '\x1f' + identity.device_id + '\x1f' +
+				identity.stream_id;
+	return options.producer + "\x1findex\x1f" +
+			std::to_string(camera.interface_index) + '\x1f' +
+			std::to_string(camera.device_index) + '\x1f' +
+			std::to_string(camera.stream_index);
+}
+
+camera_descriptor describe_camera(const Options &options,
+		DiscoveredCamera camera)
+{
+	camera_descriptor descriptor;
+	descriptor.key = camera_key(options, camera);
+	descriptor.camera = std::move(camera);
+	descriptor.interface_index = std::to_string(descriptor.camera.interface_index);
+	descriptor.device_index = std::to_string(descriptor.camera.device_index);
+	descriptor.stream_index = std::to_string(descriptor.camera.stream_index);
+	const auto &identity = descriptor.camera.identity;
+	const std::string stable = !identity.serial.empty() ? identity.serial :
+			descriptor.interface_index + "." + descriptor.device_index + "." +
+			descriptor.stream_index;
+	descriptor.name = "egrabber_device." + stable;
+	descriptor.description = identity.vendor;
+	if (!identity.model.empty()) {
+		if (!descriptor.description.empty())
+			descriptor.description += " ";
+		descriptor.description += identity.model;
+	}
+	if (descriptor.description.empty())
+		descriptor.description = "eGrabber camera";
+	descriptor.path = "egrabber:" + options.producer + ":" + stable;
+	return descriptor;
+}
+
+bool descriptor_equal(const camera_descriptor &a, const camera_descriptor &b)
+{
+	const auto &x = a.camera.identity;
+	const auto &y = b.camera.identity;
+	return a.key == b.key && a.camera.interface_index == b.camera.interface_index &&
+			a.camera.device_index == b.camera.device_index &&
+			a.camera.stream_index == b.camera.stream_index &&
+			x.vendor == y.vendor && x.model == y.model && x.serial == y.serial &&
+			x.user_id == y.user_id && x.transport == y.transport &&
+			a.name == b.name && a.description == b.description && a.path == b.path;
+}
 
 int emit_camera(impl *self, uint32_t id)
 {
 	const auto &camera = self->cameras[id];
-	const auto &identity = camera.camera.identity;
+	if (!camera)
+		return 0;
+	const auto &identity = camera->camera.identity;
 	const std::string buffer_count = std::to_string(self->options.buffer_count);
 	const std::string acquisition_domain = self->options.acquisition_domain
 		? egrabber_pipewire::format_acquisition_domain(
@@ -64,13 +129,13 @@ int emit_camera(impl *self, uint32_t id)
 	ADD_ITEM(SPA_KEY_DEVICE_ENUM_API, "egrabber.manager");
 	ADD_ITEM(SPA_KEY_DEVICE_API, "egrabber");
 	ADD_ITEM(SPA_KEY_MEDIA_CLASS, "Video/Device");
-	ADD_ITEM(SPA_KEY_OBJECT_PATH, camera.path.c_str());
-	ADD_ITEM(SPA_KEY_DEVICE_NAME, camera.name.c_str());
-	ADD_ITEM(SPA_KEY_DEVICE_DESCRIPTION, camera.description.c_str());
+	ADD_ITEM(SPA_KEY_OBJECT_PATH, camera->path.c_str());
+	ADD_ITEM(SPA_KEY_DEVICE_NAME, camera->name.c_str());
+	ADD_ITEM(SPA_KEY_DEVICE_DESCRIPTION, camera->description.c_str());
 	ADD_ITEM(SPA_KEY_API_EGRABBER_PRODUCER, self->options.producer.c_str());
-	ADD_ITEM(SPA_KEY_API_EGRABBER_INTERFACE_INDEX, camera.interface_index.c_str());
-	ADD_ITEM(SPA_KEY_API_EGRABBER_DEVICE_INDEX, camera.device_index.c_str());
-	ADD_ITEM(SPA_KEY_API_EGRABBER_STREAM_INDEX, camera.stream_index.c_str());
+	ADD_ITEM(SPA_KEY_API_EGRABBER_INTERFACE_INDEX, camera->interface_index.c_str());
+	ADD_ITEM(SPA_KEY_API_EGRABBER_DEVICE_INDEX, camera->device_index.c_str());
+	ADD_ITEM(SPA_KEY_API_EGRABBER_STREAM_INDEX, camera->stream_index.c_str());
 	ADD_ITEM(SPA_KEY_API_EGRABBER_BUFFER_COUNT, buffer_count.c_str());
 	ADD_ITEM(SPA_KEY_API_EGRABBER_CONTROL, self->options.control.c_str());
 	ADD_ITEM(SPA_KEY_API_EGRABBER_PROGRESSIVE,
@@ -108,6 +173,70 @@ int emit_camera(impl *self, uint32_t id)
 	return 1;
 }
 
+int refresh_cameras(impl *self)
+{
+	std::vector<camera_descriptor> discovered;
+	for (auto &&camera : egrabber_pipewire::discover_cameras(self->options))
+		discovered.push_back(describe_camera(self->options, std::move(camera)));
+	for (size_t i = 0; i < discovered.size(); ++i)
+		for (size_t j = i + 1; j < discovered.size(); ++j)
+			if (discovered[i].key == discovered[j].key)
+				throw std::runtime_error(
+						"eGrabber discovery returned duplicate camera identities");
+	std::vector<bool> matched(discovered.size(), false);
+
+	for (uint32_t id = 0; id < self->cameras.size(); ++id) {
+		auto &current = self->cameras[id];
+		if (!current)
+			continue;
+		const auto found = std::find_if(discovered.begin(), discovered.end(),
+				[&](const camera_descriptor &candidate) {
+					return candidate.key == current->key;
+				});
+		if (found == discovered.end()) {
+			spa_device_emit_object_info(&self->hooks, id, nullptr);
+			current.reset();
+			continue;
+		}
+		const auto index = static_cast<size_t>(found - discovered.begin());
+		matched[index] = true;
+		if (!descriptor_equal(*current, *found)) {
+			current = *found;
+			emit_camera(self, id);
+		}
+	}
+
+	for (size_t index = 0; index < discovered.size(); ++index) {
+		if (matched[index])
+			continue;
+		auto slot = std::find_if(self->cameras.begin(), self->cameras.end(),
+				[](const auto &camera) { return !camera; });
+		uint32_t id;
+		if (slot == self->cameras.end()) {
+			id = static_cast<uint32_t>(self->cameras.size());
+			self->cameras.emplace_back(std::move(discovered[index]));
+		} else {
+			id = static_cast<uint32_t>(slot - self->cameras.begin());
+			*slot = std::move(discovered[index]);
+		}
+		emit_camera(self, id);
+	}
+	return 0;
+}
+
+void on_discovery_timer(void *data, uint64_t)
+{
+	auto *self = static_cast<impl *>(data);
+	try {
+		(void) refresh_cameras(self);
+	} catch (const std::exception &error) {
+		spa_log_warn(self->log, "eGrabber discovery refresh failed: %s",
+				error.what());
+	} catch (...) {
+		spa_log_warn(self->log, "eGrabber discovery refresh failed");
+	}
+}
+
 void emit_info(impl *self, bool full)
 {
 	const uint64_t old = full ? self->info.change_mask : 0;
@@ -137,7 +266,8 @@ int add_listener(void *object, struct spa_hook *listener,
 	spa_hook_list_isolate(&self->hooks, &save, listener, events, data);
 	emit_info(self, true);
 	for (uint32_t i = 0; i < self->cameras.size(); i++)
-		emit_camera(self, i);
+		if (self->cameras[i])
+			emit_camera(self, i);
 	spa_hook_list_join(&self->hooks, &save);
 	return 0;
 }
@@ -146,7 +276,13 @@ int sync(void *object, int seq)
 {
 	auto *self = static_cast<impl *>(object);
 	spa_return_val_if_fail(self != nullptr, -EINVAL);
-	spa_device_emit_result(&self->hooks, seq, 0, 0, nullptr);
+	int res = 0;
+	try {
+		res = refresh_cameras(self);
+	} catch (...) {
+		res = -EIO;
+	}
+	spa_device_emit_result(&self->hooks, seq, res, 0, nullptr);
 	return 0;
 }
 
@@ -182,7 +318,10 @@ int get_interface(struct spa_handle *handle, const char *type, void **interface)
 int clear(struct spa_handle *handle)
 {
 	spa_return_val_if_fail(handle != nullptr, -EINVAL);
-	std::destroy_at(reinterpret_cast<impl *>(handle));
+	auto *self = reinterpret_cast<impl *>(handle);
+	if (self->discovery_timer != nullptr)
+		spa_loop_utils_destroy_source(self->loop_utils, self->discovery_timer);
+	std::destroy_at(self);
 	return 0;
 }
 
@@ -192,43 +331,42 @@ size_t get_size(const struct spa_handle_factory *, const struct spa_dict *)
 }
 
 int init(const struct spa_handle_factory *, struct spa_handle *handle,
-		const struct spa_dict *info, const struct spa_support *, uint32_t)
+		const struct spa_dict *info, const struct spa_support *support,
+		uint32_t n_support)
 {
 	spa_return_val_if_fail(handle != nullptr, -EINVAL);
 	auto *self = new (handle) impl{};
 	self->handle.get_interface = get_interface;
 	self->handle.clear = clear;
 	spa_hook_list_init(&self->hooks);
+	self->log = static_cast<struct spa_log *>(spa_support_find(support,
+			n_support, SPA_TYPE_INTERFACE_Log));
+	self->loop_utils = static_cast<struct spa_loop_utils *>(spa_support_find(
+			support, n_support, SPA_TYPE_INTERFACE_LoopUtils));
 	self->device.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Device,
 			SPA_VERSION_DEVICE, &device_methods, self);
 	try {
 		egrabber_pipewire::read_options(self->options, info);
-		for (auto &&camera : egrabber_pipewire::discover_cameras(self->options)) {
-			camera_descriptor descriptor;
-			descriptor.camera = std::move(camera);
-			descriptor.interface_index = std::to_string(descriptor.camera.interface_index);
-			descriptor.device_index = std::to_string(descriptor.camera.device_index);
-			descriptor.stream_index = std::to_string(descriptor.camera.stream_index);
-			const auto &identity = descriptor.camera.identity;
-			const std::string stable = !identity.serial.empty() ? identity.serial :
-					descriptor.interface_index + "." + descriptor.device_index + "." +
-					descriptor.stream_index;
-			descriptor.name = "egrabber_device." + stable;
-			descriptor.description = identity.vendor;
-			if (!identity.model.empty()) {
-				if (!descriptor.description.empty())
-					descriptor.description += " ";
-				descriptor.description += identity.model;
-			}
-			if (descriptor.description.empty())
-				descriptor.description = "eGrabber camera";
-			descriptor.path = "egrabber:" + self->options.producer + ":" + stable;
-			self->cameras.push_back(std::move(descriptor));
+		(void) refresh_cameras(self);
+		if (self->loop_utils != nullptr) {
+			self->discovery_timer = spa_loop_utils_add_timer(self->loop_utils,
+					on_discovery_timer, self);
+			if (self->discovery_timer == nullptr)
+				throw std::runtime_error("could not create eGrabber discovery timer");
+			struct timespec delay = { .tv_sec = 1, .tv_nsec = 0 };
+			struct timespec interval = delay;
+			const int res = spa_loop_utils_update_timer(self->loop_utils,
+					self->discovery_timer, &delay, &interval, false);
+			if (res < 0)
+				throw std::runtime_error("could not arm eGrabber discovery timer");
 		}
 	} catch (const std::invalid_argument &) {
 		self->~impl();
 		return -EINVAL;
 	} catch (...) {
+		if (self->discovery_timer != nullptr)
+			spa_loop_utils_destroy_source(self->loop_utils,
+					self->discovery_timer);
 		self->~impl();
 		return -EIO;
 	}
