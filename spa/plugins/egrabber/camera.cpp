@@ -11,6 +11,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <stdexcept>
 #include <string_view>
@@ -599,6 +600,16 @@ public:
             }
             if (allow_buffer_change) {
                 refresh_layout();
+                if (width_ > std::numeric_limits<std::uint32_t>::max() ||
+                    height_ > std::numeric_limits<std::uint32_t>::max() ||
+                    payload_size_ > static_cast<std::size_t>(
+                        std::numeric_limits<std::int32_t>::max()) ||
+                    natural_line_pitch_ > static_cast<std::size_t>(
+                        std::numeric_limits<std::int32_t>::max()) ||
+                    buffer_alignment_ > static_cast<std::size_t>(
+                        std::numeric_limits<std::int32_t>::max()))
+                    throw std::runtime_error(
+                        "updated camera layout exceeds SPA integer limits");
                 if (gentl_.imageGetBytesPerPixel(pixel_format_) > 1 && !pixel_byte_order_)
                     throw std::runtime_error(
                         "could not determine the camera pixel byte order");
@@ -646,6 +657,46 @@ public:
         default:
             return {};
         }
+    }
+
+    FeatureValue feature_value(const Feature &feature) {
+        std::lock_guard lock(mutex_);
+        if (!control_->readable(feature))
+            throw std::runtime_error(feature.name + " is not currently readable");
+        switch (feature.kind) {
+        case FeatureKind::boolean:
+            return control_->get_integer(feature) != 0;
+        case FeatureKind::integer:
+            return control_->get_integer(feature);
+        case FeatureKind::floating:
+            return control_->get_float(feature);
+        case FeatureKind::enumeration: {
+            const auto value = control_->get_string(feature);
+            const auto found = std::find(feature.enum_entries.begin(),
+                                         feature.enum_entries.end(), value);
+            if (found == feature.enum_entries.end())
+                throw std::runtime_error(feature.name +
+                                         " returned an unknown enumeration value");
+            return static_cast<std::int32_t>(
+                std::distance(feature.enum_entries.begin(), found));
+        }
+        case FeatureKind::string:
+            return control_->get_string(feature);
+        default:
+            throw std::runtime_error(feature.name + " is not a scalar feature");
+        }
+    }
+
+    std::optional<std::pair<std::int64_t, std::int64_t>>
+    feature_integer_range(const Feature &feature) {
+        std::lock_guard lock(mutex_);
+        return control_->integer_range(feature);
+    }
+
+    std::optional<std::pair<double, double>>
+    feature_float_range(const Feature &feature) {
+        std::lock_guard lock(mutex_);
+        return control_->float_range(feature);
     }
 
 private:
@@ -1000,6 +1051,17 @@ void Camera::set_feature(const Feature &feature, const spa_pod *value,
 }
 void Camera::execute_command(const Feature &feature) { impl_->execute_command(feature); }
 std::string Camera::feature_text(const Feature &feature) { return impl_->feature_text(feature); }
+FeatureValue Camera::feature_value(const Feature &feature) {
+    return impl_->feature_value(feature);
+}
+std::optional<std::pair<std::int64_t, std::int64_t>>
+Camera::feature_integer_range(const Feature &feature) {
+    return impl_->feature_integer_range(feature);
+}
+std::optional<std::pair<double, double>>
+Camera::feature_float_range(const Feature &feature) {
+    return impl_->feature_float_range(feature);
+}
 
 std::vector<DiscoveredCamera> discover_cameras(const Options &options) {
     EGenTL gentl(producer_path(options.producer));
