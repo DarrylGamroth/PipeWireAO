@@ -10,6 +10,7 @@ egrabber_sources = [
   'plugin.cpp',
   'remote_control.cpp',
   'source.cpp',
+  'timestamp_mapper.cpp',
 ]
 
 egrabber_lib = shared_library(
@@ -42,6 +43,13 @@ if get_option('tests').allowed()
     dependencies: [spa_dep],
   )
   test('spa-egrabber-pixel-format', egrabber_pixel_format_test)
+
+  egrabber_timestamp_mapper_test = executable(
+    'spa-egrabber-timestamp-mapper-test',
+    ['test-timestamp-mapper.cpp', 'timestamp_mapper.cpp'],
+    dependencies: [spa_dep],
+  )
+  test('spa-egrabber-timestamp-mapper', egrabber_timestamp_mapper_test)
 
   egrabber_factory_test = executable(
     'spa-egrabber-factory-test',
