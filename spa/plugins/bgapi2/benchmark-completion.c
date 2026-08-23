@@ -13,12 +13,15 @@
 
 #define N_BUFFERS 4u
 #define DEFAULT_ITERATIONS 200000u
+#define DEFAULT_QUEUE_ITERATIONS 1000u
+#define QUEUE_WARMUP_FRAMES 32u
 
 enum benchmark_operation {
 	BENCHMARK_CALLBACK,
 	BENCHMARK_POLLING,
 	BENCHMARK_IS_ACQUIRING,
 	BENCHMARK_SIZE_FILLED,
+	BENCHMARK_QUEUE,
 };
 
 struct slot {
@@ -87,6 +90,20 @@ static void release_slots(struct bgapi2_camera *camera,
 	}
 }
 
+static int wait_for_completion(struct bgapi2_camera *camera,
+		struct bgapi2_camera_completion *completion)
+{
+	uint64_t deadline = monotonic_raw_nsec() + 3000000000u;
+	int res;
+
+	do {
+		res = bgapi2_camera_try_get_completion(camera, completion);
+		if (res == 0)
+			sched_yield();
+	} while (res == 0 && monotonic_raw_nsec() < deadline);
+	return res;
+}
+
 int main(int argc, char *argv[])
 {
 	struct bgapi2_camera_options options = {
@@ -98,20 +115,18 @@ int main(int argc, char *argv[])
 	struct bgapi2_camera *camera = NULL;
 	const struct bgapi2_camera_info *info;
 	struct slot slots[N_BUFFERS] = { 0 };
-	uint64_t *clock_samples = NULL, *empty_samples = NULL;
-	uint64_t deadline, before, after;
-	uint32_t iterations = DEFAULT_ITERATIONS, i;
-	size_t empty_count = 0;
+	uint64_t *clock_samples = NULL, *operation_samples = NULL;
+	uint64_t before, after;
+	uint32_t iterations, i;
+	size_t sample_count = 0;
 	uint32_t frames = 0;
 	enum benchmark_operation operation;
 	const char *operation_name;
 	int call_res = -EIO, exit_status = EXIT_FAILURE;
 	const char *stage = "argument validation";
 
-	if (argc < 3 || argc > 4 ||
-			(argc == 4 && (!spa_atou32(argv[3], &iterations, 0) ||
-			iterations == 0))) {
-		fprintf(stderr, "usage: %s PRODUCER.cti callback|polling|is-acquiring|size-filled [ITERATIONS]\n",
+	if (argc < 3 || argc > 4) {
+		fprintf(stderr, "usage: %s PRODUCER.cti callback|polling|is-acquiring|size-filled|queue [ITERATIONS]\n",
 				argv[0]);
 		return EXIT_FAILURE;
 	}
@@ -129,13 +144,21 @@ int main(int argc, char *argv[])
 	} else if (strcmp(argv[2], "size-filled") == 0) {
 		operation = BENCHMARK_SIZE_FILLED;
 		options.completion_mode = BGAPI2_CAMERA_COMPLETION_CALLBACK;
+	} else if (strcmp(argv[2], "queue") == 0) {
+		operation = BENCHMARK_QUEUE;
+		options.completion_mode = BGAPI2_CAMERA_COMPLETION_CALLBACK;
 	} else {
 		return EXIT_FAILURE;
 	}
+	iterations = operation == BENCHMARK_QUEUE ? DEFAULT_QUEUE_ITERATIONS :
+			DEFAULT_ITERATIONS;
+	if (argc == 4 && (!spa_atou32(argv[3], &iterations, 0) ||
+			iterations == 0))
+		return EXIT_FAILURE;
 	clock_samples = malloc((size_t)iterations * sizeof(*clock_samples));
-	empty_samples = malloc((size_t)iterations * sizeof(*empty_samples));
+	operation_samples = malloc((size_t)iterations * sizeof(*operation_samples));
 	stage = "sample allocation";
-	if (clock_samples == NULL || empty_samples == NULL)
+	if (clock_samples == NULL || operation_samples == NULL)
 		goto done;
 	for (i = 0; i < iterations; i++) {
 		before = monotonic_raw_nsec();
@@ -162,15 +185,38 @@ int main(int argc, char *argv[])
 	if ((call_res = bgapi2_camera_start(camera)) < 0)
 		goto done;
 	stage = "first completion";
-	deadline = monotonic_raw_nsec() + 3000000000u;
-	do {
-		call_res = bgapi2_camera_try_get_completion(camera, &completion);
-		if (call_res == 0)
-			sched_yield();
-	} while (call_res == 0 && monotonic_raw_nsec() < deadline);
+	call_res = wait_for_completion(camera, &completion);
 	if (call_res != 1 || completion.result < 0 ||
 			bgapi2_camera_queue(camera, completion.buffer) < 0)
 		goto done;
+	if (operation == BENCHMARK_QUEUE) {
+		stage = "queue warmup";
+		for (i = 0; i < QUEUE_WARMUP_FRAMES; i++) {
+			call_res = wait_for_completion(camera, &completion);
+			if (call_res != 1 || completion.result < 0 ||
+					bgapi2_camera_queue(camera, completion.buffer) < 0)
+				goto done;
+		}
+		stage = "queue measurement";
+		for (i = 0; i < iterations; i++) {
+			call_res = wait_for_completion(camera, &completion);
+			if (call_res != 1 || completion.result < 0)
+				goto done;
+			before = monotonic_raw_nsec();
+			call_res = bgapi2_camera_queue(camera, completion.buffer);
+			after = monotonic_raw_nsec();
+			if (call_res < 0)
+				goto done;
+			operation_samples[sample_count++] = after - before;
+		}
+		printf("producer=%s mode=%s cpu=%d iterations=%u warmup=%u\n",
+				argv[1], operation_name, sched_getcpu(), iterations,
+				QUEUE_WARMUP_FRAMES);
+		report("clock-pair baseline", clock_samples, iterations);
+		report("QueueBuffer service time", operation_samples, sample_count);
+		exit_status = EXIT_SUCCESS;
+		goto done;
+	}
 	for (i = 0; i < iterations; i++) {
 		bool acquiring;
 		uint64_t size_filled;
@@ -190,11 +236,11 @@ int main(int argc, char *argv[])
 			goto done;
 		if (operation == BENCHMARK_IS_ACQUIRING ||
 				operation == BENCHMARK_SIZE_FILLED) {
-			empty_samples[empty_count++] = after - before;
+			operation_samples[sample_count++] = after - before;
 			continue;
 		}
 		if (call_res == 0)
-			empty_samples[empty_count++] = after - before;
+			operation_samples[sample_count++] = after - before;
 		else {
 			if (completion.result < 0 ||
 					bgapi2_camera_queue(camera, completion.buffer) < 0)
@@ -203,12 +249,12 @@ int main(int argc, char *argv[])
 		}
 	}
 	printf("producer=%s mode=%s cpu=%d iterations=%u empty=%zu frames=%u\n",
-			argv[1], operation_name, sched_getcpu(), iterations, empty_count,
+			argv[1], operation_name, sched_getcpu(), iterations, sample_count,
 			frames);
 	report("clock-pair baseline", clock_samples, iterations);
 	report(operation == BENCHMARK_IS_ACQUIRING ? "is-acquiring query" :
 			operation == BENCHMARK_SIZE_FILLED ? "size-filled query" :
-			"empty completion poll", empty_samples, empty_count);
+			"empty completion poll", operation_samples, sample_count);
 	exit_status = EXIT_SUCCESS;
 
 done:
@@ -220,6 +266,6 @@ done:
 		bgapi2_camera_close(camera);
 	}
 	free(clock_samples);
-	free(empty_samples);
+	free(operation_samples);
 	return exit_status;
 }
