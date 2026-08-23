@@ -1615,6 +1615,13 @@ struct pw_impl_link *pw_context_create_link(struct pw_context *context,
 			PW_KEY_PORT_BUFFER_LATEST, false) ||
 		pw_properties_get_bool(pw_impl_port_get_properties(input),
 			PW_KEY_PORT_BUFFER_LATEST, false);
+	if (!this->buffer_latest &&
+	    (SPA_FLAG_IS_SET(output_node->spa_flags, SPA_NODE_FLAG_RTC_PROCESS) ||
+	     SPA_FLAG_IS_SET(input_node->spa_flags, SPA_NODE_FLAG_RTC_PROCESS))) {
+		res = -ENOTSUP;
+		pw_log_error("RTC-owned nodes require buffer latest links");
+		goto error_free;
+	}
 	if (this->buffer_latest &&
 	    (input->n_mix != 0 ||
 	     (output->n_mix != 0 && !port_has_buffer_latest_link(output)))) {
