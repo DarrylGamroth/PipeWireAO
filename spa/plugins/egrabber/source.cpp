@@ -64,7 +64,6 @@ using egrabber_pipewire::DeliveredFrameLayout;
 using egrabber_pipewire::FrameSequence;
 using egrabber_pipewire::NegotiatedFrameLayout;
 using egrabber_pipewire::Options;
-using egrabber_pipewire::PixelByteOrder;
 using egrabber_pipewire::TimestampMapper;
 
 constexpr uint32_t max_buffers = SPA_IMAGE_SOURCE_MAX_BUFFERS;
@@ -355,13 +354,8 @@ uint32_t video_format(const Camera &camera)
 	if (format == "Mono8")
 		return SPA_VIDEO_FORMAT_GRAY8;
 	if (format == "Mono10" || format == "Mono12" ||
-			format == "Mono14" || format == "Mono16") {
-		const auto byte_order = camera.pixel_byte_order();
-		if (!byte_order)
-			throw std::runtime_error("GenTL did not report the pixel byte order");
-		return *byte_order == PixelByteOrder::little
-			? SPA_VIDEO_FORMAT_GRAY16_LE : SPA_VIDEO_FORMAT_GRAY16_BE;
-	}
+			format == "Mono14" || format == "Mono16")
+		return SPA_VIDEO_FORMAT_GRAY16_LE;
 	throw std::runtime_error("unsupported zero-copy eGrabber pixel format: " + format);
 }
 

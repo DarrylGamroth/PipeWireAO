@@ -3,7 +3,6 @@
 #pragma once
 
 #include "options.hpp"
-#include "pixel_format.hpp"
 #include "feature.hpp"
 
 #include <EGrabber.h>
@@ -98,7 +97,6 @@ public:
     std::size_t announce_minimum() const;
     std::size_t buffer_alignment() const;
     const std::string &pixel_format() const;
-    std::optional<PixelByteOrder> pixel_byte_order() const;
     const std::vector<Feature> &features() const;
     const CameraIdentity &identity() const;
     bool progressive_supported() const;
@@ -118,8 +116,6 @@ public:
     BufferMetadata buffer_metadata(Euresys::Buffer &buffer);
     std::optional<std::size_t> buffer_offset_x(Euresys::Buffer &buffer);
     std::optional<std::size_t> buffer_offset_y(Euresys::Buffer &buffer);
-    std::optional<PixelByteOrder> buffer_byte_order(Euresys::Buffer &buffer);
-    std::optional<PixelByteOrder> buffer_byte_order(const Euresys::BufferIndexRange &range);
     std::optional<std::uint64_t> timestamp_ns(Euresys::Buffer &buffer);
     bool incomplete(Euresys::Buffer &buffer);
     std::optional<BufferProgress> find_acquiring_buffer(
