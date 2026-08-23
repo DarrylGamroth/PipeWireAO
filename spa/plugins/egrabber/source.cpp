@@ -12,6 +12,7 @@
 #include <numeric>
 #include <optional>
 #include <string>
+#include <time.h>
 #include <vector>
 
 #include <spa/buffer/image-source-latest.h>
@@ -36,6 +37,7 @@
 #include "frame_layout.hpp"
 #include "frame_sequence.hpp"
 #include "options.hpp"
+#include "timestamp_mapper.hpp"
 
 namespace {
 
@@ -50,6 +52,7 @@ using egrabber_pipewire::FrameSequence;
 using egrabber_pipewire::NegotiatedFrameLayout;
 using egrabber_pipewire::Options;
 using egrabber_pipewire::PixelByteOrder;
+using egrabber_pipewire::TimestampMapper;
 
 constexpr uint32_t max_buffers = SPA_IMAGE_SOURCE_MAX_BUFFERS;
 
@@ -58,6 +61,16 @@ struct buffer_slot {
 	BufferIndexRange range;
 	std::optional<Buffer> completed;
 };
+
+uint64_t monotonic_nsec()
+{
+	struct timespec now;
+
+	if (clock_gettime(CLOCK_MONOTONIC, &now) < 0)
+		throw std::runtime_error("could not read CLOCK_MONOTONIC");
+	return static_cast<uint64_t>(now.tv_sec) * SPA_NSEC_PER_SEC +
+			static_cast<uint64_t>(now.tv_nsec);
+}
 
 struct port {
 	uint64_t info_all = 0;
@@ -92,6 +105,7 @@ struct impl {
 	buffer_slot slots[max_buffers];
 	std::vector<BufferIndexRange> ranges;
 	FrameSequence frame_sequence;
+	TimestampMapper timestamp_mapper;
 	spa_fraction frame_rate = SPA_FRACTION(0, 1);
 	uint32_t video_format = SPA_VIDEO_FORMAT_UNKNOWN;
 	uint32_t queued_buffers = 0;
@@ -468,20 +482,23 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 					static_cast<size_t>(std::numeric_limits<int32_t>::max()))
 				throw std::runtime_error("eGrabber line pitch exceeds SPA stride");
 			const auto sequence = self->frame_sequence.next(metadata.frame_id);
+			const auto timestamp = self->timestamp_mapper.map(
+					self->camera->timestamp_ns(completed).value_or(0),
+					monotonic_nsec());
 			struct spa_meta_acquisition acquisition;
 			if (!spa_meta_acquisition_init(&acquisition))
 				throw std::runtime_error("could not initialize acquisition metadata");
 			struct spa_image_frame frame = {
 				.version = SPA_VERSION_IMAGE_FRAME,
 				.data_index = 0,
-				.header_flags = sequence.discontinuity
+				.header_flags = sequence.discontinuity || timestamp.discontinuity
 					? SPA_META_HEADER_FLAG_DISCONT : 0u,
 				.chunk_flags = layout.corrupted ? SPA_CHUNK_FLAG_CORRUPTED : 0u,
 				.offset = static_cast<uint32_t>(layout.image_offset),
 				.size = static_cast<uint32_t>(layout.data_size),
 				.stride = static_cast<int32_t>(layout.line_pitch),
 				.sequence = sequence.sequence,
-				.pts = SPA_TIME_INVALID,
+				.pts = timestamp.pts,
 				.acquisition = &acquisition,
 			};
 			slot->completed.emplace(std::move(completed));
@@ -603,6 +620,7 @@ int send_command(void *object, const struct spa_command *command)
 				return res;
 			self->started = true;
 			self->frame_sequence.reset();
+			self->timestamp_mapper.request_reset();
 			self->camera->start();
 			return 0;
 		case SPA_NODE_COMMAND_Pause:
