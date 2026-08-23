@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -45,11 +46,13 @@ int main(int argc, char *argv[])
 	};
 	struct bgapi2_camera *camera = NULL;
 	const struct bgapi2_camera_info *info;
+	struct bgapi2_feature_info feature;
 	struct test_slot slots[N_BUFFERS] = { 0 };
 	struct bgapi2_camera_completion completion;
 	const struct bgapi2_frame_info *frame;
 	uint64_t deadline;
-	uint32_t i;
+	uint32_t feature_count, i;
+	bool found_width = false, found_pixel_format = false;
 	int res;
 
 	if (argc != 2) {
@@ -76,6 +79,44 @@ int main(int argc, char *argv[])
 			info->serial, (unsigned long long)info->width,
 			(unsigned long long)info->height, info->pixel_format,
 			(unsigned long long)info->payload_size);
+	feature_count = bgapi2_camera_get_feature_count(camera);
+	if (feature_count == 0) {
+		fprintf(stderr, "camera exposed no GenICam features\n");
+		bgapi2_camera_close(camera);
+		return EXIT_FAILURE;
+	}
+	for (i = 0; i < feature_count; i++) {
+		struct bgapi2_feature_value value;
+
+		if (bgapi2_camera_get_feature_info(camera, i, &feature) < 0 ||
+				feature.name == NULL || feature.property_name == NULL ||
+				feature.description == NULL ||
+				strncmp(feature.property_name, "genicam.", 8) != 0) {
+			fprintf(stderr, "invalid GenICam feature metadata\n");
+			bgapi2_camera_close(camera);
+			return EXIT_FAILURE;
+		}
+		if (strcmp(feature.name, "Width") == 0) {
+			found_width = feature.kind == BGAPI2_FEATURE_INTEGER &&
+					feature.changes_layout;
+			if (feature.available && feature.readable &&
+					(bgapi2_camera_get_feature_value(camera, i, &value) < 0 ||
+					value.kind != BGAPI2_FEATURE_INTEGER || value.integer <= 0))
+				found_width = false;
+		}
+		if (strcmp(feature.name, "PixelFormat") == 0) {
+			found_pixel_format =
+					feature.kind == BGAPI2_FEATURE_ENUMERATION &&
+					feature.n_enum_entries > 0 && feature.changes_layout &&
+					bgapi2_camera_get_feature_enum_entry(camera, i, 0) != NULL;
+		}
+	}
+	if (!found_width || !found_pixel_format) {
+		fprintf(stderr, "required GenICam layout features were not discovered\n");
+		bgapi2_camera_close(camera);
+		return EXIT_FAILURE;
+	}
+	printf("discovered %u GenICam features\n", feature_count);
 	for (i = 0; i < N_BUFFERS; i++) {
 		slots[i].memory = malloc(info->payload_size);
 		if (slots[i].memory == NULL ||
