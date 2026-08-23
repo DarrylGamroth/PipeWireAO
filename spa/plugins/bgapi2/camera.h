@@ -39,8 +39,6 @@ struct bgapi2_camera_info {
 
 struct bgapi2_frame_info {
 	uint64_t frame_id;
-	uint64_t timestamp;
-	uint64_t host_timestamp;
 	uint64_t size_filled;
 	uint64_t width;
 	uint64_t height;
@@ -49,8 +47,14 @@ struct bgapi2_frame_info {
 	uint64_t x_padding;
 	uint64_t image_offset;
 	uint64_t image_length;
-	bool image_present;
 	bool incomplete;
+};
+
+struct bgapi2_camera_completion {
+	BGAPI2_Buffer *buffer;
+	void *user_data;
+	struct bgapi2_frame_info frame;
+	int result;
 };
 
 struct bgapi2_camera;
@@ -73,17 +77,14 @@ int bgapi2_camera_start(struct bgapi2_camera *camera);
 int bgapi2_camera_stop(struct bgapi2_camera *camera);
 
 /*
- * RTC owner operations. They do not allocate, lock, log, format text, or wait
- * in this adapter. The GenTL producer remains part of the measured contract.
+ * RTC owner operations. Completion polling only consumes the local SPSC and
+ * does not call BGAPI2. Queueing returns ownership to the GenTL producer, so
+ * the producer's queue behavior remains part of the measured RTC contract.
  */
 int bgapi2_camera_queue(struct bgapi2_camera *camera,
 		BGAPI2_Buffer *buffer);
-int bgapi2_camera_try_get_filled(struct bgapi2_camera *camera,
-		BGAPI2_Buffer **buffer);
-int bgapi2_camera_get_frame_info(struct bgapi2_camera *camera,
-		BGAPI2_Buffer *buffer, struct bgapi2_frame_info *info);
-int bgapi2_camera_get_user_data(struct bgapi2_camera *camera,
-		BGAPI2_Buffer *buffer, void **user_data);
+int bgapi2_camera_try_get_completion(struct bgapi2_camera *camera,
+		struct bgapi2_camera_completion *completion);
 
 #ifdef __cplusplus
 }
