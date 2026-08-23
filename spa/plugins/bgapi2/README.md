@@ -139,6 +139,45 @@ not frame-latency measurements. Tail latency and scheduling jitter still require
 an open-loop, timestamped hardware run with CPU affinity, warmup, histograms,
 and causal scheduler counters.
 
+The completion microbenchmark removes setup and delivered frames from the
+reported empty-dequeue samples. It first waits for and returns one frame, then
+records 200,000 calls with `CLOCK_MONOTONIC_RAW` around each operation. The
+back-to-back clock-pair distribution is reported beside the operation rather
+than subtracted. Exact samples are sorted after acquisition stops; this build
+does not require a C HdrHistogram dependency.
+
+Five Euresys runs and three Baumer runs on CPU 15 produced:
+
+| Producer | Profile | p50 | p99 | p99.9 |
+| --- | --- | ---: | ---: | ---: |
+| Euresys Gigelink | callback | 20 ns | 31 ns | 31–40 ns |
+| Euresys Gigelink | polling | 2.39–2.43 us | 2.76–4.19 us | 11.4–11.6 us |
+| Baumer GigE | callback | 20 ns | 31 ns | 31–40 ns |
+| Baumer GigE | polling | 200 ns | 211–220 ns | 361–381 ns |
+
+The clock-pair baseline was 20 ns p50 and 30 ns p99, so the callback result is
+at this harness's measurement floor. These are not production qualification
+numbers: the host was an AMD Ryzen 7 6800H running Linux 6.12.57 with
+`preempt=full`, the `powersave` governor, SMT enabled, and no isolated core.
+They do establish that callback empty-dequeue is negligible compared with
+timeout-zero BGAPI2 polling on both producers.
+
+Heaptrack attributes no allocation to callback-mode
+`bgapi2_camera_try_get_completion` for either producer. Polling calls
+`GetLastTLError` on every empty dequeue. Euresys reaches `GCGetLastError`; Baumer
+reaches its CTI `GetLastError`; both construct `std::string` objects and allocate.
+Under heaptrack the Baumer polling source made millions of allocations and
+could not deliver ten frames before the three-second test deadline. Its faster
+unprofiled polling time therefore does not make it a strict RTC path.
+
+Repeated-process testing also found a Baumer CTI lifecycle nonconformance. After
+one Baumer-only camera test closes cleanly, the next Baumer-only process opens
+and starts the camera but receives no buffer. Every adapter stop, discard,
+revoke, stream close, device close, interface close, system close, and release
+call reports success. One Euresys Gigelink capture restores stream delivery, and
+the next Baumer run then succeeds. This behavior is recorded as producer
+evidence; the plugin does not add a vendor-specific stream-reset workaround.
+
 The profiling commands were:
 
 ```console
@@ -152,6 +191,15 @@ heaptrack_print /tmp/bgapi2-euresys.zst \
 
 Repeat the same commands with the Baumer CTI to compare producers.
 
+Run the operation benchmark with:
+
+```console
+taskset -c 15 build/spa/plugins/bgapi2/spa-bgapi2-completion-benchmark \
+  /opt/euresys/egrabber/lib/x86_64/gigelink.cti callback 200000
+taskset -c 15 build/spa/plugins/bgapi2/spa-bgapi2-completion-benchmark \
+  /opt/euresys/egrabber/lib/x86_64/gigelink.cti polling 200000
+```
+
 ## Remaining work
 
 - Add manager and device factories for live camera discovery and reconciliation.
@@ -160,6 +208,8 @@ Repeat the same commands with the Baumer CTI to compare producers.
 - Extend pixel-format coverage where a deterministic direct SPA mapping exists.
 - Run open-loop latency and tail-jitter qualification at the intended camera
   rates and scheduling profiles.
+- Resolve or formally exclude the Baumer CTI repeated-process stream failure
+  before claiming that producer for unattended lifecycle operation.
 - Decide whether a dedicated SDK-owning requeue agent is justified for strict
   zero-allocation operation. It should only be added with evidence that its
   extra handoff and scheduling cost improves the end-to-end deadline result.
