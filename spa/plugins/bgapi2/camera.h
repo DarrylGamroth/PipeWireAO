@@ -24,6 +24,9 @@ struct bgapi2_camera_options {
 };
 
 struct bgapi2_camera_info {
+	uint32_t interface_index;
+	uint32_t device_index;
+	uint32_t stream_index;
 	uint64_t payload_size;
 	uint64_t width;
 	uint64_t height;
@@ -57,8 +60,6 @@ int bgapi2_camera_open(struct bgapi2_camera **camera,
 		const struct bgapi2_camera_options *options);
 void bgapi2_camera_close(struct bgapi2_camera *camera);
 const struct bgapi2_camera_info *bgapi2_camera_get_info(
-		const struct bgapi2_camera *camera);
-BGAPI2_RESULT bgapi2_camera_get_last_result(
 		const struct bgapi2_camera *camera);
 
 /* Buffer creation and revocation are pool-lifecycle operations. */
