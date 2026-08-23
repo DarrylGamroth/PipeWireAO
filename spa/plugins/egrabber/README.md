@@ -23,6 +23,9 @@ mapped-host progressive publication:
 - optional StartOfCameraReadout progressive publication on Grablink and
   Coaxlink, with whole-row release publication from `BUFFER_INFO_SIZE_FILLED`,
   immutable active metadata, and explicit complete or aborted terminal state;
+- optional complete-frame DMA-BUF announcement when both eGrabber and a local
+  DRM render node support it, using negotiated `SPA_META_SyncTimeline` acquire
+  and release points rather than implicit synchronization;
 - fixed `SPA_META_Header` and Version 1 `SPA_META_Acquisition` publication;
 - monotonic `SPA_META_Header.pts` mapping from the vendor camera timestamp,
   reset on every Start and marked discontinuous when the camera clock resets or
@@ -71,6 +74,13 @@ implemented against the vendor StartOfCameraReadout, acquiring-buffer, and
 filled-size contract, but remains a hardware qualification item. Progressive
 publication rejects DMA-BUF by design.
 
+Explicit-sync DMA-BUF is currently restricted to one active subscriber. The
+standard SyncTimeline allocation has one release timeline, so it cannot safely
+represent several independent asynchronous consumers of a shared fan-out
+buffer. Mapped host buffers retain normal PipeWireAO fan-out. A second live
+subscriber is rejected before capture starts and cannot join a running
+DMA-BUF source.
+
 This is functional complete-mode evidence, not strict real-time admission.
 The imported camera facade still takes uncontended mutexes around SDK queries,
 and earlier hardware profiling found repeated allocations inside `gigelink.cti`
@@ -88,7 +98,9 @@ profile.
 - Qualify StartOfCameraReadout progressive publication on Grablink/Coaxlink
   hardware, including partial-row, completion, incomplete-frame, restart, and
   cancellation behavior.
-- Add optional DMA-BUF complete capture and explicit synchronization.
+- Qualify complete-frame DMA-BUF and SyncObj timeline behavior on supported
+  Grablink/Coaxlink hardware. The connected Gigelink device cannot exercise
+  this path.
 - Integrate SDK readiness with EventFd and Hybrid RTC wait policies without
   adding a readiness syscall to BusySpin.
 - Run the source through the PipeWireAO host-owned RTC loop and multiprocess

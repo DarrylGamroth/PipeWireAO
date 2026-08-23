@@ -4,6 +4,7 @@
 
 #include <cerrno>
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -38,6 +39,10 @@
 
 #include "camera.hpp"
 #include "acquisition_key.hpp"
+#include "buffer_memory.hpp"
+#ifdef HAVE_EGRABBER_DRM
+#include "dma_buf_sync.hpp"
+#endif
 #include "egrabber.hpp"
 #include "frame_layout.hpp"
 #include "frame_sequence.hpp"
@@ -71,6 +76,10 @@ struct buffer_slot {
 	uint64_t acquisition_generation = 0;
 	uint64_t acquisition_sequence = 0;
 	uint64_t sequence = 0;
+	uint64_t dma_point = 0;
+#ifdef HAVE_EGRABBER_DRM
+	egrabber_pipewire::DmaBufTimeline dma_sync;
+#endif
 	bool acquisition_identity_valid = false;
 	bool readout_observed = false;
 	bool acquisition_discontinuity = false;
@@ -119,6 +128,9 @@ struct impl {
 	std::string acquisition_sequence_context;
 	port output;
 	std::unique_ptr<Camera> camera;
+#ifdef HAVE_EGRABBER_DRM
+	std::unique_ptr<egrabber_pipewire::DmaBufSyncContext> dma_sync;
+#endif
 	struct spa_buffer_latest *latest = nullptr;
 	struct spa_image_source_latest transport = {};
 	struct spa_image_source source = {};
@@ -135,6 +147,8 @@ struct impl {
 	bool started = false;
 	bool progressive_offered = false;
 	bool progressive_active = false;
+	bool dma_buf_offered = false;
+	bool direct_dma_buf = false;
 };
 
 uint32_t acquisition_context(const Options &options,
@@ -621,7 +635,33 @@ int build_port_param(impl *self, uint32_t id, uint32_t index,
 		*param = spa_format_video_raw_build(builder, id, &output.format);
 		return 1;
 	case SPA_PARAM_Buffers:
-		if (index > 0)
+		if (index == 0 && self->dma_buf_offered) {
+			struct spa_pod_frame object;
+			spa_pod_builder_push_object(builder, &object,
+					SPA_TYPE_OBJECT_ParamBuffers, id);
+			spa_pod_builder_add(builder,
+					SPA_PARAM_BUFFERS_buffers,
+					SPA_POD_CHOICE_RANGE_Int(
+							static_cast<int32_t>(camera.buffer_count()),
+							static_cast<int32_t>(camera.announce_minimum()),
+							static_cast<int32_t>(max_buffers)),
+					SPA_PARAM_BUFFERS_blocks, SPA_POD_Int(3),
+					SPA_PARAM_BUFFERS_size,
+					SPA_POD_Int(static_cast<int32_t>(camera.payload_size())),
+					SPA_PARAM_BUFFERS_stride,
+					SPA_POD_Int(static_cast<int32_t>(camera.natural_line_pitch())),
+					SPA_PARAM_BUFFERS_align,
+					SPA_POD_Int(static_cast<int32_t>(camera.buffer_alignment())),
+					SPA_PARAM_BUFFERS_dataType,
+					SPA_POD_CHOICE_FLAGS_Int(1u << SPA_DATA_DmaBuf));
+			spa_pod_builder_prop(builder, SPA_PARAM_BUFFERS_metaType,
+					SPA_POD_PROP_FLAG_MANDATORY);
+			spa_pod_builder_int(builder, 1u << SPA_META_SyncTimeline);
+			*param = static_cast<struct spa_pod *>(
+					spa_pod_builder_pop(builder, &object));
+			return 1;
+		}
+		if (index != (self->dma_buf_offered ? 1u : 0u))
 			return 0;
 		*param = spa_pod_builder_add_object(builder,
 				SPA_TYPE_OBJECT_ParamBuffers, id,
@@ -664,6 +704,23 @@ int build_port_param(impl *self, uint32_t id, uint32_t index,
 					SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Progressive),
 					SPA_PARAM_META_size,
 					SPA_POD_Int(sizeof(struct spa_meta_progressive)));
+			return 1;
+		}
+		if (index == (self->progressive_offered ? 3u : 2u) &&
+				self->dma_buf_offered) {
+			struct spa_pod_frame object;
+			spa_pod_builder_push_object(builder, &object,
+					SPA_TYPE_OBJECT_ParamMeta, id);
+			spa_pod_builder_add(builder,
+					SPA_PARAM_META_type, SPA_POD_Id(SPA_META_SyncTimeline),
+					SPA_PARAM_META_size,
+					SPA_POD_Int(sizeof(struct spa_meta_sync_timeline)));
+			spa_pod_builder_prop(builder, SPA_PARAM_META_features,
+					SPA_POD_PROP_FLAG_DROP);
+			spa_pod_builder_int(builder,
+					SPA_META_FEATURE_SYNC_TIMELINE_RELEASE);
+			*param = static_cast<struct spa_pod *>(
+					spa_pod_builder_pop(builder, &object));
 			return 1;
 		}
 		return 0;
@@ -747,6 +804,8 @@ int port_set_param(void *object, enum spa_direction direction,
 int release_buffers(impl *self)
 {
 	int res = 0;
+	if (spa_buffer_latest_has_links(self->latest))
+		return -EBUSY;
 
 	try {
 		self->camera->clear_frame_callback();
@@ -765,11 +824,16 @@ int release_buffers(impl *self)
 		if (slot.image != nullptr)
 			spa_image_source_buffer_set_user_data(slot.image, nullptr);
 		slot.image = nullptr;
+		slot.dma_point = 0;
+#ifdef HAVE_EGRABBER_DRM
+		slot.dma_sync = {};
+#endif
 		reset_observation(slot);
 	}
 	self->pending_readout.reset();
 	self->progressive_slot = nullptr;
 	self->progressive_active = false;
+	self->direct_dma_buf = false;
 	if (self->output.n_buffers != 0) {
 		int teardown = spa_image_source_latest_teardown(
 				&self->transport, &self->source);
@@ -799,17 +863,57 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 			buffers == nullptr || n_buffers > max_buffers ||
 			n_buffers < self->camera->announce_minimum())
 		return -EINVAL;
-	bool progressive_metadata = self->progressive_offered;
+	std::vector<egrabber_pipewire::BufferMemoryOffer> offers;
+	offers.reserve(n_buffers);
 	for (i = 0; i < n_buffers; i++) {
 		struct spa_data *data;
 
 		if (buffers[i] == nullptr || buffers[i]->n_datas == 0 ||
-				(data = &buffers[i]->datas[0])->data == nullptr ||
-				data->chunk == nullptr ||
-				data->maxsize < self->camera->payload_size() ||
-				reinterpret_cast<uintptr_t>(data->data) %
-						self->camera->buffer_alignment() != 0)
+				(data = &buffers[i]->datas[0])->chunk == nullptr ||
+				data->maxsize < self->camera->payload_size())
 			return -EINVAL;
+		egrabber_pipewire::OfferedMemory type;
+		switch (data->type) {
+		case SPA_DATA_MemPtr:
+			type = egrabber_pipewire::OfferedMemory::mem_ptr;
+			break;
+		case SPA_DATA_MemFd:
+			type = egrabber_pipewire::OfferedMemory::mem_fd;
+			break;
+		case SPA_DATA_DmaBuf:
+			type = egrabber_pipewire::OfferedMemory::dma_buf;
+			break;
+		default:
+			return -ENOTSUP;
+		}
+		offers.push_back({type, data->data != nullptr});
+	}
+	const auto memory = egrabber_pipewire::choose_announced_memory(
+			offers, self->dma_buf_offered);
+	if (memory == egrabber_pipewire::AnnouncedMemory::unavailable)
+		return -ENOTSUP;
+	const bool direct_dma_buf = memory ==
+			egrabber_pipewire::AnnouncedMemory::direct_dma_buf;
+	if (direct_dma_buf &&
+			std::popcount(spa_buffer_latest_active_mask(self->latest)) > 1)
+		return -EBUSY;
+	bool progressive_metadata = self->progressive_offered && !direct_dma_buf;
+	for (i = 0; i < n_buffers; i++) {
+		const struct spa_data *data = &buffers[i]->datas[0];
+		if (direct_dma_buf) {
+			if (data->type != SPA_DATA_DmaBuf || data->fd < 0 ||
+					data->mapoffset % self->camera->buffer_alignment() != 0 ||
+					buffers[i]->n_datas < 3 ||
+					spa_buffer_find_meta_data(buffers[i],
+							SPA_META_SyncTimeline,
+							sizeof(struct spa_meta_sync_timeline)) == nullptr)
+				return -EINVAL;
+		} else if ((data->type != SPA_DATA_MemPtr &&
+				data->type != SPA_DATA_MemFd) || data->data == nullptr ||
+				reinterpret_cast<uintptr_t>(data->data) %
+						self->camera->buffer_alignment() != 0) {
+			return -EINVAL;
+		}
 		progressive_metadata = progressive_metadata &&
 				spa_buffer_find_meta_data(buffers[i], SPA_META_Progressive,
 						sizeof(struct spa_meta_progressive)) != nullptr;
@@ -819,16 +923,18 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 			!progressive_metadata)
 		return -ENOTSUP;
 	self->progressive_active = progressive_metadata;
+	self->direct_dma_buf = direct_dma_buf;
 	res = spa_image_source_latest_prepare(&self->transport, &self->source,
 			buffers, n_buffers);
 	if (res < 0) {
 		self->progressive_active = false;
+		self->direct_dma_buf = false;
 		return res;
 	}
 	self->output.n_buffers = n_buffers;
 	try {
 		self->ranges.reserve(n_buffers);
-		self->camera->select_memory_type(false);
+		self->camera->select_memory_type(self->direct_dma_buf);
 		for (i = 0; i < n_buffers; i++) {
 			struct spa_image_source_buffer *image = nullptr;
 			struct spa_data *data = &buffers[i]->datas[0];
@@ -839,8 +945,18 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 			buffer_slot &slot = self->slots[i];
 			slot.image = image;
 			spa_image_source_buffer_set_user_data(image, &slot);
+#ifdef HAVE_EGRABBER_DRM
+			if (self->direct_dma_buf) {
+				if (!self->dma_sync)
+					throw std::runtime_error(
+							"DMA-BUF synchronization context is unavailable");
+				slot.dma_sync = self->dma_sync->import(buffers[i]);
+				slot.dma_sync.wait_for_release();
+			}
+#endif
 			slot.range = self->camera->announce(data->data, data->fd,
-					self->camera->payload_size(), data->mapoffset, false, &slot);
+					self->camera->payload_size(), data->mapoffset,
+					self->direct_dma_buf, &slot);
 			self->ranges.push_back(slot.range);
 			self->queued_buffers++;
 		}
@@ -933,6 +1049,14 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 				.pts = timestamp.pts,
 				.acquisition = &acquisition,
 			};
+#ifdef HAVE_EGRABBER_DRM
+			if (self->direct_dma_buf) {
+				if (!slot->dma_sync)
+					throw std::runtime_error(
+							"DMA-BUF completion has no synchronization timeline");
+				slot->dma_sync.signal_acquire(++slot->dma_point);
+			}
+#endif
 			const int publish = spa_image_source_publish_complete(
 					&self->source, slot->image, &frame);
 			if (publish < 0) {
@@ -971,11 +1095,16 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 		self->queued_buffers = 0;
 		self->progressive_slot = nullptr;
 		self->progressive_active = false;
+		self->direct_dma_buf = false;
 		for (auto &slot : self->slots) {
 			if (slot.image != nullptr)
 				spa_image_source_buffer_set_user_data(slot.image, nullptr);
 			slot.image = nullptr;
 			slot.completed.reset();
+			slot.dma_point = 0;
+#ifdef HAVE_EGRABBER_DRM
+			slot.dma_sync = {};
+#endif
 			reset_observation(slot);
 		}
 		(void) spa_image_source_latest_teardown(&self->transport, &self->source);
@@ -996,6 +1125,21 @@ int port_set_io(void *object, enum spa_direction direction, uint32_t port_id,
 	if (id != SPA_IO_BuffersLatest && id != SPA_IO_BuffersLatestNotify &&
 			id != SPA_IO_BuffersLatestLink)
 		return -ENOENT;
+	if (self->direct_dma_buf && id != SPA_IO_BuffersLatestNotify) {
+		uint32_t link_id = 0;
+		bool active = data != nullptr;
+		if (id == SPA_IO_BuffersLatestLink && data != nullptr &&
+				size >= sizeof(struct spa_io_buffers_latest_link)) {
+			const auto *link =
+					static_cast<const struct spa_io_buffers_latest_link *>(data);
+			link_id = link->id;
+			active = SPA_FLAG_IS_SET(link->flags,
+					SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE);
+		}
+		if (active && spa_buffer_latest_find_link(self->latest, link_id,
+				nullptr) == nullptr && spa_buffer_latest_has_links(self->latest))
+			return -EBUSY;
+	}
 	return spa_buffer_latest_set_io(self->latest, id, data, size);
 }
 
@@ -1019,6 +1163,10 @@ int recycle_buffers(impl *self, bool reclaim)
 				spa_image_source_buffer_get_user_data(image));
 		if (slot == nullptr || slot->image != image || !slot->completed)
 			return -EPROTO;
+#ifdef HAVE_EGRABBER_DRM
+		if (self->direct_dma_buf)
+			slot->dma_sync.wait_for_release();
+#endif
 		auto completed = std::move(slot->completed);
 		reset_observation(*slot);
 		self->camera->recycle(*completed);
@@ -1075,6 +1223,9 @@ int send_command(void *object, const struct spa_command *command)
 				return -EIO;
 			if (self->started)
 				return 0;
+			if (self->direct_dma_buf &&
+					std::popcount(spa_buffer_latest_active_mask(self->latest)) > 1)
+				return -EBUSY;
 			if ((res = spa_buffer_latest_worker_begin(self->latest)) < 0)
 				return res;
 			self->started = true;
@@ -1270,6 +1421,13 @@ int init(const struct spa_handle_factory *, struct spa_handle *handle,
 		self->acquisition_keys = AcquisitionKeySequence(
 				self->options.acquisition_generation);
 		self->camera = std::make_unique<Camera>(self->options);
+#ifdef HAVE_EGRABBER_DRM
+		if (self->camera->dma_buf_supported()) {
+			self->dma_sync = std::make_unique<
+					egrabber_pipewire::DmaBufSyncContext>();
+			self->dma_buf_offered = self->dma_sync->available();
+		}
+#endif
 		if (self->options.progressive ==
 				egrabber_pipewire::ProgressivePolicy::require &&
 				!self->camera->progressive_supported())
