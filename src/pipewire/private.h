@@ -439,10 +439,40 @@ struct pw_data_loop {
 	struct spa_thread_utils *thread_utils;
 
 	pthread_t thread;
+	void *(*run) (void *data);
+	void *run_data;
+	uint32_t start_gate;
+	int rt_policy;
+	unsigned int strict_rt:1;
+	unsigned int wake_on_stop:1;
+	unsigned int thread_started:1;
 	unsigned int cancel:1;
 	unsigned int created:1;
-	unsigned int running:1;
+	uint32_t running;
 };
+
+enum pw_data_loop_rt_policy {
+	PW_DATA_LOOP_RT_POLICY_DEFAULT,
+	PW_DATA_LOOP_RT_POLICY_OTHER,
+	PW_DATA_LOOP_RT_POLICY_FIFO,
+};
+
+static inline void pw_data_loop_relax(void)
+{
+#if defined(__x86_64__) || defined(__i386__)
+	__asm__ __volatile__("pause" ::: "memory");
+#elif defined(__aarch64__)
+	__asm__ __volatile__("yield" ::: "memory");
+#else
+	__asm__ __volatile__("" ::: "memory");
+#endif
+}
+
+int pw_data_loop_set_runner(struct pw_data_loop *loop,
+		void *(*run) (void *data), void *data, bool wake_on_stop);
+int pw_data_loop_set_rt_policy(struct pw_data_loop *loop,
+		enum pw_data_loop_rt_policy policy, int priority, bool strict);
+bool pw_data_loop_is_running(struct pw_data_loop *loop);
 
 #define pw_main_loop_emit(o,m,v,...) spa_hook_list_call(&o->listener_list, struct pw_main_loop_events, m, v, ##__VA_ARGS__)
 #define pw_main_loop_emit_destroy(o) pw_main_loop_emit(o, destroy, 0)
