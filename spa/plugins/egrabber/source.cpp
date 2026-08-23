@@ -84,6 +84,7 @@ struct buffer_slot {
 	bool acquisition_discontinuity = false;
 	bool frame_discontinuity = false;
 	bool progressive = false;
+	bool recycle_pending = false;
 };
 
 uint64_t monotonic_nsec()
@@ -834,10 +835,12 @@ int release_buffers(impl *self)
 	}
 	self->ranges.clear();
 	self->queued_buffers = 0;
-	for (auto &slot : self->slots) {
+	for (uint32_t index = 0; index < self->output.n_buffers; index++) {
+		auto &slot = self->slots[index];
 		if (slot.image != nullptr)
 			spa_image_source_buffer_set_user_data(slot.image, nullptr);
 		slot.image = nullptr;
+		slot.recycle_pending = false;
 		slot.dma_point = 0;
 #ifdef HAVE_EGRABBER_DRM
 		slot.dma_sync = {};
@@ -966,7 +969,9 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 					throw std::runtime_error(
 							"DMA-BUF synchronization context is unavailable");
 				slot.dma_sync = self->dma_sync->import(buffers[i]);
-				slot.dma_sync.wait_for_release();
+				if (!slot.dma_sync.release_ready())
+					throw std::runtime_error(
+							"DMA-BUF release timeline is still pending during setup");
 			}
 #endif
 			slot.range = self->camera->announce(data->data, data->fd,
@@ -1116,6 +1121,7 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 				spa_image_source_buffer_set_user_data(slot.image, nullptr);
 			slot.image = nullptr;
 			slot.completed.reset();
+			slot.recycle_pending = false;
 			slot.dma_point = 0;
 #ifdef HAVE_EGRABBER_DRM
 			slot.dma_sync = {};
@@ -1163,33 +1169,61 @@ int reuse_buffer(void *, uint32_t, uint32_t)
 	return -ENOTSUP;
 }
 
+int recycle_slot(impl *self, buffer_slot &slot)
+{
+	if (!slot.recycle_pending)
+		return 0;
+#ifdef HAVE_EGRABBER_DRM
+	if (self->direct_dma_buf && !slot.dma_sync.release_ready())
+		return 0;
+#endif
+	auto completed = std::move(slot.completed);
+	if (!completed)
+		return -EPROTO;
+	slot.recycle_pending = false;
+	reset_observation(slot);
+	self->camera->recycle(*completed);
+	self->queued_buffers++;
+	return 1;
+}
+
 int recycle_buffers(impl *self, bool reclaim)
 {
-	uint32_t count = 0;
+	bool changed = false;
+	uint32_t count;
 
-	while (count++ < self->output.n_buffers) {
+	for (uint32_t index = 0; index < self->output.n_buffers; index++) {
+		auto &slot = self->slots[index];
+		const int res = recycle_slot(self, slot);
+		if (res < 0)
+			return res;
+		changed = changed || res > 0;
+		if (reclaim && changed)
+			return 1;
+	}
+
+	for (count = 0; count < self->output.n_buffers; count++) {
 		struct spa_image_source_buffer *image = nullptr;
 		const int res = reclaim
 			? spa_image_source_try_reclaim_submission(&self->source, &image)
 			: spa_image_source_try_acquire(&self->source, &image);
-		if (res <= 0)
+		if (res < 0)
 			return res;
+		if (res == 0)
+			return changed ? 1 : 0;
 		auto *slot = static_cast<buffer_slot *>(
 				spa_image_source_buffer_get_user_data(image));
 		if (slot == nullptr || slot->image != image || !slot->completed)
 			return -EPROTO;
-#ifdef HAVE_EGRABBER_DRM
-		if (self->direct_dma_buf)
-			slot->dma_sync.wait_for_release();
-#endif
-		auto completed = std::move(slot->completed);
-		reset_observation(*slot);
-		self->camera->recycle(*completed);
-		self->queued_buffers++;
-		if (reclaim)
+		slot->recycle_pending = true;
+		const int recycled = recycle_slot(self, *slot);
+		if (recycled < 0)
+			return recycled;
+		changed = changed || recycled > 0;
+		if (reclaim && recycled > 0)
 			return 1;
 	}
-	return 0;
+	return changed ? 1 : 0;
 }
 
 int process(void *object)

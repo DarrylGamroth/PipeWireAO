@@ -21,7 +21,7 @@ public:
 	DmaBufTimeline(const DmaBufTimeline &) = delete;
 	DmaBufTimeline &operator=(const DmaBufTimeline &) = delete;
 
-	void wait_for_release();
+	bool release_ready();
 	void signal_acquire(std::uint64_t point);
 	explicit operator bool() const noexcept { return metadata_ != nullptr; }
 

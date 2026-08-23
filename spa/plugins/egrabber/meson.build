@@ -40,6 +40,15 @@ if get_option('tests').allowed()
   )
   test('spa-egrabber-buffer-memory', egrabber_buffer_memory_test)
 
+  if drm_dep.found()
+    egrabber_dma_buf_sync_test = executable(
+      'spa-egrabber-dma-buf-sync-test',
+      ['test-dma-buf-sync.cpp', 'dma_buf_sync.cpp'],
+      dependencies: [spa_dep, drm_dep],
+    )
+    test('spa-egrabber-dma-buf-sync', egrabber_dma_buf_sync_test)
+  endif
+
   egrabber_acquisition_key_test = executable(
     'spa-egrabber-acquisition-key-test',
     ['test-acquisition-key.cpp', 'acquisition_key.cpp'],
