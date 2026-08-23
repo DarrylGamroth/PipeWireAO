@@ -205,6 +205,14 @@ option('libcamera',
        description: 'Enable libcamera spa plugin integration',
        type: 'feature',
        value: 'auto')
+option('egrabber',
+       description: 'Enable Euresys eGrabber SPA plugin integration',
+       type: 'feature',
+       value: 'disabled')
+option('egrabber-prefix',
+       description: 'Euresys eGrabber SDK installation prefix',
+       type: 'string',
+       value: '/opt/euresys/egrabber')
 option('videoconvert',
        description: 'Enable videoconvert spa plugin integration',
        type: 'feature',
