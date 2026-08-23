@@ -39,8 +39,10 @@ mapped-host progressive publication:
   StartOfCameraReadout context selection for Grablink/Coaxlink sources; the
   source advances generation on restart or a non-increasing trigger sequence
   and mirrors a valid acquisition sequence into `SPA_META_Header.seq`;
-- bounded pool scans and explicit reclaim of only an unclaimed visible
-  submission when the camera has no queued buffer; and
+- a fixed-capacity submission-order tracker that identifies the expected
+  acquiring buffer in O(1), verifies completion order, and explicitly reclaims
+  only an unclaimed visible submission when the camera has no queued buffer;
+  and
 - synchronous camera stop and buffer release before pool teardown.
 
 The plugin uses `spa_image_source`, `spa_image_source_latest`, and
@@ -54,8 +56,10 @@ standalone application remains the behavior oracle until the plugin reaches
 parity. `CallbackOnDemand` dispatches synchronously from `process()`; callback
 installation and removal occur only while the node is stopped, so the migrated
 event bridge has no callback mutex and does not copy `std::function` callbacks
-per event. The node tracks queued buffers locally instead of querying the SDK
-on every empty RTC poll.
+per event. The node tracks submitted buffers locally instead of querying the
+SDK stream count. The tracker follows the vendor FIFO acquisition contract:
+initial announcement and later recycling append one slot, completion must
+consume the head, and StartOfCameraReadout probes only that head for progress.
 
 Control writes are serialized on the SPA control path and are never performed
 by `process()`. Version 1 accepts one scalar write per `SPA_PARAM_Props` object.
@@ -119,10 +123,30 @@ therefore produces pool starvation rather than blocking acquisition.
 
 This is functional complete-mode evidence, not strict real-time admission.
 The callback path itself is lock-free, but the imported camera facade still
-takes an uncontended mutex when it recycles completed buffers. Earlier hardware
-profiling also found repeated allocations inside `gigelink.cti` and
-`libegrabber` buffer-information calls. Those vendor and facade costs must be
-removed or bounded before this source is admitted to a strict BusySpin profile.
+takes an uncontended mutex when it recycles completed buffers.
+
+An eight-second `heaptrack` capture on 2026-08-23 used the connected 640x480
+Mono8 Gigelink camera, eight mapped host buffers, and ten completed frames. The
+original completion callback made 1,730 allocation calls. Removing composite
+`BufferInfo`, using negotiated static layout fields, querying only ten dynamic
+buffer fields, and remembering unsupported optional commands reduced that to
+393 calls. Calling the public scalar `EGenTL::dsGetBufferInfo` interface instead
+was measured and rejected: it made 3,100 callback allocations in the same
+test. Replacing the progressive pool scan with the fixed submission-order
+tracker left the callback count at 393. The profile commands were:
+
+```console
+meson test -C build --print-errorlogs \
+  --wrapper='heaptrack -o /tmp/pwao-egrabber-profile' spa-egrabber-capture
+heaptrack_print /tmp/pwao-egrabber-profile.zst \
+  -F /tmp/pwao-egrabber-allocations.stacks \
+  --flamegraph-cost-type allocations
+```
+
+The larger obstacle is the empty RTC poll. `getPendingEventCount<Any>()`
+accounted for about 1.3 million transport allocation calls during the same
+eight-second run. It currently prevents strict BusySpin admission even before
+the remaining per-frame metadata queries and recycle mutex are considered.
 
 The eGrabber CallbackOnDemand API exposes no readiness file descriptor. The
 plugin therefore has no honest EventFd or Hybrid readiness source and does not
@@ -146,7 +170,8 @@ readiness; this plugin currently uses its functional BusySpin profile only.
 - Qualify complete-frame DMA-BUF and SyncObj timeline behavior on supported
   Grablink/Coaxlink hardware. The connected Gigelink device cannot exercise
   this path.
-- Remove or bound the known vendor/facade allocations and locks before
+- Replace or bound the allocation-heavy CallbackOnDemand empty readiness probe,
+  remaining dynamic buffer-information calls, and recycle mutex before
   admitting the eGrabber process function to a strict BusySpin deployment.
 - Keep the standalone application only as a physical Grablink/Coaxlink
   progressive and DMA-BUF behavior oracle until those paths are qualified in
