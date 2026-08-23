@@ -1,4 +1,4 @@
-test_sources = ['fakesrc.c', 'fakesink.c', 'plugin.c']
+test_sources = ['fakesrc.c', 'fakesink.c', 'ao-imagesrc.c', 'plugin.c']
 
 testlib = shared_library('spa-test',
                           test_sources,
