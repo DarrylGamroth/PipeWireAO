@@ -67,10 +67,26 @@ property chain; it skips when no camera is present. A normal PipeWireAO host
 supplies loop utilities and receives one-second serialized discovery
 reconciliation. A minimal host without loop utilities can request the same
 reconciliation through the device `sync()` method. The capture test skips when
-no selected camera is available. With the connected
-Gigelink camera it negotiates the live format, announces eight aligned
+no selected camera is available. With the connected Gigelink camera it
+negotiates the live format, announces eight aligned
 PipeWireAO-owned buffers, captures ten frames, validates Acquisition metadata,
 returns every subscriber lease, and performs ordered teardown.
+
+The opt-in host qualification runs the standard factory through an isolated
+PipeWireAO daemon:
+
+```console
+./spa/plugins/egrabber/qualify-host.py build
+```
+
+It starts two remote `pw_stream` input processes against one mapped pool. The
+first process retains its initial lease while the second joins, captures, and
+leaves; the first then continues. A later subscriber replaces the inactive
+pool through normal SPA renegotiation. Finally, the harness destroys the source
+while that subscriber retains a lease and verifies that its metadata and
+payload remain unchanged, the source disappears, and the daemon remains
+healthy. The harness removes its isolated runtime directory on success or
+failure.
 
 Gigelink is complete-only: `progressive=offer` falls back to complete frames and
 `progressive=require` is rejected. Grablink/Coaxlink progressive behavior is
@@ -92,6 +108,12 @@ and `libegrabber` buffer-information calls. Those vendor and facade costs must
 be removed or bounded before this source is admitted to a strict BusySpin
 profile.
 
+The eGrabber CallbackOnDemand API exposes no readiness file descriptor. The
+plugin therefore has no honest EventFd or Hybrid readiness source and does not
+add a helper thread or private handoff merely to synthesize one. PipeWireAO's
+RTC data loop implements EventFd and Hybrid for SDKs that provide pollable
+readiness; this plugin currently uses its functional BusySpin profile only.
+
 ## Remaining migration
 
 - Qualify physical camera add, property-change, removal, and reappearance with
@@ -107,7 +129,8 @@ profile.
 - Qualify complete-frame DMA-BUF and SyncObj timeline behavior on supported
   Grablink/Coaxlink hardware. The connected Gigelink device cannot exercise
   this path.
-- Integrate SDK readiness with EventFd and Hybrid RTC wait policies without
-  adding a readiness syscall to BusySpin.
-- Run the source through the PipeWireAO host-owned RTC loop and multiprocess
-  fan-out qualification, then retire the standalone application.
+- Remove or bound the known vendor/facade allocations and locks before
+  admitting the eGrabber process function to a strict BusySpin deployment.
+- Keep the standalone application only as a physical Grablink/Coaxlink
+  progressive and DMA-BUF behavior oracle until those paths are qualified in
+  the SPA plugin.
