@@ -10,7 +10,8 @@ does not inspect or include the proprietary SDK.
 The `api.egrabber.source` factory currently provides complete-frame capture and
 mapped-host progressive publication:
 
-- `api.egrabber.enum.manager` serialized discovery reconciliation and one
+- `api.egrabber.enum.manager` off-loop serialized discovery with a one-snapshot
+  handoff for reconciliation, and one
   `api.egrabber.device` object per discovered camera, with standard add,
   property-update, and removal events from a non-RTC loop timer;
 - standard device-to-source object creation with stable selector, vendor,
@@ -70,10 +71,13 @@ a probe frame during initialization. The device test discovers the connected
 producer, verifies an unchanged rescan
 emits no duplicate object, and checks the standard manager-to-device-to-node
 property chain; it skips when no camera is present. A normal PipeWireAO host
-supplies loop utilities and receives one-second serialized discovery
-reconciliation. A minimal host without loop utilities can request the same
-reconciliation through the device `sync()` method. The capture test skips when
-no selected camera is available. With the connected Gigelink camera it
+supplies loop utilities and receives discovery snapshots from a control-plane
+thread. The thread waits until the SPA loop consumes its single completed
+snapshot and then waits one second before the next scan, so slow vendor
+discovery cannot occupy the SPA loop or accumulate work. A minimal host without
+loop utilities retains synchronous discovery and `sync()` behavior. The
+capture test skips when no selected camera is available. With the connected
+Gigelink camera it
 negotiates the live format, announces eight aligned
 PipeWireAO-owned buffers, captures ten frames, validates Acquisition metadata,
 returns every subscriber lease, and performs ordered teardown.
@@ -124,7 +128,8 @@ readiness; this plugin currently uses its functional BusySpin profile only.
 
 - Qualify physical camera add, property-change, removal, and reappearance with
   each supported producer. Automated tests currently cover initial discovery
-  and unchanged reconciliation on the connected Gigelink producer.
+  and unchanged reconciliation on the connected Gigelink producer; the normal
+  daemon qualification exercises the asynchronous snapshot handoff.
 - Qualify acquisition-domain identity on Grablink/Coaxlink hardware and
   physical exposure-start mapping and uncertainty. The current completion-time
   anchor restores generic Header PTS behavior but does not claim an
