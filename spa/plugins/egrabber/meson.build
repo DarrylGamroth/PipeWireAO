@@ -9,7 +9,6 @@ egrabber_sources = [
   'manager.cpp',
   'options.cpp',
   'params.cpp',
-  'pixel_format.cpp',
   'plugin.cpp',
   'remote_control.cpp',
   'source.cpp',
@@ -61,13 +60,6 @@ if get_option('tests').allowed()
     dependencies: [spa_dep],
   )
   test('spa-egrabber-frame-sequence', egrabber_frame_sequence_test)
-
-  egrabber_pixel_format_test = executable(
-    'spa-egrabber-pixel-format-test',
-    ['test-pixel-format.cpp', 'pixel_format.cpp'],
-    dependencies: [spa_dep],
-  )
-  test('spa-egrabber-pixel-format', egrabber_pixel_format_test)
 
   egrabber_timestamp_mapper_test = executable(
     'spa-egrabber-timestamp-mapper-test',
