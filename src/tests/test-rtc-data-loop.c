@@ -599,6 +599,8 @@ static void test_rtc_port_node_waits_for_prepared_link(void)
 	spa_assert_se(pw_impl_node_set_implementation(node, implementation) == 0);
 	spa_assert_se(pw_impl_node_register(node, NULL) == 0);
 	spa_assert_se(pw_impl_node_set_active(node, true) == 0);
+	/* Model the value left by a previously prepared link. */
+	node->runnable = true;
 	loop = pw_main_loop_get_loop(fixture.main_loop);
 	for (i = 0; i < 32; i++) {
 		pw_loop_enter(loop);
