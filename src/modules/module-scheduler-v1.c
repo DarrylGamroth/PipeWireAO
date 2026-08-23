@@ -95,6 +95,11 @@ struct impl {
 	struct spa_hook module_listener;
 };
 
+static inline bool is_rtc_process(const struct pw_impl_node *node)
+{
+	return SPA_FLAG_IS_SET(node->spa_flags, SPA_NODE_FLAG_RTC_PROCESS);
+}
+
 static int ensure_state(struct pw_impl_node *node, bool running, bool idle)
 {
 	enum pw_node_state state = node->info.state;
@@ -126,6 +131,9 @@ static void make_runnable(struct pw_context *context, struct pw_impl_node *node)
 	struct pw_impl_link *l;
 	struct pw_impl_node *n;
 
+	if (is_rtc_process(node))
+		return;
+
 	if (!node->runnable) {
 		pw_log_debug("%s is runnable", node->name);
 		node->runnable = true;
@@ -134,6 +142,8 @@ static void make_runnable(struct pw_context *context, struct pw_impl_node *node)
 	spa_list_for_each(p, &node->output_ports, link) {
 		spa_list_for_each(l, &p->links, output_link) {
 			n = l->input->node;
+			if (is_rtc_process(n))
+				continue;
 			pw_log_trace(" out-port %p: link %p passive:%d prepared:%d active:%d runn:%d", p,
 					l, l->input->passive_mode, l->prepared, n->active, n->runnable);
 			if (!n->active || !makes_runnable(p, l->input))
@@ -148,6 +158,8 @@ static void make_runnable(struct pw_context *context, struct pw_impl_node *node)
 	spa_list_for_each(p, &node->input_ports, link) {
 		spa_list_for_each(l, &p->links, input_link) {
 			n = l->output->node;
+			if (is_rtc_process(n))
+				continue;
 			pw_log_trace(" in-port %p: link %p passive:%d prepared:%d active:%d runn:%d", p,
 					l, l->output->passive_mode, l->prepared, n->active, n->runnable);
 			if (!n->active || !makes_runnable(p, l->output))
@@ -165,7 +177,8 @@ static void make_runnable(struct pw_context *context, struct pw_impl_node *node)
 	 * runnable state of a node. */
 	if (node->groups != NULL || node->link_groups != NULL) {
 		spa_list_for_each(n, &context->node_list, link) {
-			if (n->exported || !n->active || n->runnable)
+			if (n->exported || !n->active || n->runnable ||
+			    is_rtc_process(n))
 				continue;
 			/* the other node will be scheduled with this one if it's in
 			 * the same group or link group */
@@ -213,6 +226,9 @@ static void check_runnable(struct pw_context *context, struct pw_impl_node *node
 	struct pw_impl_link *l;
 	struct pw_impl_node *n;
 
+	if (is_rtc_process(node))
+		return;
+
 	pw_log_trace("node %p: '%s' always-process:%d runnable:%u active:%d", node,
 			node->name, node->always_process, node->runnable, node->active);
 
@@ -222,6 +238,8 @@ static void check_runnable(struct pw_context *context, struct pw_impl_node *node
 	spa_list_for_each(p, &node->output_ports, link) {
 		spa_list_for_each(l, &p->links, output_link) {
 			n = l->input->node;
+			if (is_rtc_process(n))
+				continue;
 			/* the peer needs to be active and we are linked to it
 			 * with a non-passive link */
 			pw_log_trace(" out-port %p: link %p prepared:%d active:%d", p,
@@ -239,6 +257,8 @@ static void check_runnable(struct pw_context *context, struct pw_impl_node *node
 	spa_list_for_each(p, &node->input_ports, link) {
 		spa_list_for_each(l, &p->links, input_link) {
 			n = l->output->node;
+			if (is_rtc_process(n))
+				continue;
 			pw_log_trace(" in-port %p: link %p prepared:%d active:%d", p,
 					l, l->prepared, n->active);
 			if (!n->active || !runnable_pair(p, l->output))
@@ -591,6 +611,11 @@ again:
 		n->visited = false;
 		n->checked = 0;
 		n->runnable = false;
+		/* RTC-owned nodes form an execution boundary. Mark them visited so
+		 * collect_nodes() cannot assign them to a graph driver through a
+		 * direct link, group, link-group, or sync-group. */
+		if (is_rtc_process(n))
+			n->visited = true;
 	}
 
 	get_quantums(context, &def_quantum, &min_quantum, &max_quantum, &rate_quantum,
@@ -601,7 +626,7 @@ again:
 
 	/* first look at all nodes and decide which one should be runnable */
 	spa_list_for_each(n, &context->node_list, link) {
-		if (n->exported || !n->active)
+		if (n->exported || !n->active || is_rtc_process(n))
 			continue;
 		check_runnable(context, n);
 	}
@@ -613,7 +638,7 @@ again:
 	 * the unassigned nodes. */
 	target = fallback = NULL;
 	spa_list_for_each(n, &context->driver_list, driver_link) {
-		if (n->exported)
+		if (n->exported || is_rtc_process(n))
 			continue;
 
 		if (!n->visited) {
@@ -707,7 +732,7 @@ again:
 		uint32_t node_n_rates, node_def_rate;
 		uint32_t node_max_quantum, node_min_quantum, node_def_quantum, node_rate_quantum;
 
-		if (!n->driving || n->exported)
+		if (!n->driving || n->exported || is_rtc_process(n))
 			continue;
 
 		node_def_quantum = def_quantum;
