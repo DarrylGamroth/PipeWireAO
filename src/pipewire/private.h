@@ -849,6 +849,8 @@ struct pw_impl_node {
 
 	struct pw_loop *data_loop;		/**< the data loop for this node */
 	struct pw_rtc_data_loop *rtc_loop;	/**< exclusive process owner for RTC nodes */
+	struct spa_source rtc_error_source;	/**< terminal RTC result on the main loop */
+	int rtc_error;
 
 	struct spa_fraction latency;		/**< requested latency */
 	struct spa_fraction max_latency;	/**< maximum latency */
