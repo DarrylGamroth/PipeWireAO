@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include <spa/utils/dict.h>
+
 namespace egrabber_pipewire {
 
 enum class ProgressivePolicy { disabled, offer, require };
@@ -17,7 +19,6 @@ struct Options {
     std::string producer = "gigelink";
     std::optional<std::string> serial;
     std::optional<std::string> user_id;
-    std::optional<std::string> node_name;
     std::string control = "auto";
     std::vector<std::string> clprotocol_libraries;
     std::optional<std::string> clprotocol_device_template;
@@ -32,13 +33,8 @@ struct Options {
     int device_index = 0;
     int stream_index = 0;
     std::size_t buffer_count = 8;
-    bool list_features = false;
-    bool list_cameras = false;
-    bool help = false;
 };
 
-Options parse_options(int argc, char **argv);
-void print_usage(const char *program);
-const char *progressive_policy_name(ProgressivePolicy policy) noexcept;
+void read_options(Options &options, const struct spa_dict *info);
 
 } // namespace egrabber_pipewire
