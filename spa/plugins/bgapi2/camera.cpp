@@ -2,8 +2,14 @@
 #include "camera.h"
 
 #include <errno.h>
+#include <new>
 #include <stdlib.h>
 #include <string.h>
+
+#include <algorithm>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include <spa/buffer/image-source.h>
 #include <spa/utils/ringbuffer.h>
@@ -20,6 +26,22 @@ static BGAPI2_RESULT guarded_call(Operation operation) noexcept
 
 #define BGAPI2_CALL(expression) guarded_call([&]() { return (expression); })
 
+static int fail(BGAPI2_RESULT result);
+
+struct feature_record {
+	BGAPI2_Node *node = nullptr;
+	std::string name;
+	std::string property_name;
+	std::string description;
+	enum bgapi2_feature_kind kind = BGAPI2_FEATURE_STRING;
+	std::vector<std::string> enum_entries;
+	std::string value_storage;
+};
+
+struct feature_store {
+	std::vector<feature_record> features;
+};
+
 struct bgapi2_camera {
 	BGAPI2_System *system;
 	BGAPI2_Interface *interface;
@@ -28,6 +50,7 @@ struct bgapi2_camera {
 	BGAPI2_Node *acquisition_start;
 	BGAPI2_Node *acquisition_stop;
 	BGAPI2_Node *acquisition_abort;
+	struct feature_store *feature_store;
 	struct bgapi2_camera_info info;
 	struct spa_ringbuffer_shared completion_ring;
 	struct bgapi2_camera_completion completions[SPA_IMAGE_SOURCE_MAX_BUFFERS];
@@ -40,6 +63,31 @@ struct bgapi2_camera {
 	bool event_handler;
 	bool acquiring;
 };
+
+typedef BGAPI2_RESULT (BGAPI2CALL *node_string_getter)(BGAPI2_Node *, char *,
+		bo_uint64 *);
+
+static int get_node_text(BGAPI2_Node *node, node_string_getter getter,
+		std::string &value)
+{
+	bo_uint64 length = 0;
+	BGAPI2_RESULT result;
+
+	result = guarded_call([&]() { return getter(node, nullptr, &length); });
+	if (result != BGAPI2_RESULT_SUCCESS)
+		return fail(result);
+	if (length == 0) {
+		value.clear();
+		return 0;
+	}
+	value.resize(static_cast<size_t>(length));
+	result = guarded_call([&]() { return getter(node, value.data(), &length); });
+	if (result != BGAPI2_RESULT_SUCCESS)
+		return fail(result);
+	if (!value.empty() && value.back() == '\0')
+		value.pop_back();
+	return 0;
+}
 
 static int read_completion(struct bgapi2_camera *camera, BGAPI2_Buffer *buffer,
 		struct bgapi2_camera_completion *completion);
@@ -96,6 +144,129 @@ static int checked_result(struct bgapi2_camera *, BGAPI2_RESULT result)
 
 #define checked(camera, expression) \
 	checked_result((camera), BGAPI2_CALL(expression))
+
+static bool feature_changes_layout(std::string_view name)
+{
+	static constexpr std::string_view exact[] = {
+		"PixelFormat", "Width", "Height", "OffsetX", "OffsetY",
+		"PayloadSize", "ChunkModeActive",
+	};
+	static constexpr std::string_view fragments[] = {
+		"Binning", "Decimation", "Resolution", "Region",
+		"ComponentEnable", "ChunkEnable",
+	};
+
+	if (std::find(std::begin(exact), std::end(exact), name) != std::end(exact))
+		return true;
+	return std::any_of(std::begin(fragments), std::end(fragments),
+			[name](std::string_view fragment) {
+				return name.find(fragment) != std::string_view::npos;
+			});
+}
+
+static bool feature_kind(const std::string &interface,
+		enum bgapi2_feature_kind &kind)
+{
+	if (interface == BGAPI2_NODEINTERFACE_BOOLEAN)
+		kind = BGAPI2_FEATURE_BOOLEAN;
+	else if (interface == BGAPI2_NODEINTERFACE_INTEGER)
+		kind = BGAPI2_FEATURE_INTEGER;
+	else if (interface == BGAPI2_NODEINTERFACE_FLOAT)
+		kind = BGAPI2_FEATURE_FLOATING;
+	else if (interface == BGAPI2_NODEINTERFACE_ENUMERATION)
+		kind = BGAPI2_FEATURE_ENUMERATION;
+	else if (interface == BGAPI2_NODEINTERFACE_STRING)
+		kind = BGAPI2_FEATURE_STRING;
+	else if (interface == BGAPI2_NODEINTERFACE_COMMAND)
+		kind = BGAPI2_FEATURE_COMMAND;
+	else
+		return false;
+	return true;
+}
+
+static int discover_enum_entries(struct bgapi2_camera *camera,
+		feature_record &feature)
+{
+	BGAPI2_NodeMap *node_map = nullptr;
+	bo_uint64 count = 0;
+	int res;
+
+	if ((res = checked(camera, BGAPI2_Node_GetEnumNodeList(feature.node,
+			&node_map))) < 0 ||
+			(res = checked(camera, BGAPI2_NodeMap_GetNodeCount(node_map,
+			&count))) < 0)
+		return res;
+	for (bo_uint64 i = 0; i < count; i++) {
+		BGAPI2_Node *entry = nullptr;
+		bo_bool implemented = 0, available = 0;
+		std::string name;
+
+		if (checked(camera, BGAPI2_NodeMap_GetNodeByIndex(node_map, i,
+				&entry)) < 0 ||
+				checked(camera, BGAPI2_Node_GetImplemented(entry,
+				&implemented)) < 0 || !implemented ||
+				checked(camera, BGAPI2_Node_GetAvailable(entry,
+				&available)) < 0 || !available ||
+				get_node_text(entry, BGAPI2_Node_GetName, name) < 0)
+			continue;
+		feature.enum_entries.push_back(std::move(name));
+	}
+	return 0;
+}
+
+static int discover_features(struct bgapi2_camera *camera)
+{
+	BGAPI2_NodeMap *node_map = nullptr;
+	bo_uint64 count = 0;
+	auto *store = new (std::nothrow) feature_store;
+	int res;
+
+	if (store == nullptr)
+		return -ENOMEM;
+	try {
+		if ((res = checked(camera, BGAPI2_Device_GetRemoteNodeList(
+				camera->device, &node_map))) < 0 ||
+				(res = checked(camera, BGAPI2_NodeMap_GetNodeCount(node_map,
+				&count))) < 0)
+			goto error;
+		store->features.reserve(static_cast<size_t>(count));
+		for (bo_uint64 i = 0; i < count; i++) {
+			BGAPI2_Node *node = nullptr;
+			bo_bool implemented = 0;
+			feature_record feature;
+			std::string interface;
+
+			if (checked(camera, BGAPI2_NodeMap_GetNodeByIndex(node_map, i,
+					&node)) < 0 ||
+					checked(camera, BGAPI2_Node_GetImplemented(node,
+					&implemented)) < 0 || !implemented ||
+					get_node_text(node, BGAPI2_Node_GetInterface,
+					interface) < 0 ||
+					!feature_kind(interface, feature.kind) ||
+					get_node_text(node, BGAPI2_Node_GetName,
+					feature.name) < 0 || feature.name.empty())
+				continue;
+			feature.node = node;
+			feature.property_name = "genicam." + feature.name;
+			if (get_node_text(node, BGAPI2_Node_GetDescription,
+					feature.description) < 0 || feature.description.empty())
+				feature.description = feature.name;
+			if (feature.kind == BGAPI2_FEATURE_ENUMERATION &&
+					discover_enum_entries(camera, feature) < 0)
+				continue;
+			store->features.push_back(std::move(feature));
+		}
+	} catch (...) {
+		res = -ENOMEM;
+		goto error;
+	}
+	camera->feature_store = store;
+	return 0;
+
+error:
+	delete store;
+	return res;
+}
 
 static int enable_completion_handler(struct bgapi2_camera *camera)
 {
@@ -273,7 +444,8 @@ int bgapi2_camera_open(struct bgapi2_camera **camera_ptr,
 			(res = checked(camera, BGAPI2_Device_GetRemoteNode(camera->device,
 			"AcquisitionStart", &camera->acquisition_start))) < 0 ||
 			(res = checked(camera, BGAPI2_Device_GetRemoteNode(camera->device,
-			"AcquisitionStop", &camera->acquisition_stop))) < 0)
+			"AcquisitionStop", &camera->acquisition_stop))) < 0 ||
+			(res = discover_features(camera)) < 0)
 		goto error;
 	if (BGAPI2_CALL(BGAPI2_Device_GetRemoteNode(camera->device, "AcquisitionAbort",
 			&camera->acquisition_abort)) != BGAPI2_RESULT_SUCCESS)
@@ -295,6 +467,8 @@ void bgapi2_camera_close(struct bgapi2_camera *camera)
 	(void) disable_completion_handler(camera);
 	if (camera->stream_open)
 		BGAPI2_CALL(BGAPI2_DataStream_Close(camera->stream));
+	delete camera->feature_store;
+	camera->feature_store = nullptr;
 	if (camera->device_open)
 		BGAPI2_CALL(BGAPI2_Device_Close(camera->device));
 	close_interface(camera);
@@ -309,6 +483,152 @@ const struct bgapi2_camera_info *bgapi2_camera_get_info(
 		const struct bgapi2_camera *camera)
 {
 	return camera == NULL ? NULL : &camera->info;
+}
+
+uint32_t bgapi2_camera_get_feature_count(const struct bgapi2_camera *camera)
+{
+	if (camera == nullptr || camera->feature_store == nullptr)
+		return 0;
+	const size_t count = camera->feature_store->features.size();
+	return count > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(count);
+}
+
+static feature_record *get_feature(struct bgapi2_camera *camera,
+		uint32_t index)
+{
+	if (camera == nullptr || camera->feature_store == nullptr ||
+			index >= camera->feature_store->features.size())
+		return nullptr;
+	return &camera->feature_store->features[index];
+}
+
+static const feature_record *get_feature(const struct bgapi2_camera *camera,
+		uint32_t index)
+{
+	return get_feature(const_cast<struct bgapi2_camera *>(camera), index);
+}
+
+int bgapi2_camera_get_feature_info(struct bgapi2_camera *camera,
+		uint32_t index, struct bgapi2_feature_info *info)
+{
+	feature_record *feature = get_feature(camera, index);
+	bo_bool available = 0, readable = 0, writable = 0;
+	int res;
+
+	if (feature == nullptr || info == nullptr)
+		return -EINVAL;
+	if ((res = checked(camera, BGAPI2_Node_GetAvailable(feature->node,
+			&available))) < 0 ||
+			(res = checked(camera, BGAPI2_Node_IsReadable(feature->node,
+			&readable))) < 0 ||
+			(res = checked(camera, BGAPI2_Node_IsWriteable(feature->node,
+			&writable))) < 0)
+		return res;
+	*info = (struct bgapi2_feature_info) {
+		.name = feature->name.c_str(),
+		.property_name = feature->property_name.c_str(),
+		.description = feature->description.c_str(),
+		.kind = feature->kind,
+		.n_enum_entries = static_cast<uint32_t>(feature->enum_entries.size()),
+		.available = available != 0,
+		.readable = readable != 0,
+		.writable = writable != 0,
+		.changes_layout = feature_changes_layout(feature->name),
+	};
+	return 0;
+}
+
+const char *bgapi2_camera_get_feature_enum_entry(
+		const struct bgapi2_camera *camera, uint32_t index,
+		uint32_t entry_index)
+{
+	const feature_record *feature = get_feature(camera, index);
+
+	if (feature == nullptr || feature->kind != BGAPI2_FEATURE_ENUMERATION ||
+			entry_index >= feature->enum_entries.size())
+		return nullptr;
+	return feature->enum_entries[entry_index].c_str();
+}
+
+int bgapi2_camera_get_feature_value(struct bgapi2_camera *camera,
+		uint32_t index, struct bgapi2_feature_value *value)
+{
+	feature_record *feature = get_feature(camera, index);
+	int res;
+
+	if (feature == nullptr || value == nullptr ||
+			feature->kind == BGAPI2_FEATURE_COMMAND)
+		return -EINVAL;
+	memset(value, 0, sizeof(*value));
+	value->kind = feature->kind;
+	switch (feature->kind) {
+	case BGAPI2_FEATURE_BOOLEAN: {
+		bo_bool result = 0;
+		if ((res = checked(camera, BGAPI2_Node_GetBool(feature->node,
+				&result))) < 0)
+			return res;
+		value->boolean = result != 0;
+		return 0;
+	}
+	case BGAPI2_FEATURE_INTEGER:
+		return checked(camera, BGAPI2_Node_GetInt(feature->node,
+				&value->integer));
+	case BGAPI2_FEATURE_FLOATING:
+		return checked(camera, BGAPI2_Node_GetDouble(feature->node,
+				&value->floating));
+	case BGAPI2_FEATURE_ENUMERATION:
+	case BGAPI2_FEATURE_STRING:
+		try {
+			if ((res = get_node_text(feature->node, BGAPI2_Node_GetString,
+					feature->value_storage)) < 0)
+				return res;
+		} catch (...) {
+			return -ENOMEM;
+		}
+		if (feature->kind == BGAPI2_FEATURE_STRING) {
+			value->string = feature->value_storage.c_str();
+			return 0;
+		}
+		for (uint32_t i = 0; i < feature->enum_entries.size(); i++)
+			if (feature->enum_entries[i] == feature->value_storage) {
+				value->enumeration = static_cast<int32_t>(i);
+				return 0;
+			}
+		return -ENODATA;
+	case BGAPI2_FEATURE_COMMAND:
+		return -EINVAL;
+	}
+	return -EINVAL;
+}
+
+int bgapi2_camera_get_feature_integer_range(struct bgapi2_camera *camera,
+		uint32_t index, int64_t *minimum, int64_t *maximum)
+{
+	feature_record *feature = get_feature(camera, index);
+	int res;
+
+	if (feature == nullptr || minimum == nullptr || maximum == nullptr ||
+			feature->kind != BGAPI2_FEATURE_INTEGER)
+		return -EINVAL;
+	if ((res = checked(camera, BGAPI2_Node_GetIntMin(feature->node,
+			minimum))) < 0)
+		return res;
+	return checked(camera, BGAPI2_Node_GetIntMax(feature->node, maximum));
+}
+
+int bgapi2_camera_get_feature_float_range(struct bgapi2_camera *camera,
+		uint32_t index, double *minimum, double *maximum)
+{
+	feature_record *feature = get_feature(camera, index);
+	int res;
+
+	if (feature == nullptr || minimum == nullptr || maximum == nullptr ||
+			feature->kind != BGAPI2_FEATURE_FLOATING)
+		return -EINVAL;
+	if ((res = checked(camera, BGAPI2_Node_GetDoubleMin(feature->node,
+			minimum))) < 0)
+		return res;
+	return checked(camera, BGAPI2_Node_GetDoubleMax(feature->node, maximum));
 }
 
 int bgapi2_camera_announce(struct bgapi2_camera *camera, void *memory,
