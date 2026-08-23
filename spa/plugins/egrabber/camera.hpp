@@ -39,6 +39,13 @@ struct CameraIdentity {
     std::string stream_id;
 };
 
+struct DiscoveredCamera {
+    CameraIdentity identity;
+    int interface_index = 0;
+    int device_index = 0;
+    int stream_index = 0;
+};
+
 enum class TransportEventKind { data_stream, device_error, remote_device };
 
 struct TransportEvent {
@@ -138,7 +145,6 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-void print_features(const Camera &camera);
-void print_cameras(const Options &options);
+std::vector<DiscoveredCamera> discover_cameras(const Options &options);
 
 } // namespace egrabber_pipewire

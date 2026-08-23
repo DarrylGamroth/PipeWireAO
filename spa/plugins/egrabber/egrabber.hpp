@@ -7,6 +7,8 @@
 #include <spa/support/log.h>
 #include <spa/support/plugin.h>
 
+#define SPA_NAME_API_EGRABBER_ENUM_MANAGER "api.egrabber.enum.manager"
+#define SPA_NAME_API_EGRABBER_DEVICE "api.egrabber.device"
 #define SPA_NAME_API_EGRABBER_SOURCE "api.egrabber.source"
 
 #define SPA_KEY_API_EGRABBER_PRODUCER "api.egrabber.producer"
@@ -17,9 +19,12 @@
 #define SPA_KEY_API_EGRABBER_STREAM_INDEX "api.egrabber.stream-index"
 #define SPA_KEY_API_EGRABBER_BUFFER_COUNT "api.egrabber.buffer-count"
 #define SPA_KEY_API_EGRABBER_CONTROL "api.egrabber.control"
+#define SPA_KEY_API_EGRABBER_TRANSPORT "api.egrabber.transport"
 
 extern "C" {
 
+extern const struct spa_handle_factory spa_egrabber_manager_factory;
+extern const struct spa_handle_factory spa_egrabber_device_factory;
 extern const struct spa_handle_factory spa_egrabber_source_factory;
 
 #undef SPA_LOG_TOPIC_DEFAULT

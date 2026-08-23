@@ -1001,34 +1001,22 @@ void Camera::set_feature(const Feature &feature, const spa_pod *value,
 void Camera::execute_command(const Feature &feature) { impl_->execute_command(feature); }
 std::string Camera::feature_text(const Feature &feature) { return impl_->feature_text(feature); }
 
-void print_features(const Camera &camera) {
-    std::cout << "NAME\tTYPE\tACCESS\n";
-    for (const auto &feature : camera.features()) {
-        std::cout << feature.name << '\t' << kind_name(feature.kind) << '\t'
-                  << (feature.readable ? 'r' : '-') << (feature.writeable ? 'w' : '-') << '\n';
-    }
-}
-
-void print_cameras(const Options &options) {
+std::vector<DiscoveredCamera> discover_cameras(const Options &options) {
     EGenTL gentl(producer_path(options.producer));
     Euresys::EGrabberDiscovery discovery(gentl);
     discovery.discover();
+    std::vector<DiscoveredCamera> result;
+    result.reserve(discovery.cameraCount());
     for (int index = 0; index < discovery.cameraCount(); ++index) {
         const auto camera = discovery.cameras(index, options.stream_index);
-        for (std::size_t bank = 0; bank < camera.grabbers.size(); ++bank) {
-            const auto &info = camera.grabbers[bank];
-            std::cout << "camera=" << index << " bank=" << bank
-                      << " serial=" << (info.deviceSerialNumber.empty() ? "-" : info.deviceSerialNumber)
-                      << " user-id=" << (info.deviceUserID.empty() ? "-" : info.deviceUserID)
-                      << " vendor=" << (info.deviceVendorName.empty() ? "-" : info.deviceVendorName)
-                      << " model=" << (info.deviceModelName.empty() ? "-" : info.deviceModelName)
-                      << " transport=" << (info.tlType.empty() ? "-" : info.tlType)
-                      << " interface=" << info.interfaceIndex
-                      << " device=" << info.deviceIndex
-                      << " stream=" << info.streamIndex << '\n';
-        }
+        if (camera.grabbers.empty()) continue;
+        const auto &info = camera.grabbers.front();
+        result.push_back({
+            camera_identity(info), info.interfaceIndex, info.deviceIndex,
+            info.streamIndex,
+        });
     }
-    if (discovery.cameraCount() == 0) std::cout << "No cameras discovered\n";
+    return result;
 }
 
 } // namespace egrabber_pipewire

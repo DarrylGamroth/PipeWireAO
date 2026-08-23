@@ -1,8 +1,11 @@
 egrabber_sources = [
   'camera.cpp',
+  'device.cpp',
   'feature.cpp',
   'frame_layout.cpp',
   'frame_sequence.cpp',
+  'manager.cpp',
+  'options.cpp',
   'pixel_format.cpp',
   'plugin.cpp',
   'remote_control.cpp',
@@ -45,6 +48,18 @@ if get_option('tests').allowed()
     'test-factory.cpp',
     dependencies: [spa_dep, dl_lib],
   )
+
+  egrabber_device_test = executable(
+    'spa-egrabber-device-test',
+    'test-device.cpp',
+    dependencies: [spa_dep, dl_lib],
+  )
+  test(
+    'spa-egrabber-device',
+    egrabber_device_test,
+    args: [egrabber_lib.full_path()],
+    is_parallel: false,
+  )
   test(
     'spa-egrabber-factory',
     egrabber_factory_test,
@@ -60,6 +75,7 @@ if get_option('tests').allowed()
     'spa-egrabber-capture',
     egrabber_capture_test,
     args: [egrabber_lib.full_path()],
+    is_parallel: false,
     timeout: 10,
   )
 endif

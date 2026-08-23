@@ -21,7 +21,6 @@ struct Feature {
     std::vector<std::string> enum_entries;
 };
 
-const char *kind_name(FeatureKind kind);
 bool changes_payload_layout(const Feature &feature);
 
 } // namespace egrabber_pipewire
