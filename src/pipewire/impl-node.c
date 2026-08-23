@@ -1041,6 +1041,13 @@ int pw_impl_node_set_driver(struct pw_impl_node *node, struct pw_impl_node *driv
 	struct pw_impl_node *old = node->driver_node;
 	bool was_driving, no_driver = (driver == NULL);
 
+	if (SPA_FLAG_IS_SET(node->spa_flags, SPA_NODE_FLAG_RTC_PROCESS) &&
+	    driver != NULL && driver != node) {
+		pw_log_error("%p: refusing graph driver for RTC-owned node %s",
+				node, node->name);
+		return -EPERM;
+	}
+
 	if (no_driver)
 		driver = node;
 
@@ -1496,6 +1503,16 @@ static inline int process_node(void *data, uint64_t nsec)
 	int status;
 	bool was_awake;
 
+	/* RTC-owned nodes have a single process owner outside the graph. Keep
+	 * this guard at the graph execution boundary as a defence against a
+	 * scheduler or activation bug. */
+	if (SPA_UNLIKELY(SPA_FLAG_IS_SET(this->spa_flags,
+			SPA_NODE_FLAG_RTC_PROCESS))) {
+		pw_log_error("%p: refusing graph process for RTC-owned node %s",
+				this, this->name);
+		return -EPERM;
+	}
+
 	if (!SPA_ATOMIC_CAS(a->status,
 				PW_NODE_ACTIVATION_TRIGGERED,
 				PW_NODE_ACTIVATION_AWAKE))
@@ -1834,11 +1851,21 @@ static void node_info(void *data, const struct spa_node_info *info)
 			info->max_output_ports);
 
 	if (info->change_mask & SPA_NODE_CHANGE_MASK_FLAGS) {
-		if (node->spa_flags != info->flags) {
-			flags_changed = node->spa_flags != 0;
-			pw_log_debug("%p: flags %"PRIu64"->%"PRIu64, node, node->spa_flags, info->flags);
-			node->spa_flags = info->flags;
+		uint64_t flags = info->flags;
+
+		if (node->spa_flags_initialized &&
+		    ((node->spa_flags ^ flags) & SPA_NODE_FLAG_RTC_PROCESS) != 0) {
+			pw_log_error("%p: SPA_NODE_FLAG_RTC_PROCESS is immutable", node);
+			flags = (flags & ~SPA_NODE_FLAG_RTC_PROCESS) |
+				(node->spa_flags & SPA_NODE_FLAG_RTC_PROCESS);
 		}
+		if (node->spa_flags != flags) {
+			flags_changed = node->spa_flags_initialized;
+			pw_log_debug("%p: flags %"PRIu64"->%"PRIu64,
+					node, node->spa_flags, flags);
+			node->spa_flags = flags;
+		}
+		node->spa_flags_initialized = true;
 	}
 	if (info->change_mask & SPA_NODE_CHANGE_MASK_PROPS) {
 		update_properties(node, info->props, true);
