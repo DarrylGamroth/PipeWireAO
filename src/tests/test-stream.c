@@ -2,6 +2,8 @@
 /* SPDX-FileCopyrightText: Copyright © 2019 Wim Taymans */
 /* SPDX-License-Identifier: MIT */
 
+#include <errno.h>
+
 #include <pipewire/pipewire.h>
 #include <pipewire/main-loop.h>
 #include <pipewire/private.h>
@@ -463,6 +465,44 @@ static void test_latest_buffer_input_poller(void)
 	pw_main_loop_destroy(loop);
 }
 
+static void test_rtc_node_rejects_ordinary_link(void)
+{
+	struct pw_main_loop *loop;
+	struct pw_context *context;
+	struct pw_core *core;
+	struct pw_stream *output, *input;
+	struct pw_impl_port *output_port, *input_port;
+
+	loop = pw_main_loop_new(NULL);
+	spa_assert_se(loop != NULL);
+	context = pw_context_new(pw_main_loop_get_loop(loop), NULL, 12);
+	spa_assert_se(context != NULL);
+	core = pw_context_connect_self(context, NULL, 0);
+	spa_assert_se(core != NULL);
+	output = pw_stream_new(core, "rtc-ordinary-output", NULL);
+	input = pw_stream_new(core, "rtc-ordinary-input", NULL);
+	spa_assert_se(output != NULL && input != NULL);
+	spa_assert_se(pw_stream_connect(output, PW_DIRECTION_OUTPUT, PW_ID_ANY,
+			PW_STREAM_FLAG_NO_CONVERT, NULL, 0) == 0);
+	spa_assert_se(pw_stream_connect(input, PW_DIRECTION_INPUT, PW_ID_ANY,
+			PW_STREAM_FLAG_NO_CONVERT, NULL, 0) == 0);
+	output_port = pw_impl_node_find_port(output->node, PW_DIRECTION_OUTPUT, 0);
+	input_port = pw_impl_node_find_port(input->node, PW_DIRECTION_INPUT, 0);
+	spa_assert_se(output_port != NULL && input_port != NULL);
+	spa_assert_se(pw_impl_node_register(output->node, NULL) == 0);
+	spa_assert_se(pw_impl_node_register(input->node, NULL) == 0);
+	SPA_FLAG_SET(output->node->spa_flags, SPA_NODE_FLAG_RTC_PROCESS);
+	errno = 0;
+	spa_assert_se(pw_context_create_link(context, output_port, input_port,
+			NULL, NULL, 0) == NULL);
+	spa_assert_se(errno == ENOTSUP);
+
+	pw_stream_destroy(input);
+	pw_stream_destroy(output);
+	pw_context_destroy(context);
+	pw_main_loop_destroy(loop);
+}
+
 int main(int argc, char *argv[])
 {
 	pw_init(&argc, &argv);
@@ -473,6 +513,7 @@ int main(int argc, char *argv[])
 	test_exact_latest_video_streams();
 	test_latest_buffer_fanout();
 	test_latest_buffer_input_poller();
+	test_rtc_node_rejects_ordinary_link();
 
 	pw_deinit();
 
