@@ -3,6 +3,7 @@
 /* SPDX-License-Identifier: MIT */
 
 #include <cerrno>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -23,9 +24,12 @@
 #include <spa/node/utils.h>
 #include <spa/param/buffers.h>
 #include <spa/param/format-utils.h>
+#include <spa/param/props.h>
 #include <spa/param/video/format-utils.h>
 #include <spa/param/video/raw-utils.h>
 #include <spa/pod/filter.h>
+#include <spa/pod/dynamic.h>
+#include <spa/pod/parser.h>
 #include <spa/support/log.h>
 #include <spa/support/plugin.h>
 #include <spa/utils/keys.h>
@@ -38,6 +42,7 @@
 #include "frame_layout.hpp"
 #include "frame_sequence.hpp"
 #include "options.hpp"
+#include "params.hpp"
 #include "timestamp_mapper.hpp"
 
 namespace {
@@ -97,6 +102,7 @@ struct impl {
 	struct spa_callbacks callbacks = {};
 	uint64_t info_all = 0;
 	struct spa_node_info info = SPA_NODE_INFO_INIT();
+	struct spa_param_info params[2] = {};
 	struct spa_dict node_props = {};
 	struct spa_dict_item node_items[24] = {};
 	Options options;
@@ -256,15 +262,167 @@ int set_callbacks(void *object, const struct spa_node_callbacks *callbacks,
 	return 0;
 }
 
-int enum_params(void *, int, uint32_t, uint32_t, uint32_t,
-		const struct spa_pod *)
+int enum_params(void *object, int seq, uint32_t id, uint32_t start,
+		uint32_t num, const struct spa_pod *filter)
 {
-	return -ENOENT;
+	auto *self = static_cast<impl *>(object);
+	struct spa_pod_dynamic_builder dynamic;
+	struct spa_pod_builder_state state;
+	struct spa_result_node_params result = {};
+	uint8_t storage[4096];
+	uint32_t count = 0;
+	int res = 0;
+
+	spa_return_val_if_fail(self != nullptr && num > 0, -EINVAL);
+	if (id != SPA_PARAM_PropInfo && id != SPA_PARAM_Props)
+		return -ENOENT;
+	spa_pod_dynamic_builder_init(&dynamic, storage, sizeof(storage), 4096);
+	spa_pod_builder_get_state(&dynamic.b, &state);
+	result.id = id;
+	result.next = start;
+	try {
+		while (count < num) {
+			struct spa_pod *param = nullptr;
+			result.index = result.next++;
+			spa_pod_builder_reset(&dynamic.b, &state);
+			if (id == SPA_PARAM_PropInfo) {
+				const auto *feature = egrabber_pipewire::scalar_feature_at(
+						*self->camera, result.index);
+				if (feature == nullptr)
+					break;
+				param = egrabber_pipewire::build_feature_prop_info(
+						*self->camera, *feature, &dynamic.b);
+			} else {
+				if (result.index > 0)
+					break;
+				param = egrabber_pipewire::build_feature_props(
+						*self->camera, &dynamic.b);
+			}
+			if (param == nullptr)
+				continue;
+			if (spa_pod_filter(&dynamic.b, &result.param, param, filter) < 0)
+				continue;
+			spa_node_emit_result(&self->hooks, seq, 0,
+					SPA_RESULT_TYPE_NODE_PARAMS, &result);
+			count++;
+		}
+	} catch (...) {
+		res = -EIO;
+	}
+	spa_pod_dynamic_builder_clean(&dynamic);
+	return res;
 }
 
-int set_param(void *, uint32_t, uint32_t, const struct spa_pod *)
+int validate_pixel_format_write(const egrabber_pipewire::Feature &feature,
+		const struct spa_pod *value)
 {
-	return -ENOENT;
+	if (feature.name != "PixelFormat")
+		return 0;
+	int32_t index;
+	uint32_t id;
+	if (spa_pod_get_int(value, &index) < 0) {
+		if (spa_pod_get_id(value, &id) < 0 || id > INT32_MAX)
+			return -EINVAL;
+		index = static_cast<int32_t>(id);
+	}
+	if (index < 0 || static_cast<size_t>(index) >= feature.enum_entries.size())
+		return -EINVAL;
+	const auto &format = feature.enum_entries[index];
+	return format == "Mono8" || format == "Mono10" || format == "Mono12" ||
+			format == "Mono14" || format == "Mono16" ? 0 : -ENOTSUP;
+}
+
+int refresh_layout_params(impl *self)
+{
+	try {
+		self->video_format = video_format(*self->camera);
+		self->frame_rate = SPA_FRACTION(0, 1);
+		if (const auto rate = self->camera->frame_rate(); rate && *rate > 0.0)
+			self->frame_rate = frame_rate(*rate);
+	} catch (...) {
+		return -EIO;
+	}
+	self->output.have_format = false;
+	self->output.params[0].flags ^= SPA_PARAM_INFO_SERIAL;
+	self->output.params[1].flags ^= SPA_PARAM_INFO_SERIAL;
+	self->output.params[2].flags ^= SPA_PARAM_INFO_SERIAL;
+	self->output.info.change_mask |= SPA_PORT_CHANGE_MASK_PARAMS;
+	emit_port_info(self, false);
+	return 0;
+}
+
+int set_param(void *object, uint32_t id, uint32_t,
+		const struct spa_pod *param)
+{
+	auto *self = static_cast<impl *>(object);
+	const char *name = nullptr;
+	struct spa_pod *value = nullptr;
+	uint32_t operations = 0;
+
+	spa_return_val_if_fail(self != nullptr, -EINVAL);
+	if (id != SPA_PARAM_Props)
+		return -ENOENT;
+	if (param == nullptr)
+		return 0;
+	if (!spa_pod_is_object(param) ||
+			SPA_POD_OBJECT_TYPE(param) != SPA_TYPE_OBJECT_Props)
+		return -EINVAL;
+	auto *props = const_cast<struct spa_pod_object *>(
+			reinterpret_cast<const struct spa_pod_object *>(param));
+	struct spa_pod_prop *property;
+	SPA_POD_OBJECT_FOREACH(props, property) {
+		if (property->key != SPA_PROP_params)
+			continue;
+		struct spa_pod_parser parser;
+		struct spa_pod_frame frame;
+		spa_pod_parser_pod(&parser, &property->value);
+		if (spa_pod_parser_push_struct(&parser, &frame) < 0)
+			return -EINVAL;
+		while (true) {
+			const char *candidate = nullptr;
+			struct spa_pod *candidate_value = nullptr;
+			if (spa_pod_parser_get_string(&parser, &candidate) < 0)
+				break;
+			if (spa_pod_parser_get_pod(&parser, &candidate_value) < 0)
+				return -EINVAL;
+			if (++operations > 1)
+				return -EINVAL;
+			name = candidate;
+			value = candidate_value;
+		}
+	}
+	if (operations == 0)
+		return 0;
+	const auto found = std::find_if(self->camera->features().begin(),
+			self->camera->features().end(), [name](const auto &feature) {
+			return egrabber_pipewire::is_scalar_feature(feature) &&
+					feature.property_name == name;
+		});
+	if (found == self->camera->features().end())
+		return -ENOENT;
+	if (!found->writeable)
+		return -EACCES;
+	if (self->started)
+		return -EBUSY;
+	const bool layout_change = egrabber_pipewire::changes_payload_layout(*found);
+	if (layout_change && self->output.n_buffers != 0)
+		return -EBUSY;
+	int res = validate_pixel_format_write(*found, value);
+	if (res < 0)
+		return res;
+	try {
+		self->camera->set_feature(*found, value, layout_change);
+	} catch (const egrabber_pipewire::BufferChangeRequired &) {
+		return -EBUSY;
+	} catch (...) {
+		return -EIO;
+	}
+	if (layout_change && (res = refresh_layout_params(self)) < 0)
+		return res;
+	self->params[1].flags ^= SPA_PARAM_INFO_SERIAL;
+	self->info.change_mask |= SPA_NODE_CHANGE_MASK_PARAMS;
+	emit_node_info(self, false);
+	return 0;
 }
 
 int set_io(void *, uint32_t, void *, size_t)
@@ -929,10 +1087,17 @@ int init(const struct spa_handle_factory *, struct spa_handle *handle,
 	}
 	self->node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
 			SPA_VERSION_NODE, &node_methods, self);
-	self->info_all = SPA_NODE_CHANGE_MASK_FLAGS | SPA_NODE_CHANGE_MASK_PROPS;
+	self->info_all = SPA_NODE_CHANGE_MASK_FLAGS | SPA_NODE_CHANGE_MASK_PROPS |
+			SPA_NODE_CHANGE_MASK_PARAMS;
 	self->info = SPA_NODE_INFO_INIT();
 	self->info.max_output_ports = 1;
 	self->info.flags = SPA_NODE_FLAG_RT | SPA_NODE_FLAG_RTC_PROCESS;
+	self->params[0] = SPA_PARAM_INFO(SPA_PARAM_PropInfo,
+			SPA_PARAM_INFO_READ);
+	self->params[1] = SPA_PARAM_INFO(SPA_PARAM_Props,
+			SPA_PARAM_INFO_READWRITE);
+	self->info.params = self->params;
+	self->info.n_params = SPA_N_ELEMENTS(self->params);
 	configure_node_props(self);
 	self->info.props = &self->node_props;
 	self->output.info_all = SPA_PORT_CHANGE_MASK_FLAGS |
