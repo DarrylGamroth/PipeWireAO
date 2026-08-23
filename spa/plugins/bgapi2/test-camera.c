@@ -111,10 +111,24 @@ int main(int argc, char *argv[])
 				found_width = false;
 		}
 		if (strcmp(feature.name, "PixelFormat") == 0) {
+			const char *current_entry = NULL;
+
 			found_pixel_format =
 					feature.kind == BGAPI2_FEATURE_ENUMERATION &&
 					feature.n_enum_entries > 0 && feature.changes_layout &&
 					bgapi2_camera_get_feature_enum_entry(camera, i, 0) != NULL;
+			if (found_pixel_format && feature.available && feature.readable) {
+				if (bgapi2_camera_get_feature_value(camera, i, &value) < 0 ||
+						value.kind != BGAPI2_FEATURE_ENUMERATION ||
+						value.enumeration < 0)
+					found_pixel_format = false;
+				else
+					current_entry = bgapi2_camera_get_feature_enum_entry(camera,
+							i, (uint32_t)value.enumeration);
+				if (current_entry == NULL ||
+						strcmp(current_entry, info->pixel_format) != 0)
+					found_pixel_format = false;
+			}
 		}
 	}
 	if (!found_width || !found_pixel_format) {
