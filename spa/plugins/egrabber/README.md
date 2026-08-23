@@ -13,7 +13,7 @@ mapped-host progressive publication:
 - `api.egrabber.enum.manager` off-loop serialized discovery with a one-snapshot
   handoff for reconciliation, and one
   `api.egrabber.device` object per discovered camera, with standard add,
-  property-update, and removal events from a non-RTC loop timer;
+  property-update, and removal events reconciled on the SPA loop;
 - standard device-to-source object creation with stable selector, vendor,
   model, serial, user-ID, and transport properties;
 - standard SPA node, port, format, buffer, metadata, I/O, and command methods;
@@ -45,14 +45,17 @@ mapped-host progressive publication:
 
 The plugin uses `spa_image_source`, `spa_image_source_latest`, and
 `spa_buffer_latest` directly. It has no `pw_stream`, libpipewire client,
-private mailbox, payload copy, worker thread, or graph scheduling path.
+private mailbox, payload copy, private capture thread, or graph scheduling
+path. Discovery alone uses an off-loop control-plane thread.
 
 The camera, control-backend, frame-layout, frame-sequence, and pixel-format
 code was migrated from sibling `egrabber-pipewire` revision `a3089cb`. The
 standalone application remains the behavior oracle until the plugin reaches
-parity. The migrated event bridge no longer copies `std::function` callbacks
-per event, and the node tracks queued buffers locally instead of querying the
-SDK on every empty RTC poll.
+parity. `CallbackOnDemand` dispatches synchronously from `process()`; callback
+installation and removal occur only while the node is stopped, so the migrated
+event bridge has no callback mutex and does not copy `std::function` callbacks
+per event. The node tracks queued buffers locally instead of querying the SDK
+on every empty RTC poll.
 
 Control writes are serialized on the SPA control path and are never performed
 by `process()`. Version 1 accepts one scalar write per `SPA_PARAM_Props` object.
@@ -115,11 +118,11 @@ the bounded scan examines the rest of the pool; a late or failed subscriber
 therefore produces pool starvation rather than blocking acquisition.
 
 This is functional complete-mode evidence, not strict real-time admission.
-The imported camera facade still takes uncontended mutexes around SDK queries,
-and earlier hardware profiling found repeated allocations inside `gigelink.cti`
-and `libegrabber` buffer-information calls. Those vendor and facade costs must
-be removed or bounded before this source is admitted to a strict BusySpin
-profile.
+The callback path itself is lock-free, but the imported camera facade still
+takes an uncontended mutex when it recycles completed buffers. Earlier hardware
+profiling also found repeated allocations inside `gigelink.cti` and
+`libegrabber` buffer-information calls. Those vendor and facade costs must be
+removed or bounded before this source is admitted to a strict BusySpin profile.
 
 The eGrabber CallbackOnDemand API exposes no readiness file descriptor. The
 plugin therefore has no honest EventFd or Hybrid readiness source and does not
