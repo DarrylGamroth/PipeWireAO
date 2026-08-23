@@ -772,27 +772,47 @@ int port_enum_params(void *object, int seq, enum spa_direction direction,
 	return 0;
 }
 
+int release_buffers(impl *self);
+
 int port_set_param(void *object, enum spa_direction direction,
 		uint32_t port_id, uint32_t id, uint32_t,
 		const struct spa_pod *param)
 {
 	auto *self = static_cast<impl *>(object);
 	struct spa_video_info_raw format;
-	const Camera &camera = *self->camera;
 
 	spa_return_val_if_fail(self != nullptr, -EINVAL);
 	spa_return_val_if_fail(direction == SPA_DIRECTION_OUTPUT && port_id == 0,
 			-EINVAL);
 	if (id != SPA_PARAM_Format)
 		return -ENOENT;
-	if (self->started || self->output.n_buffers != 0)
-		return -EBUSY;
 	if (param == nullptr) {
+		if (self->started)
+			return -EBUSY;
+		if (self->output.n_buffers != 0) {
+			const int res = release_buffers(self);
+			if (res < 0)
+				return res;
+		}
 		self->output.have_format = false;
 		return 0;
 	}
-	if (spa_format_video_raw_parse(param, &format) < 0 ||
-			format.format != self->video_format ||
+	spa_zero(format);
+	if (spa_format_video_raw_parse(param, &format) < 0)
+		return -EINVAL;
+	if (self->output.have_format &&
+			(self->started || self->output.n_buffers != 0)) {
+		const auto &bound = self->output.format;
+		if (format.format == bound.format &&
+				format.size.width == bound.size.width &&
+				format.size.height == bound.size.height &&
+				format.framerate.num == bound.framerate.num &&
+				format.framerate.denom == bound.framerate.denom)
+			return 0;
+		return -EBUSY;
+	}
+	const Camera &camera = *self->camera;
+	if (format.format != self->video_format ||
 			format.size.width != camera.width() ||
 			format.size.height != camera.height())
 		return -EINVAL;
@@ -859,8 +879,9 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 		return -EBUSY;
 	if (n_buffers == 0)
 		return release_buffers(self);
-	if (!self->output.have_format || self->output.n_buffers != 0 ||
-			buffers == nullptr || n_buffers > max_buffers ||
+	if (self->output.n_buffers != 0 && (res = release_buffers(self)) < 0)
+		return res;
+	if (!self->output.have_format || buffers == nullptr || n_buffers > max_buffers ||
 			n_buffers < self->camera->announce_minimum())
 		return -EINVAL;
 	std::vector<egrabber_pipewire::BufferMemoryOffer> offers;
