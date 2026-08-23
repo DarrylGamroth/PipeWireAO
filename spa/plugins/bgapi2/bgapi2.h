@@ -12,6 +12,7 @@
 #define SPA_KEY_API_BGAPI2_DEVICE_INDEX "api.bgapi2.device-index"
 #define SPA_KEY_API_BGAPI2_STREAM_INDEX "api.bgapi2.stream-index"
 #define SPA_KEY_API_BGAPI2_COMPLETION_MODE "api.bgapi2.completion-mode"
+#define SPA_KEY_API_BGAPI2_PROGRESSIVE "api.bgapi2.progressive"
 
 extern const struct spa_handle_factory spa_bgapi2_source_factory;
 
