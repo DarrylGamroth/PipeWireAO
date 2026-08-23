@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <spa/buffer/image-source-latest.h>
 #include <spa/buffer/image-source.h>
 
 #define N_BUFFERS 2u
@@ -305,9 +306,90 @@ static void test_prepare_validation(void)
 	spa_assert_se(spa_image_source_teardown(&source) == 0);
 }
 
+static void set_latest_link(struct spa_buffer_latest *latest, uint32_t id,
+		struct spa_io_buffers_latest *io, bool active)
+{
+	struct spa_io_buffers_latest_link link = {
+		.id = id,
+		.flags = active ? SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE : 0,
+		.io = active ? io : NULL,
+		.notify_fd = -1,
+	};
+
+	spa_assert_se(spa_buffer_latest_set_io(latest,
+			SPA_IO_BuffersLatestLink, &link, sizeof(link)) == 0);
+}
+
+static void test_latest_transport(void)
+{
+	struct test_buffer storage[N_BUFFERS];
+	struct spa_buffer *buffers[N_BUFFERS];
+	struct spa_io_buffers_latest first = SPA_IO_BUFFERS_LATEST_INIT;
+	struct spa_io_buffers_latest second = SPA_IO_BUFFERS_LATEST_INIT;
+	struct spa_image_source_config config = {
+		.version = SPA_VERSION_IMAGE_SOURCE_CONFIG,
+		.min_buffers = N_BUFFERS,
+		.max_buffers = N_BUFFERS,
+	};
+	struct spa_image_source_latest transport;
+	struct spa_image_source source;
+	struct spa_buffer_latest *latest;
+	struct spa_image_source_buffer *image, *second_image;
+	struct spa_image_frame frame = {
+		.version = SPA_VERSION_IMAGE_FRAME,
+		.data_index = 0,
+		.size = PAYLOAD_SIZE,
+		.stride = 8,
+		.sequence = 1,
+		.pts = SPA_TIME_INVALID,
+	};
+	uint64_t first_sequence, second_sequence;
+	uint32_t first_id, second_id, i;
+
+	for (i = 0; i < N_BUFFERS; i++) {
+		init_buffer(&storage[i]);
+		buffers[i] = &storage[i].buffer;
+	}
+	latest = spa_buffer_latest_new(SPA_DIRECTION_OUTPUT, NULL, NULL);
+	spa_assert_se(latest != NULL);
+	spa_assert_se(spa_image_source_latest_init(&transport, &source,
+			latest, &config) == 0);
+	spa_assert_se(spa_image_source_latest_prepare(&transport, &source,
+			buffers, N_BUFFERS) == N_BUFFERS);
+	set_latest_link(latest, 1, &first, true);
+	set_latest_link(latest, 2, &second, true);
+
+	spa_assert_se(spa_image_source_try_acquire(&source, &image) == 1);
+	spa_assert_se(spa_image_source_buffer_get_index(image) == 0);
+	spa_assert_se(spa_image_source_publish_complete(&source, image, &frame) == 0);
+	spa_assert_se(spa_io_buffers_latest_receive(&first,
+			&first_sequence, &first_id) == 0);
+	spa_assert_se(spa_io_buffers_latest_receive(&second,
+			&second_sequence, &second_id) == 0);
+	spa_assert_se(first_sequence == second_sequence);
+	spa_assert_se(first_id == second_id && first_id == 0);
+
+	spa_assert_se(spa_image_source_try_acquire(&source, &second_image) == 1);
+	spa_assert_se(spa_image_source_buffer_get_index(second_image) == 1);
+	spa_assert_se(spa_image_source_try_acquire(&source, &image) == 0);
+	spa_assert_se(spa_io_buffers_latest_complete(&first, first_id) == 0);
+	spa_assert_se(spa_image_source_try_acquire(&source, &image) == 0);
+	spa_assert_se(spa_io_buffers_latest_complete(&second, second_id) == 0);
+	spa_assert_se(spa_image_source_try_acquire(&source, &image) == 1);
+	spa_assert_se(spa_image_source_buffer_get_index(image) == 0);
+	spa_assert_se(spa_image_source_return_buffer(&source, image) == 0);
+	spa_assert_se(spa_image_source_return_buffer(&source, second_image) == 0);
+
+	set_latest_link(latest, 1, NULL, false);
+	set_latest_link(latest, 2, NULL, false);
+	spa_assert_se(spa_image_source_latest_teardown(&transport, &source) == 0);
+	spa_buffer_latest_destroy(latest);
+}
+
 int main(int argc SPA_UNUSED, char *argv[] SPA_UNUSED)
 {
 	test_source();
 	test_prepare_validation();
+	test_latest_transport();
 	return 0;
 }
