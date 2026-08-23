@@ -14,10 +14,12 @@
 #include <spa/node/utils.h>
 #include <spa/param/buffers.h>
 #include <spa/param/format-utils.h>
+#include <spa/param/props.h>
 #include <spa/param/video/format-utils.h>
 #include <spa/param/video/raw-utils.h>
 #include <spa/pod/dynamic.h>
 #include <spa/pod/filter.h>
+#include <spa/pod/parser.h>
 #include <spa/support/plugin.h>
 #include <spa/utils/keys.h>
 #include <spa/utils/string.h>
@@ -205,10 +207,146 @@ static int impl_node_enum_params(void *object, int seq, uint32_t id,
 	return 0;
 }
 
-static int impl_node_set_param(void *object SPA_UNUSED, uint32_t id SPA_UNUSED,
-		uint32_t flags SPA_UNUSED, const struct spa_pod *param SPA_UNUSED)
+static int parse_feature_value(enum bgapi2_feature_kind kind,
+		const struct spa_pod *pod, struct bgapi2_feature_value *value)
 {
-	return -ENOENT;
+	uint32_t id;
+
+	memset(value, 0, sizeof(*value));
+	value->kind = kind;
+	switch (kind) {
+	case BGAPI2_FEATURE_BOOLEAN:
+		return spa_pod_get_bool(pod, &value->boolean);
+	case BGAPI2_FEATURE_INTEGER:
+		return spa_pod_get_long(pod, &value->integer);
+	case BGAPI2_FEATURE_FLOATING:
+		return spa_pod_get_double(pod, &value->floating);
+	case BGAPI2_FEATURE_ENUMERATION:
+		if (spa_pod_get_int(pod, &value->enumeration) == 0)
+			return 0;
+		if (spa_pod_get_id(pod, &id) < 0 || id > INT32_MAX)
+			return -EINVAL;
+		value->enumeration = (int32_t)id;
+		return 0;
+	case BGAPI2_FEATURE_STRING:
+		return spa_pod_get_string(pod, &value->string);
+	case BGAPI2_FEATURE_COMMAND:
+		return -EINVAL;
+	}
+	return -EINVAL;
+}
+
+static int refresh_layout_params(struct impl *this)
+{
+	const struct bgapi2_camera_info *info;
+	uint32_t format, bytes_per_pixel;
+	int res;
+
+	if ((res = bgapi2_camera_refresh_info(this->camera)) < 0)
+		return res;
+	info = bgapi2_camera_get_info(this->camera);
+	if (info == NULL || info->width > UINT32_MAX ||
+			info->height > UINT32_MAX || info->payload_size > INT32_MAX ||
+			info->width > INT32_MAX ||
+			map_pixel_format(info->pixel_format, &format, &bytes_per_pixel) < 0 ||
+			info->width * bytes_per_pixel > INT32_MAX)
+		return -ENOTSUP;
+	this->camera_info = *info;
+	this->video_format = format;
+	this->bytes_per_pixel = bytes_per_pixel;
+	this->port.have_format = false;
+	this->port.params[0].flags ^= SPA_PARAM_INFO_SERIAL;
+	this->port.params[1].flags ^= SPA_PARAM_INFO_SERIAL;
+	this->port.params[2].flags ^= SPA_PARAM_INFO_SERIAL;
+	this->port.info.change_mask |= SPA_PORT_CHANGE_MASK_PARAMS;
+	emit_port_info(this, false);
+	return 0;
+}
+
+static int impl_node_set_param(void *object, uint32_t id,
+		uint32_t flags SPA_UNUSED, const struct spa_pod *param)
+{
+	struct impl *this = object;
+	struct bgapi2_feature_info info;
+	struct bgapi2_feature_value value;
+	struct spa_pod_object *object_param;
+	struct spa_pod_prop *property;
+	const char *name = NULL;
+	struct spa_pod *value_pod = NULL;
+	uint32_t feature_index, operations = 0;
+	int res;
+
+	spa_return_val_if_fail(this != NULL, -EINVAL);
+	if (id != SPA_PARAM_Props)
+		return -ENOENT;
+	if (param == NULL)
+		return 0;
+	if (!spa_pod_is_object(param) ||
+			SPA_POD_OBJECT_TYPE(param) != SPA_TYPE_OBJECT_Props)
+		return -EINVAL;
+	object_param = (struct spa_pod_object *)param;
+	SPA_POD_OBJECT_FOREACH(object_param, property) {
+		struct spa_pod_parser parser;
+		struct spa_pod_frame frame;
+
+		if (property->key != SPA_PROP_params)
+			continue;
+		spa_pod_parser_pod(&parser, &property->value);
+		if (spa_pod_parser_push_struct(&parser, &frame) < 0)
+			return -EINVAL;
+		for (;;) {
+			const char *candidate = NULL;
+			struct spa_pod *candidate_value = NULL;
+
+			if (spa_pod_parser_get_string(&parser, &candidate) < 0)
+				break;
+			if (spa_pod_parser_get_pod(&parser, &candidate_value) < 0)
+				return -EINVAL;
+			if (++operations > 1)
+				return -EINVAL;
+			name = candidate;
+			value_pod = candidate_value;
+		}
+	}
+	if (operations == 0)
+		return 0;
+	if (this->started)
+		return -EBUSY;
+	if ((res = bgapi2_camera_find_feature(this->camera, name,
+			&feature_index)) < 0 ||
+			(res = bgapi2_camera_get_feature_info(this->camera, feature_index,
+			&info)) < 0)
+		return res;
+	if (!info.available)
+		return -ENODATA;
+	if (!info.writable)
+		return -EACCES;
+	if (info.changes_layout && this->port.n_buffers != 0)
+		return -EBUSY;
+	if ((res = parse_feature_value(info.kind, value_pod, &value)) < 0)
+		return res;
+	if (spa_streq(info.name, "PixelFormat")) {
+		const char *entry;
+		uint32_t format, bytes_per_pixel;
+
+		if (value.enumeration < 0 ||
+				(uint32_t)value.enumeration >= info.n_enum_entries ||
+				(entry = bgapi2_camera_get_feature_enum_entry(this->camera,
+				feature_index, (uint32_t)value.enumeration)) == NULL)
+			return -EINVAL;
+		if (map_pixel_format(entry, &format, &bytes_per_pixel) < 0)
+			return -ENOTSUP;
+	}
+	if ((res = bgapi2_camera_set_feature_value(this->camera, feature_index,
+			&value)) < 0)
+		return res;
+	if (info.changes_layout && (res = refresh_layout_params(this)) < 0)
+		return res;
+	this->params[0].flags ^= SPA_PARAM_INFO_SERIAL;
+	this->params[1].flags ^= SPA_PARAM_INFO_SERIAL;
+	this->info.change_mask |= SPA_NODE_CHANGE_MASK_PARAMS;
+	emit_node_info(this, false);
+	return 0;
 }
 
 static int impl_node_set_io(void *object SPA_UNUSED, uint32_t id SPA_UNUSED,
@@ -844,7 +982,7 @@ static int impl_init(const struct spa_handle_factory *factory SPA_UNUSED,
 	this->params[0] = SPA_PARAM_INFO(SPA_PARAM_PropInfo,
 			SPA_PARAM_INFO_READ);
 	this->params[1] = SPA_PARAM_INFO(SPA_PARAM_Props,
-			SPA_PARAM_INFO_READ);
+			SPA_PARAM_INFO_READWRITE);
 	this->info.params = this->params;
 	this->info.n_params = SPA_N_ELEMENTS(this->params);
 	configure_props(this, &options);
