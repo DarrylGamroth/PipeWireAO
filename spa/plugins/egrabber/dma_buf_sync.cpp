@@ -8,7 +8,6 @@
 #include <xf86drm.h>
 
 #include <cerrno>
-#include <climits>
 #include <cstring>
 #include <fcntl.h>
 #include <stdexcept>
@@ -77,17 +76,18 @@ void DmaBufTimeline::reset() noexcept
 	metadata_ = nullptr;
 }
 
-void DmaBufTimeline::wait_for_release()
+bool DmaBufTimeline::release_ready()
 {
 	if (metadata_ == nullptr || metadata_->release_point == 0 ||
 			SPA_FLAG_IS_SET(metadata_->flags,
 					SPA_META_SYNC_TIMELINE_UNSCHEDULED_RELEASE))
-		return;
+		return true;
 	auto handle = release_handle_;
 	auto point = metadata_->release_point;
-	if (drmSyncobjTimelineWait(drm_fd_, &handle, &point, 1, INT64_MAX,
-			DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL, nullptr) != 0)
-		throw drm_error("waiting for the DMA-BUF release timeline failed");
+	uint64_t signaled = 0;
+	if (drmSyncobjQuery(drm_fd_, &handle, &signaled, 1) != 0)
+		throw drm_error("querying the DMA-BUF release timeline failed");
+	return signaled >= point;
 }
 
 void DmaBufTimeline::signal_acquire(std::uint64_t point)

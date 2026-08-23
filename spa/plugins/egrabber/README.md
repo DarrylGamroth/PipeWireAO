@@ -109,7 +109,10 @@ standard SyncTimeline allocation has one release timeline, so it cannot safely
 represent several independent asynchronous consumers of a shared fan-out
 buffer. Mapped host buffers retain normal PipeWireAO fan-out. A second live
 subscriber is rejected before capture starts and cannot join a running
-DMA-BUF source.
+DMA-BUF source. Release readiness is queried without waiting on the RTC path.
+A slot whose release point has not been signalled remains locally held while
+the bounded scan examines the rest of the pool; a late or failed subscriber
+therefore produces pool starvation rather than blocking acquisition.
 
 This is functional complete-mode evidence, not strict real-time admission.
 The imported camera facade still takes uncontended mutexes around SDK queries,
