@@ -104,7 +104,8 @@ lease, pauses and restarts halfway through the run, and performs ordered
 teardown.
 
 On 2026-08-23 the factory, camera, callback-source, and polling-source tests
-passed against the connected 640x480 Mono8 GE34GM camera through both:
+passed against the connected 640x480 Mono8 GE34GM camera with the BGAPI2
+2.16.1 runtime through both:
 
 ```text
 /opt/euresys/egrabber/lib/x86_64/gigelink.cti
@@ -114,6 +115,16 @@ passed against the connected 640x480 Mono8 GE34GM camera through both:
 The second result is significant: the Baumer producer does operate this camera.
 An earlier failure was caused by an uncaught GenApi exception from the Euresys
 producer, which terminated the shared process before the Baumer case ran.
+
+The separately installed BGAPI2 2.16.1 C and C++ packages contain byte-identical
+`libbgapi2_genicam`, `libbgapi2_img`, and Baumer GigE CTI binaries. Both
+`BGAPI2_DataStream_GetFilledBuffer` and the C++
+`DataStreamEventControl::GetFilledBuffer` ultimately call the same internal
+`CDataStreamObj::getFilledBuffer`; the C entry point is a direct checked tail
+call, while the C++ entry point adds object guards, RTTI, and exception
+translation. The C++ package therefore does not provide a different producer or
+completion engine, and changing facades would not address producer allocations
+or lifecycle behavior.
 
 A ten-frame closed-loop `heaptrack` experiment compared three completion
 strategies:
@@ -146,14 +157,14 @@ back-to-back clock-pair distribution is reported beside the operation rather
 than subtracted. Exact samples are sorted after acquisition stops; this build
 does not require a C HdrHistogram dependency.
 
-Five Euresys runs and three Baumer runs on CPU 15 produced:
+Three runs per producer and profile on CPU 15 with BGAPI2 2.16.1 produced:
 
 | Producer | Profile | p50 | p99 | p99.9 |
 | --- | --- | ---: | ---: | ---: |
-| Euresys Gigelink | callback | 20 ns | 31 ns | 31–40 ns |
-| Euresys Gigelink | polling | 2.39–2.43 us | 2.76–4.19 us | 11.4–11.6 us |
-| Baumer GigE | callback | 20 ns | 31 ns | 31–40 ns |
-| Baumer GigE | polling | 200 ns | 211–220 ns | 361–381 ns |
+| Euresys Gigelink | callback | 20 ns | 31 ns | 31 ns |
+| Euresys Gigelink | polling | 2.41–2.49 us | 2.54–4.27 us | 10.0–11.4 us |
+| Baumer GigE | callback | 20 ns | 31 ns | 31 ns |
+| Baumer GigE | polling | 200–211 ns | 211–251 ns | 360–410 ns |
 
 The clock-pair baseline was 20 ns p50 and 30 ns p99, so the callback result is
 at this harness's measurement floor. These are not production qualification
@@ -175,8 +186,9 @@ one Baumer-only camera test closes cleanly, the next Baumer-only process opens
 and starts the camera but receives no buffer. Every adapter stop, discard,
 revoke, stream close, device close, interface close, system close, and release
 call reports success. One Euresys Gigelink capture restores stream delivery, and
-the next Baumer run then succeeds. This behavior is recorded as producer
-evidence; the plugin does not add a vendor-specific stream-reset workaround.
+the next Baumer run then succeeds. The failure remains reproducible with the
+2.16.1 runtime and Baumer CTI. This behavior is recorded as producer evidence;
+the plugin does not add a vendor-specific stream-reset workaround.
 
 The profiling commands were:
 
