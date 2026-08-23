@@ -84,11 +84,66 @@ static inline bool is_rtc_process(const struct pw_impl_node *node)
 	return SPA_FLAG_IS_SET(node->spa_flags, SPA_NODE_FLAG_RTC_PROCESS);
 }
 
+static void rtc_error_event(struct spa_source *source)
+{
+	struct pw_impl_node *node = source->data;
+	struct impl *impl = SPA_CONTAINER_OF(node, struct impl, this);
+	struct pw_loop *main_loop = pw_context_get_main_loop(node->context);
+	uint64_t count;
+	int res;
+
+	if ((source->rmask & SPA_IO_IN) == 0)
+		return;
+	res = spa_system_eventfd_read(main_loop->system, source->fd, &count);
+	if (res < 0 && res != -EAGAIN) {
+		pw_log_error("%p: failed to read RTC terminal result: %s",
+				node, spa_strerror(res));
+		return;
+	}
+	res = SPA_ATOMIC_LOAD(node->rtc_error);
+	if (res >= 0 || node->info.state != PW_NODE_STATE_RUNNING)
+		return;
+	impl->last_error = res;
+	pw_impl_node_set_state(node, PW_NODE_STATE_ERROR);
+}
+
+static int ensure_rtc_error_source(struct pw_impl_node *node)
+{
+	struct pw_loop *main_loop = pw_context_get_main_loop(node->context);
+	int res;
+
+	if (node->rtc_error_source.fd >= 0)
+		return 0;
+	res = spa_system_eventfd_create(main_loop->system,
+			SPA_FD_CLOEXEC | SPA_FD_NONBLOCK);
+	if (res < 0)
+		return res;
+	node->rtc_error_source.fd = res;
+	node->rtc_error_source.func = rtc_error_event;
+	node->rtc_error_source.data = node;
+	node->rtc_error_source.mask = SPA_IO_IN | SPA_IO_ERR | SPA_IO_HUP;
+	if ((res = pw_loop_add_source(main_loop, &node->rtc_error_source)) < 0) {
+		spa_system_close(main_loop->system, node->rtc_error_source.fd);
+		node->rtc_error_source.fd = -1;
+		return res;
+	}
+	return 0;
+}
+
 static int rtc_process_node(void *data)
 {
 	struct pw_impl_node *node = data;
+	struct pw_loop *main_loop;
+	int res;
 
-	return spa_node_process_fast(node->node);
+	res = spa_node_process_fast(node->node);
+	if (SPA_UNLIKELY(res < 0)) {
+		main_loop = pw_context_get_main_loop(node->context);
+		SPA_ATOMIC_STORE(node->rtc_error, res);
+		(void) spa_system_eventfd_write(main_loop->system,
+				node->rtc_error_source.fd, 1);
+	}
+	return res;
 }
 
 static int ensure_rtc_owner(struct pw_impl_node *node)
@@ -99,7 +154,7 @@ static int ensure_rtc_owner(struct pw_impl_node *node)
 		.scheduler = PW_RTC_DATA_LOOP_SCHED_OTHER,
 		.priority = 0,
 	};
-	int priority;
+	int priority, res;
 
 	if (!is_rtc_process(node))
 		return -EINVAL;
@@ -109,6 +164,8 @@ static int ensure_rtc_owner(struct pw_impl_node *node)
 		return -ENOTSUP;
 	if (node->rtc_loop != NULL)
 		return 0;
+	if ((res = ensure_rtc_error_source(node)) < 0)
+		return res;
 
 	priority = pw_properties_get_int32(node->properties,
 			PW_KEY_LOOP_RT_PRIO, 0);
@@ -1743,6 +1800,7 @@ struct pw_impl_node *pw_context_create_node(struct pw_context *context,
 		goto error_clean;
 	}
 	this->source.fd = -1;
+	this->rtc_error_source.fd = -1;
 
 	if (properties == NULL)
 		properties = pw_properties_new(NULL, NULL);
@@ -2594,6 +2652,12 @@ void pw_impl_node_destroy(struct pw_impl_node *node)
 	pw_work_queue_cancel(impl->work, node, SPA_ID_INVALID);
 	if (node->rtc_loop)
 		pw_rtc_data_loop_destroy(node->rtc_loop);
+	if (node->rtc_error_source.fd >= 0) {
+		struct pw_loop *main_loop = pw_context_get_main_loop(context);
+
+		pw_loop_remove_source(main_loop, &node->rtc_error_source);
+		spa_system_close(main_loop->system, node->rtc_error_source.fd);
+	}
 
 	pw_properties_free(node->properties);
 	spa_clear_ptr(impl->pending_request_process, free);
@@ -2931,6 +2995,12 @@ int pw_impl_node_set_state(struct pw_impl_node *node, enum pw_node_state state)
 		break;
 
 	case PW_NODE_STATE_ERROR:
+		if (is_rtc_process(node)) {
+			stop_rtc_owner(node);
+			node_deactivate(node);
+			res = spa_node_send_command(node->node,
+					&SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Pause));
+		}
 		break;
 	}
 	if (SPA_RESULT_IS_ERROR(res))
