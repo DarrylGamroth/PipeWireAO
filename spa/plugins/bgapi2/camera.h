@@ -27,6 +27,7 @@ struct bgapi2_camera_options {
 	uint64_t interface_timeout_ms;
 	uint64_t device_timeout_ms;
 	enum bgapi2_camera_completion_mode completion_mode;
+	bool defer_completion_info;
 };
 
 struct bgapi2_camera_info {
@@ -142,6 +143,10 @@ int bgapi2_camera_queue(struct bgapi2_camera *camera,
 		BGAPI2_Buffer *buffer);
 int bgapi2_camera_try_get_completion(struct bgapi2_camera *camera,
 		struct bgapi2_camera_completion *completion);
+int bgapi2_camera_buffer_is_acquiring(struct bgapi2_camera *camera,
+		BGAPI2_Buffer *buffer, bool *is_acquiring);
+int bgapi2_camera_get_size_filled(struct bgapi2_camera *camera,
+		BGAPI2_Buffer *buffer, uint64_t *size_filled);
 
 #ifdef __cplusplus
 }
