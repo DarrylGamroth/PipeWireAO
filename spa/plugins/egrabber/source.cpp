@@ -17,6 +17,7 @@
 #include <spa/buffer/image-source-latest.h>
 #include <spa/buffer/meta.h>
 #include <spa/monitor/device.h>
+#include <spa/node/keys.h>
 #include <spa/node/node.h>
 #include <spa/node/utils.h>
 #include <spa/param/buffers.h>
@@ -76,6 +77,13 @@ struct impl {
 	uint64_t info_all = 0;
 	struct spa_node_info info = SPA_NODE_INFO_INIT();
 	struct spa_dict node_props = {};
+	struct spa_dict_item node_items[16] = {};
+	Options options;
+	std::string node_name;
+	std::string description;
+	std::string interface_index;
+	std::string device_index;
+	std::string stream_index;
 	port output;
 	std::unique_ptr<Camera> camera;
 	struct spa_buffer_latest *latest = nullptr;
@@ -679,38 +687,52 @@ size_t get_size(const struct spa_handle_factory *, const struct spa_dict *)
 	return sizeof(impl);
 }
 
-void read_options(Options &options, const struct spa_dict *info)
+void configure_node_props(impl *self)
 {
-	const char *value;
-	uint32_t parsed;
-
-	if (info == nullptr)
-		return;
-	if ((value = spa_dict_lookup(info, SPA_KEY_API_EGRABBER_PRODUCER)))
-		options.producer = value;
-	if ((value = spa_dict_lookup(info, SPA_KEY_API_EGRABBER_SERIAL)))
-		options.serial = value;
-	if ((value = spa_dict_lookup(info, SPA_KEY_API_EGRABBER_USER_ID)))
-		options.user_id = value;
-	if ((value = spa_dict_lookup(info, SPA_KEY_API_EGRABBER_CONTROL)))
-		options.control = value;
-	if ((value = spa_dict_lookup(info, SPA_KEY_API_EGRABBER_INTERFACE_INDEX)) &&
-			spa_atou32(value, &parsed, 0) &&
-			parsed <= static_cast<uint32_t>(std::numeric_limits<int>::max()))
-		options.interface_index = static_cast<int>(parsed);
-	if ((value = spa_dict_lookup(info, SPA_KEY_API_EGRABBER_DEVICE_INDEX)) &&
-			spa_atou32(value, &parsed, 0) &&
-			parsed <= static_cast<uint32_t>(std::numeric_limits<int>::max()))
-		options.device_index = static_cast<int>(parsed);
-	if ((value = spa_dict_lookup(info, SPA_KEY_API_EGRABBER_STREAM_INDEX)) &&
-			spa_atou32(value, &parsed, 0) &&
-			parsed <= static_cast<uint32_t>(std::numeric_limits<int>::max()))
-		options.stream_index = static_cast<int>(parsed);
-	if ((value = spa_dict_lookup(info, SPA_KEY_API_EGRABBER_BUFFER_COUNT))) {
-		uint32_t count;
-		if (spa_atou32(value, &count, 0))
-			options.buffer_count = count;
+	const auto &identity = self->camera->identity();
+	uint32_t n_items = 0;
+	const std::string stable = !identity.serial.empty() ? identity.serial :
+			std::to_string(self->options.interface_index) + "." +
+			std::to_string(self->options.device_index) + "." +
+			std::to_string(self->options.stream_index);
+	self->node_name = "egrabber_source." + stable;
+	self->description = identity.vendor;
+	if (!identity.model.empty()) {
+		if (!self->description.empty())
+			self->description += " ";
+		self->description += identity.model;
 	}
+	if (self->description.empty())
+		self->description = "eGrabber camera source";
+	self->interface_index = std::to_string(self->options.interface_index);
+	self->device_index = std::to_string(self->options.device_index);
+	self->stream_index = std::to_string(self->options.stream_index);
+
+#define ADD_ITEM(key, value) \
+	self->node_items[n_items++] = SPA_DICT_ITEM_INIT(key, value)
+	ADD_ITEM(SPA_KEY_DEVICE_API, "egrabber");
+	ADD_ITEM(SPA_KEY_MEDIA_CLASS, "Video/Source");
+	ADD_ITEM(SPA_KEY_MEDIA_ROLE, "Camera");
+	ADD_ITEM(SPA_KEY_NODE_NAME, self->node_name.c_str());
+	ADD_ITEM(SPA_KEY_NODE_DESCRIPTION, self->description.c_str());
+	ADD_ITEM(SPA_KEY_API_EGRABBER_PRODUCER, self->options.producer.c_str());
+	ADD_ITEM(SPA_KEY_API_EGRABBER_INTERFACE_INDEX, self->interface_index.c_str());
+	ADD_ITEM(SPA_KEY_API_EGRABBER_DEVICE_INDEX, self->device_index.c_str());
+	ADD_ITEM(SPA_KEY_API_EGRABBER_STREAM_INDEX, self->stream_index.c_str());
+	if (!identity.vendor.empty())
+		ADD_ITEM(SPA_KEY_DEVICE_VENDOR_NAME, identity.vendor.c_str());
+	if (!identity.model.empty())
+		ADD_ITEM(SPA_KEY_DEVICE_PRODUCT_NAME, identity.model.c_str());
+	if (!identity.serial.empty()) {
+		ADD_ITEM(SPA_KEY_DEVICE_SERIAL, identity.serial.c_str());
+		ADD_ITEM(SPA_KEY_API_EGRABBER_SERIAL, identity.serial.c_str());
+	}
+	if (!identity.user_id.empty())
+		ADD_ITEM(SPA_KEY_API_EGRABBER_USER_ID, identity.user_id.c_str());
+	if (!identity.transport.empty())
+		ADD_ITEM(SPA_KEY_API_EGRABBER_TRANSPORT, identity.transport.c_str());
+#undef ADD_ITEM
+	self->node_props = SPA_DICT_INIT(self->node_items, n_items);
 }
 
 int init(const struct spa_handle_factory *, struct spa_handle *handle,
@@ -718,7 +740,6 @@ int init(const struct spa_handle_factory *, struct spa_handle *handle,
 		uint32_t n_support)
 {
 	impl *self;
-	Options options;
 	struct spa_image_source_config config = {
 		.version = SPA_VERSION_IMAGE_SOURCE_CONFIG,
 		.min_buffers = 2,
@@ -728,15 +749,15 @@ int init(const struct spa_handle_factory *, struct spa_handle *handle,
 	};
 
 	spa_return_val_if_fail(handle != nullptr, -EINVAL);
-	read_options(options, info);
 	self = new (handle) impl{};
 	self->handle.get_interface = get_interface;
 	self->handle.clear = clear;
+	read_options(self->options, info);
 	self->log = static_cast<spa_log *>(spa_support_find(support, n_support,
 			SPA_TYPE_INTERFACE_Log));
 	spa_hook_list_init(&self->hooks);
 	try {
-		self->camera = std::make_unique<Camera>(options);
+		self->camera = std::make_unique<Camera>(self->options);
 		if (self->camera->width() > std::numeric_limits<uint32_t>::max() ||
 				self->camera->height() > std::numeric_limits<uint32_t>::max() ||
 				self->camera->payload_size() >
@@ -761,12 +782,7 @@ int init(const struct spa_handle_factory *, struct spa_handle *handle,
 	self->info = SPA_NODE_INFO_INIT();
 	self->info.max_output_ports = 1;
 	self->info.flags = SPA_NODE_FLAG_RT | SPA_NODE_FLAG_RTC_PROCESS;
-	static const struct spa_dict_item items[] = {
-		{ SPA_KEY_DEVICE_API, "egrabber" },
-		{ SPA_KEY_MEDIA_CLASS, "Video/Source" },
-		{ SPA_KEY_MEDIA_ROLE, "Camera" },
-	};
-	self->node_props = { 0, SPA_N_ELEMENTS(items), items };
+	configure_node_props(self);
 	self->info.props = &self->node_props;
 	self->output.info_all = SPA_PORT_CHANGE_MASK_FLAGS |
 			SPA_PORT_CHANGE_MASK_PARAMS;

@@ -17,12 +17,19 @@ int main(int argc, char **argv)
 			dlsym(library, SPA_HANDLE_FACTORY_ENUM_FUNC_NAME));
 	spa_assert_se(enumerate != nullptr);
 
+	const char *expected[] = {
+		SPA_NAME_API_EGRABBER_ENUM_MANAGER,
+		SPA_NAME_API_EGRABBER_DEVICE,
+		SPA_NAME_API_EGRABBER_SOURCE,
+	};
 	const struct spa_handle_factory *factory = nullptr;
 	uint32_t index = 0;
-	spa_assert_se(enumerate(&factory, &index) == 1);
-	spa_assert_se(factory != nullptr);
-	spa_assert_se(spa_streq(factory->name, SPA_NAME_API_EGRABBER_SOURCE));
-	spa_assert_se(index == 1);
+	for (const char *name : expected) {
+		spa_assert_se(enumerate(&factory, &index) == 1);
+		spa_assert_se(factory != nullptr);
+		spa_assert_se(spa_streq(factory->name, name));
+	}
+	spa_assert_se(index == SPA_N_ELEMENTS(expected));
 	spa_assert_se(enumerate(&factory, &index) == 0);
 	spa_assert_se(dlclose(library) == 0);
 	return 0;

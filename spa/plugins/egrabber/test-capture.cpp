@@ -211,7 +211,10 @@ int main(int argc, char **argv)
 	spa_assert_se(enumerate != nullptr);
 	const struct spa_handle_factory *factory = nullptr;
 	uint32_t index = 0;
-	spa_assert_se(enumerate(&factory, &index) == 1);
+	while (enumerate(&factory, &index) > 0 &&
+			!spa_streq(factory->name, SPA_NAME_API_EGRABBER_SOURCE))
+		factory = nullptr;
+	spa_assert_se(factory != nullptr);
 	const int res = capture(factory);
 	spa_assert_se(dlclose(library) == 0);
 	return res;
