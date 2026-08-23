@@ -60,17 +60,15 @@ struct TransportEvent {
 
 struct BufferMetadata {
     std::optional<std::uint64_t> frame_id;
+    std::optional<std::uint64_t> timestamp_ns;
     std::optional<std::size_t> image_offset;
     std::optional<std::size_t> size_filled;
     std::optional<std::size_t> data_size;
     std::optional<std::size_t> x_padding;
-    std::optional<std::size_t> y_padding;
     std::optional<std::size_t> payload_type;
-    std::optional<std::size_t> delivered_chunk_payload_size;
-    std::optional<std::uint64_t> chunk_layout_id;
     std::optional<bool> image_present;
     std::optional<bool> data_larger_than_buffer;
-    std::optional<bool> contains_chunk_data;
+    std::optional<bool> incomplete;
 };
 
 struct BufferProgress {
@@ -114,12 +112,7 @@ public:
     Euresys::BufferIndexRange announce(void *base, int fd, std::size_t size,
                                        std::uint32_t offset, bool direct_dma_buf,
                                        void *user_pointer);
-    Euresys::BufferInfo buffer_info(Euresys::Buffer &buffer);
     BufferMetadata buffer_metadata(Euresys::Buffer &buffer);
-    std::optional<std::size_t> buffer_offset_x(Euresys::Buffer &buffer);
-    std::optional<std::size_t> buffer_offset_y(Euresys::Buffer &buffer);
-    std::optional<std::uint64_t> timestamp_ns(Euresys::Buffer &buffer);
-    bool incomplete(Euresys::Buffer &buffer);
     std::optional<BufferProgress> find_acquiring_buffer(
         std::span<const Euresys::BufferIndexRange> ranges);
     std::optional<BufferProgress> buffer_progress(
