@@ -118,41 +118,69 @@ public:
         event_callback_ = std::move(callback);
     }
 
-    bool process_event(std::uint64_t timeout_ms) {
-        if (timeout_ms == 0 &&
-            getPendingEventCount<Euresys::Any>() == 0)
-            return false;
-        Euresys::OneOf<NewBufferData, Euresys::DataStreamData,
-                       Euresys::DeviceErrorData, Euresys::RemoteDeviceData> event;
-        int position = 0;
+    bool process_event() {
+        event_processed_ = false;
+        callback_error_ = {};
+        processEventFilter(event_filter());
+        if (callback_error_)
+            std::rethrow_exception(callback_error_);
+        return event_processed_;
+    }
+
+protected:
+    /* CallbackOnDemand invokes these callbacks synchronously on the caller. */
+    void onNewBufferEvent(const NewBufferData &data) override {
+        event_processed_ = true;
         try {
-            pop(event, position, timeout_ms);
-        } catch (const Euresys::gentl_error &error) {
-            if (error.gc_err == gc::GC_ERR_TIMEOUT || error.gc_err == gc::GC_ERR_ABORT)
-                return false;
-            throw;
+            if (frame_callback_) frame_callback_(data);
+            else Buffer(data).push(*this);
+        } catch (...) {
+            remember_callback_error();
         }
-        if (position == 1) {
-            if (frame_callback_) frame_callback_(event.data1);
-            else Buffer(event.data1).push(*this);
-        } else if (position == 2 && event_callback_) {
-            event_callback_({TransportEventKind::data_stream, event.data2.timestamp,
-                event.data2.numid, event.data2.context1, event.data2.context2,
-                event.data2.context3});
-        } else if (position == 3 && event_callback_) {
-            event_callback_({TransportEventKind::device_error, event.data3.timestamp,
-                event.data3.numid, event.data3.context1, event.data3.context2,
-                event.data3.context3});
-        } else if (position == 4 && event_callback_) {
-            event_callback_({TransportEventKind::remote_device, event.data4.timestamp,
-                event.data4.eventId, event.data4.eventNs, 0, 0});
-        }
-        return true;
+    }
+
+    void onDataStreamEvent(const Euresys::DataStreamData &data) override {
+        dispatch_transport_event({TransportEventKind::data_stream, data.timestamp,
+            data.numid, data.context1, data.context2, data.context3});
+    }
+
+    void onDeviceErrorEvent(const Euresys::DeviceErrorData &data) override {
+        dispatch_transport_event({TransportEventKind::device_error, data.timestamp,
+            data.numid, data.context1, data.context2, data.context3});
+    }
+
+    void onRemoteDeviceEvent(const Euresys::RemoteDeviceData &data) override {
+        dispatch_transport_event({TransportEventKind::remote_device, data.timestamp,
+            data.eventId, data.eventNs, 0, 0});
     }
 
 private:
+    static std::size_t event_filter() {
+        return Euresys::Internal::getEventFilter<NewBufferData>() |
+            Euresys::Internal::getEventFilter<Euresys::DataStreamData>() |
+            Euresys::Internal::getEventFilter<Euresys::DeviceErrorData>() |
+            Euresys::Internal::getEventFilter<Euresys::RemoteDeviceData>();
+    }
+
+    void remember_callback_error() noexcept {
+        if (!callback_error_)
+            callback_error_ = std::current_exception();
+    }
+
+    void dispatch_transport_event(const TransportEvent &event) noexcept {
+        event_processed_ = true;
+        try {
+            if (event_callback_)
+                event_callback_(event);
+        } catch (...) {
+            remember_callback_error();
+        }
+    }
+
     FrameCallback frame_callback_;
     EventCallback event_callback_;
+    std::exception_ptr callback_error_;
+    bool event_processed_ = false;
 };
 
 struct Camera::Impl {
@@ -220,11 +248,9 @@ public:
         grabber_.set_event_callback(std::move(callback));
     }
 
-    bool process_event(std::uint64_t timeout_ms) {
-        return grabber_.process_event(timeout_ms);
+    bool process_event() {
+        return grabber_.process_event();
     }
-
-    void cancel_event_wait() { grabber_.cancelPop(); }
 
     void select_memory_type(bool direct_dma_buf) {
         std::lock_guard lock(mutex_);
@@ -882,8 +908,7 @@ void Camera::clear_frame_callback() { impl_->clear_frame_callback(); }
 void Camera::set_transport_event_callback(TransportEventCallback callback) {
     impl_->set_transport_event_callback(std::move(callback));
 }
-bool Camera::process_event(std::uint64_t timeout_ms) { return impl_->process_event(timeout_ms); }
-void Camera::cancel_event_wait() { impl_->cancel_event_wait(); }
+bool Camera::process_event() { return impl_->process_event(); }
 void Camera::select_memory_type(bool direct_dma_buf) { impl_->select_memory_type(direct_dma_buf); }
 Euresys::BufferIndexRange Camera::announce(void *base, int fd, std::size_t size,
                                            std::uint32_t offset, bool direct_dma_buf,

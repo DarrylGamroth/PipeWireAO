@@ -102,8 +102,7 @@ public:
     void set_frame_callback(FrameCallback callback);
     void clear_frame_callback();
     void set_transport_event_callback(TransportEventCallback callback);
-    bool process_event(std::uint64_t timeout_ms);
-    void cancel_event_wait();
+    bool process_event();
     void select_memory_type(bool direct_dma_buf);
     Euresys::BufferIndexRange announce(void *base, int fd, std::size_t size,
                                        std::uint32_t offset, bool direct_dma_buf,
