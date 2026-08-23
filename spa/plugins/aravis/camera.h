@@ -45,6 +45,38 @@ struct aravis_camera_completion {
 	int result;
 };
 
+enum aravis_feature_kind {
+	ARAVIS_FEATURE_BOOLEAN,
+	ARAVIS_FEATURE_INTEGER,
+	ARAVIS_FEATURE_FLOATING,
+	ARAVIS_FEATURE_ENUMERATION,
+	ARAVIS_FEATURE_STRING,
+	ARAVIS_FEATURE_COMMAND,
+};
+
+struct aravis_feature_info {
+	const char *name;
+	const char *property_name;
+	const char *description;
+	enum aravis_feature_kind kind;
+	uint32_t n_enum_entries;
+	bool available;
+	bool readable;
+	bool writable;
+	bool changes_layout;
+};
+
+struct aravis_feature_value {
+	enum aravis_feature_kind kind;
+	union {
+		bool boolean;
+		int64_t integer;
+		double floating;
+		int32_t enumeration;
+		const char *string;
+	};
+};
+
 struct aravis_camera;
 
 /* Discovery, GenICam access, and teardown are stopped control-path work. */
@@ -53,6 +85,25 @@ int aravis_camera_open(struct aravis_camera **camera,
 void aravis_camera_close(struct aravis_camera *camera);
 const struct aravis_camera_info *aravis_camera_get_info(
 		const struct aravis_camera *camera);
+
+/* GenICam discovery and feature access are stopped control-path operations. */
+uint32_t aravis_camera_get_feature_count(const struct aravis_camera *camera);
+int aravis_camera_get_feature_info(struct aravis_camera *camera,
+		uint32_t index, struct aravis_feature_info *info);
+const char *aravis_camera_get_feature_enum_entry(
+		const struct aravis_camera *camera, uint32_t index,
+		uint32_t entry_index);
+int aravis_camera_get_feature_value(struct aravis_camera *camera,
+		uint32_t index, struct aravis_feature_value *value);
+int aravis_camera_get_feature_integer_range(struct aravis_camera *camera,
+		uint32_t index, int64_t *minimum, int64_t *maximum);
+int aravis_camera_get_feature_float_range(struct aravis_camera *camera,
+		uint32_t index, double *minimum, double *maximum);
+int aravis_camera_find_feature(const struct aravis_camera *camera,
+		const char *property_name, uint32_t *index);
+int aravis_camera_set_feature_value(struct aravis_camera *camera,
+		uint32_t index, const struct aravis_feature_value *value);
+int aravis_camera_refresh_info(struct aravis_camera *camera);
 
 /* Buffer announcement and revocation are pool-lifecycle operations. */
 int aravis_camera_announce(struct aravis_camera *camera, void *memory,
