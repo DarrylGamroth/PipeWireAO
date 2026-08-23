@@ -26,7 +26,7 @@
 #include "pipewire/pipewire.h"
 #include "pipewire/filter.h"
 #include "pipewire/private.h"
-#include "buffer-latest-private.h"
+#include <spa/node/buffer-latest.h>
 
 PW_LOG_TOPIC_EXTERN(log_filter);
 #define PW_LOG_TOPIC_DEFAULT log_filter
@@ -89,7 +89,7 @@ struct port {
 	struct spa_param_info params[N_PORT_PARAMS];
 
 	struct spa_io_buffers *io;
-	struct pw_buffer_latest *latest;
+	struct spa_buffer_latest *latest;
 
 	struct buffer buffers[MAX_BUFFERS];
 	uint32_t n_buffers;
@@ -363,7 +363,7 @@ static struct port *alloc_port(struct filter *filter,
 		return NULL;
 	p->filter = filter;
 	p->direction = direction;
-	if ((p->latest = pw_buffer_latest_new(direction, filter, p)) == NULL) {
+	if ((p->latest = spa_buffer_latest_new(direction, p, pw_log_get())) == NULL) {
 		free(p);
 		return NULL;
 	}
@@ -650,17 +650,17 @@ static int impl_set_callbacks(void *object,
 
 static inline bool port_has_latest(const struct port *port)
 {
-	return pw_buffer_latest_has_links(port->latest);
+	return spa_buffer_latest_has_links(port->latest);
 }
 
 static int begin_latest_worker_retirement(struct port *port)
 {
-	return pw_buffer_latest_begin_worker_retirement(port->latest);
+	return spa_buffer_latest_begin_worker_retirement(port->latest);
 }
 
 static inline void end_latest_worker_retirement(struct port *port)
 {
-	pw_buffer_latest_end_worker_retirement(port->latest);
+	spa_buffer_latest_end_worker_retirement(port->latest);
 }
 
 static int impl_port_set_io(void *object, enum spa_direction direction, uint32_t port_id,
@@ -687,10 +687,10 @@ static int impl_port_set_io(void *object, enum spa_direction direction, uint32_t
 	case SPA_IO_BuffersLatest:
 	case SPA_IO_BuffersLatestNotify:
 	case SPA_IO_BuffersLatestLink:
-		was_latest = pw_buffer_latest_is_enabled(port->latest);
-		if ((res = pw_buffer_latest_set_io(port->latest, id, data, size)) < 0)
+		was_latest = spa_buffer_latest_is_enabled(port->latest);
+		if ((res = spa_buffer_latest_set_io(port->latest, id, data, size)) < 0)
 			return res;
-		if (!was_latest && pw_buffer_latest_is_enabled(port->latest))
+		if (!was_latest && spa_buffer_latest_is_enabled(port->latest))
 			set_latest_output_mode(port, true);
 		break;
 	}
@@ -837,7 +837,7 @@ static void clear_buffers(struct port *port)
 		}
 	}
 	port->n_buffers = 0;
-	pw_buffer_latest_clear_buffers(port->latest);
+	spa_buffer_latest_clear_buffers(port->latest);
 	clear_queue(port, &port->dequeued);
 	clear_queue(port, &port->queued);
 }
@@ -908,7 +908,7 @@ static bool latest_worker_keeps_format(struct port *port,
 {
 	struct param *current;
 
-	if (!pw_buffer_latest_worker_is_active(port->latest))
+	if (!spa_buffer_latest_worker_is_active(port->latest))
 		return false;
 	/* Link retirement keeps the selected format so a live replacement can
 	 * attach without disrupting the exclusive worker. */
@@ -960,7 +960,7 @@ static int impl_port_set_param(void *object,
 		if ((res = begin_latest_worker_retirement(port)) < 0)
 			return res;
 		retiring = true;
-		if ((res = pw_buffer_latest_service_retirements(port->latest)) < 0) {
+		if ((res = spa_buffer_latest_service_retirements(port->latest)) < 0) {
 			end_latest_worker_retirement(port);
 			return res;
 		}
@@ -1017,18 +1017,18 @@ static int impl_port_use_buffers(void *object,
 		return -EIO;
 	if (n_buffers > MAX_BUFFERS)
 		return -ENOSPC;
-	if (pw_buffer_latest_worker_is_active(port->latest) && port->n_buffers > 0) {
+	if (spa_buffer_latest_worker_is_active(port->latest) && port->n_buffers > 0) {
 		/* A quiescent, unlinked input may discard its mapping before a live
 		 * rebind. Otherwise only an identical pool may be reasserted. */
 		if (n_buffers == 0 && port->direction == SPA_DIRECTION_INPUT &&
-				pw_buffer_latest_active_mask(port->latest) == 0 &&
-				pw_buffer_latest_claimed_buffer(port->latest) == SPA_ID_INVALID) {
+				spa_buffer_latest_active_mask(port->latest) == 0 &&
+				spa_buffer_latest_claimed_buffer(port->latest) == SPA_ID_INVALID) {
 			clear_buffers(port);
 			return 0;
 		}
 		if ((n_buffers == 0 &&
-				pw_buffer_latest_active_mask(port->latest) == 0) ||
-				pw_buffer_latest_same_buffer_pool(port->latest,
+				spa_buffer_latest_active_mask(port->latest) == 0) ||
+				spa_buffer_latest_same_buffer_pool(port->latest,
 						buffers, n_buffers))
 			return 0;
 		return -EBUSY;
@@ -1039,7 +1039,7 @@ static int impl_port_use_buffers(void *object,
 		if ((res = begin_latest_worker_retirement(port)) < 0)
 			return res;
 		retiring = true;
-		if ((res = pw_buffer_latest_service_retirements(port->latest)) < 0) {
+		if ((res = spa_buffer_latest_service_retirements(port->latest)) < 0) {
 			end_latest_worker_retirement(port);
 			return res;
 		}
@@ -1090,7 +1090,7 @@ static int impl_port_use_buffers(void *object,
 				buffers[i]->n_datas, size);
 	}
 	port->n_buffers = n_buffers;
-	pw_buffer_latest_set_buffers(port->latest, buffers, n_buffers);
+	spa_buffer_latest_set_buffers(port->latest, buffers, n_buffers);
 
 	for (i = 0; i < n_buffers; i++) {
 		struct buffer *b = &port->buffers[i];
@@ -1099,7 +1099,7 @@ static int impl_port_use_buffers(void *object,
 
 		if (port->direction == SPA_DIRECTION_OUTPUT) {
 			pw_log_trace("%p: recycle buffer %d", filter, b->id);
-			if (!pw_buffer_latest_is_enabled(port->latest))
+			if (!spa_buffer_latest_is_enabled(port->latest))
 				push_queue(port, &port->dequeued, b);
 		}
 
@@ -1174,7 +1174,7 @@ static int impl_node_process(void *object)
 	spa_list_for_each(p, &impl->port_list, link) {
 		struct spa_io_buffers *io = p->io;
 
-		if (SPA_UNLIKELY(pw_buffer_latest_is_enabled(p->latest) || io == NULL ||
+		if (SPA_UNLIKELY(spa_buffer_latest_is_enabled(p->latest) || io == NULL ||
 		    io->buffer_id >= p->n_buffers))
 			continue;
 
@@ -1204,7 +1204,7 @@ static int impl_node_process(void *object)
 	spa_list_for_each(p, &impl->port_list, link) {
 		struct spa_io_buffers *io = p->io;
 
-		if (SPA_UNLIKELY(pw_buffer_latest_is_enabled(p->latest) || io == NULL))
+		if (SPA_UNLIKELY(spa_buffer_latest_is_enabled(p->latest) || io == NULL))
 			continue;
 
 		if (p->direction == SPA_DIRECTION_INPUT) {
@@ -1548,7 +1548,7 @@ static void free_port(struct filter *impl, struct port *port)
 	clear_buffers(port);
 	clear_params(impl, port, SPA_ID_INVALID);
 	pw_properties_free(port->props);
-	pw_buffer_latest_destroy(port->latest);
+	spa_buffer_latest_destroy(port->latest);
 	free(port);
 }
 
@@ -2064,7 +2064,7 @@ void *pw_filter_add_port(struct pw_filter *filter,
 
 error_free:
 	clear_params(impl, p, SPA_ID_INVALID);
-	pw_buffer_latest_destroy(p->latest);
+	spa_buffer_latest_destroy(p->latest);
 	free(p);
 error_cleanup:
 	pw_properties_free(props);
@@ -2203,7 +2203,7 @@ int pw_filter_get_buffer_latest_stats(void *port_data,
 		struct pw_filter_buffer_latest_stats *stats, size_t stats_size)
 {
 	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
-	struct pw_buffer_latest_stats latest_stats;
+	struct spa_buffer_latest_stats latest_stats;
 	int res;
 
 	SPA_STATIC_ASSERT(sizeof(latest_stats) ==
@@ -2215,7 +2215,7 @@ int pw_filter_get_buffer_latest_stats(void *port_data,
 	if (SPA_UNLIKELY(stats_size <
 			PW_FILTER_BUFFER_LATEST_STATS_VERSION_0_SIZE))
 		return -ENOSPC;
-	if ((res = pw_buffer_latest_get_stats(p->latest, &latest_stats,
+	if ((res = spa_buffer_latest_get_stats(p->latest, &latest_stats,
 			sizeof(latest_stats))) < 0)
 		return res;
 	memcpy(stats, &latest_stats, SPA_MIN(stats_size, sizeof(latest_stats)));
@@ -2236,12 +2236,12 @@ int pw_filter_buffer_latest_worker_begin(void *port_data)
 		SPA_ATOMIC_DEC(impl->latest_workers);
 		return -EPIPE;
 	}
-	if ((res = pw_buffer_latest_worker_begin(p->latest)) < 0) {
+	if ((res = spa_buffer_latest_worker_begin(p->latest)) < 0) {
 		SPA_ATOMIC_DEC(impl->latest_workers);
 		return res;
 	}
 	if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(impl->latest_workers_retiring))) {
-		pw_buffer_latest_worker_end(p->latest);
+		spa_buffer_latest_worker_end(p->latest);
 		SPA_ATOMIC_DEC(impl->latest_workers);
 		return -EPIPE;
 	}
@@ -2254,7 +2254,7 @@ int pw_filter_buffer_latest_worker_end(void *port_data)
 	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
 	int res;
 
-	if ((res = pw_buffer_latest_worker_end(p->latest)) < 0)
+	if ((res = spa_buffer_latest_worker_end(p->latest)) < 0)
 		return res;
 	SPA_ATOMIC_DEC(p->filter->latest_workers);
 	return 0;
@@ -2667,7 +2667,7 @@ int pw_filter_try_dequeue_buffer_latest(void *port_data,
 	if (SPA_UNLIKELY(buffer == NULL || submission_sequence == NULL))
 		return -EINVAL;
 	*buffer = NULL;
-	res = pw_buffer_latest_try_dequeue(p->latest, &id, submission_sequence);
+	res = spa_buffer_latest_try_dequeue(p->latest, &id, submission_sequence);
 	if (res <= 0)
 		return res;
 	if (SPA_UNLIKELY(id >= p->n_buffers ||
@@ -2683,14 +2683,14 @@ int pw_filter_buffer_latest_poller_init(
 		struct pw_filter_buffer_latest_poller *poller, void *port_data)
 {
 	struct port *p;
-	struct pw_buffer_latest_poller latest_poller;
+	struct spa_buffer_latest_poller latest_poller;
 	int res;
 
 	if (SPA_UNLIKELY(poller == NULL || port_data == NULL))
 		return -EINVAL;
 	*poller = PW_FILTER_BUFFER_LATEST_POLLER_INIT;
 	p = SPA_CONTAINER_OF(port_data, struct port, user_data);
-	res = pw_buffer_latest_poller_init(&latest_poller, p->latest);
+	res = spa_buffer_latest_poller_init(&latest_poller, p->latest);
 	if (res < 0)
 		return res;
 	SPA_STATIC_ASSERT(sizeof(*poller) == sizeof(latest_poller),
@@ -2704,8 +2704,8 @@ int pw_filter_buffer_latest_poller_try_dequeue(
 		struct pw_filter_buffer_latest_poller *poller,
 		struct pw_buffer **buffer, uint64_t *submission_sequence)
 {
-	struct pw_buffer_latest_poller latest_poller;
-	struct pw_buffer_latest *latest;
+	struct spa_buffer_latest_poller latest_poller;
+	struct spa_buffer_latest *latest;
 	struct port *p;
 	uint32_t id;
 	int res;
@@ -2718,8 +2718,8 @@ int pw_filter_buffer_latest_poller_try_dequeue(
 	latest = latest_poller.latest;
 	if (SPA_UNLIKELY(latest == NULL))
 		return -EINVAL;
-	p = pw_buffer_latest_get_data(latest);
-	res = pw_buffer_latest_poller_try_dequeue(&latest_poller, &id,
+	p = spa_buffer_latest_get_data(latest);
+	res = spa_buffer_latest_poller_try_dequeue(&latest_poller, &id,
 			submission_sequence);
 	memcpy(poller, &latest_poller, sizeof(*poller));
 	if (res <= 0)
@@ -2736,12 +2736,12 @@ SPA_EXPORT
 void pw_filter_buffer_latest_poller_clear(
 		struct pw_filter_buffer_latest_poller *poller)
 {
-	struct pw_buffer_latest_poller latest_poller;
+	struct spa_buffer_latest_poller latest_poller;
 
 	if (poller == NULL)
 		return;
 	memcpy(&latest_poller, poller, sizeof(latest_poller));
-	pw_buffer_latest_poller_clear(&latest_poller);
+	spa_buffer_latest_poller_clear(&latest_poller);
 	*poller = PW_FILTER_BUFFER_LATEST_POLLER_INIT;
 }
 
@@ -2753,8 +2753,8 @@ struct pw_buffer *pw_filter_dequeue_buffer(void *port_data)
 	uint32_t id;
 	int res = -EPIPE;
 
-	if (pw_buffer_latest_is_enabled(p->latest)) {
-		res = pw_buffer_latest_dequeue(p->latest, &id, NULL);
+	if (spa_buffer_latest_is_enabled(p->latest)) {
+		res = spa_buffer_latest_dequeue(p->latest, &id, NULL);
 		if (res <= 0)
 			goto error;
 		if (SPA_UNLIKELY(id >= p->n_buffers))
@@ -2793,8 +2793,8 @@ int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer)
 		return -EINVAL;
 	}
 	pw_log_trace_fp("%p: queue buffer %d", p->filter, b->id);
-	if (pw_buffer_latest_is_enabled(p->latest)) {
-		if ((res = pw_buffer_latest_queue(p->latest, b->id)) < 0)
+	if (spa_buffer_latest_is_enabled(p->latest)) {
+		if ((res = spa_buffer_latest_queue(p->latest, b->id)) < 0)
 			return res;
 		SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
 		return 0;
@@ -2811,7 +2811,7 @@ int pw_filter_begin_progressive_buffer(void *port_data, struct pw_buffer *buffer
 
 	if (SPA_UNLIKELY(!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED)))
 		return -EINVAL;
-	return pw_buffer_latest_begin_progressive(p->latest, b->id);
+	return spa_buffer_latest_begin_progressive(p->latest, b->id);
 }
 
 SPA_EXPORT
@@ -2819,7 +2819,7 @@ int pw_filter_get_buffer_latest_fd(void *port_data)
 {
 	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
 
-	return pw_buffer_latest_get_fd(p->latest);
+	return spa_buffer_latest_get_fd(p->latest);
 }
 
 SPA_EXPORT
@@ -2831,7 +2831,7 @@ int pw_filter_end_progressive_buffer(void *port_data, struct pw_buffer *buffer)
 
 	if (SPA_UNLIKELY(!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED)))
 		return -EINVAL;
-	if ((res = pw_buffer_latest_end_progressive(p->latest, b->id)) < 0)
+	if ((res = spa_buffer_latest_end_progressive(p->latest, b->id)) < 0)
 		return res;
 	SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
 	return 0;
