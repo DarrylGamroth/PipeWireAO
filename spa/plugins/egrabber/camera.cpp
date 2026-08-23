@@ -246,56 +246,65 @@ public:
         return grabber_.announceAndQueue(UserMemory(base, size, user_pointer));
     }
 
-    BufferInfo buffer_info(Buffer &buffer) { return buffer.getInfo(grabber_); }
+    enum class QuerySupport : std::uint8_t { unknown, supported, unavailable };
 
-    template<typename T>
-    std::optional<T> optional_buffer_info(Buffer &buffer, gc::BUFFER_INFO_CMD command) {
-        try { return buffer.getInfo<T>(grabber_, command); }
-        catch (...) { return std::nullopt; }
+    static bool unavailable_query_error(gc::GC_ERROR error) noexcept {
+        return error == gc::GC_ERR_NOT_IMPLEMENTED ||
+            error == gc::GC_ERR_INVALID_ID ||
+            error == gc::GC_ERR_INVALID_PARAMETER ||
+            error == gc::GC_ERR_NOT_AVAILABLE;
     }
 
-    std::optional<bool> optional_buffer_flag(Buffer &buffer, gc::BUFFER_INFO_CMD command) {
-        const auto value = optional_buffer_info<bool8_t>(buffer, command);
+    template<typename T>
+    std::optional<T> optional_buffer_info(Buffer &buffer,
+                                         gc::BUFFER_INFO_CMD command,
+                                         QuerySupport &support) {
+        if (support == QuerySupport::unavailable) return std::nullopt;
+        try {
+            auto value = buffer.getInfo<T>(grabber_, command);
+            support = QuerySupport::supported;
+            return value;
+        } catch (const Euresys::gentl_error &error) {
+            if (unavailable_query_error(error.gc_err))
+                support = QuerySupport::unavailable;
+            return std::nullopt;
+        } catch (...) {
+            return std::nullopt;
+        }
+    }
+
+    std::optional<bool> optional_buffer_flag(Buffer &buffer,
+                                             gc::BUFFER_INFO_CMD command,
+                                             QuerySupport &support) {
+        const auto value = optional_buffer_info<bool8_t>(buffer, command, support);
         if (!value) return std::nullopt;
         return *value != 0;
     }
 
     BufferMetadata buffer_metadata(Buffer &buffer) {
         BufferMetadata metadata;
-        metadata.frame_id = optional_buffer_info<std::uint64_t>(buffer, gc::BUFFER_INFO_FRAMEID);
-        metadata.image_offset = optional_buffer_info<std::size_t>(buffer, gc::BUFFER_INFO_IMAGEOFFSET);
-        metadata.size_filled = optional_buffer_info<std::size_t>(buffer, gc::BUFFER_INFO_SIZE_FILLED);
-        metadata.data_size = optional_buffer_info<std::size_t>(buffer, gc::BUFFER_INFO_DATA_SIZE);
-        metadata.x_padding = optional_buffer_info<std::size_t>(buffer, gc::BUFFER_INFO_XPADDING);
-        metadata.y_padding = optional_buffer_info<std::size_t>(buffer, gc::BUFFER_INFO_YPADDING);
-        metadata.payload_type = optional_buffer_info<std::size_t>(buffer, gc::BUFFER_INFO_PAYLOADTYPE);
-        metadata.delivered_chunk_payload_size = optional_buffer_info<std::size_t>(
-            buffer, gc::BUFFER_INFO_DELIVERED_CHUNKPAYLOADSIZE);
-        metadata.chunk_layout_id = optional_buffer_info<std::uint64_t>(
-            buffer, gc::BUFFER_INFO_CHUNKLAYOUTID);
-        metadata.image_present = optional_buffer_flag(buffer, gc::BUFFER_INFO_IMAGEPRESENT);
+        metadata.frame_id = optional_buffer_info<std::uint64_t>(
+            buffer, gc::BUFFER_INFO_FRAMEID, frame_id_support_);
+        metadata.timestamp_ns = optional_buffer_info<std::uint64_t>(
+            buffer, gc::BUFFER_INFO_TIMESTAMP_NS, timestamp_support_);
+        metadata.image_offset = optional_buffer_info<std::size_t>(
+            buffer, gc::BUFFER_INFO_IMAGEOFFSET, image_offset_support_);
+        metadata.size_filled = optional_buffer_info<std::size_t>(
+            buffer, gc::BUFFER_INFO_SIZE_FILLED, size_filled_support_);
+        metadata.data_size = optional_buffer_info<std::size_t>(
+            buffer, gc::BUFFER_INFO_DATA_SIZE, data_size_support_);
+        metadata.x_padding = optional_buffer_info<std::size_t>(
+            buffer, gc::BUFFER_INFO_XPADDING, x_padding_support_);
+        metadata.payload_type = optional_buffer_info<std::size_t>(
+            buffer, gc::BUFFER_INFO_PAYLOADTYPE, payload_type_support_);
+        metadata.image_present = optional_buffer_flag(
+            buffer, gc::BUFFER_INFO_IMAGEPRESENT, image_present_support_);
         metadata.data_larger_than_buffer =
-            optional_buffer_flag(buffer, gc::BUFFER_INFO_DATA_LARGER_THAN_BUFFER);
-        metadata.contains_chunk_data = optional_buffer_flag(buffer, gc::BUFFER_INFO_CONTAINS_CHUNKDATA);
+            optional_buffer_flag(buffer, gc::BUFFER_INFO_DATA_LARGER_THAN_BUFFER,
+                                 data_larger_support_);
+        metadata.incomplete = optional_buffer_flag(
+            buffer, gc::BUFFER_INFO_IS_INCOMPLETE, incomplete_support_);
         return metadata;
-    }
-
-    std::optional<std::size_t> buffer_offset_x(Buffer &buffer) {
-        try { return buffer.getInfo<std::size_t>(grabber_, gc::BUFFER_INFO_XOFFSET); }
-        catch (...) { return std::nullopt; }
-    }
-
-    std::optional<std::size_t> buffer_offset_y(Buffer &buffer) {
-        try { return buffer.getInfo<std::size_t>(grabber_, gc::BUFFER_INFO_YOFFSET); }
-        catch (...) { return std::nullopt; }
-    }
-
-    std::optional<std::uint64_t> timestamp_ns(Buffer &buffer) {
-        return optional_buffer_info<std::uint64_t>(buffer, gc::BUFFER_INFO_TIMESTAMP_NS);
-    }
-
-    bool incomplete(Buffer &buffer) {
-        return buffer.getInfo<bool8_t>(grabber_, gc::BUFFER_INFO_IS_INCOMPLETE) != 0;
     }
 
     std::optional<BufferProgress> find_acquiring_buffer(
@@ -867,6 +876,16 @@ private:
     std::string host_memory_type_;
     bool progressive_supported_ = false;
     std::vector<Feature> features_;
+    QuerySupport frame_id_support_ = QuerySupport::unknown;
+    QuerySupport timestamp_support_ = QuerySupport::unknown;
+    QuerySupport image_offset_support_ = QuerySupport::unknown;
+    QuerySupport size_filled_support_ = QuerySupport::unknown;
+    QuerySupport data_size_support_ = QuerySupport::unknown;
+    QuerySupport x_padding_support_ = QuerySupport::unknown;
+    QuerySupport payload_type_support_ = QuerySupport::unknown;
+    QuerySupport image_present_support_ = QuerySupport::unknown;
+    QuerySupport data_larger_support_ = QuerySupport::unknown;
+    QuerySupport incomplete_support_ = QuerySupport::unknown;
     std::mutex mutex_;
     bool started_ = false;
     bool buffer_event_enabled_ = false;
@@ -906,20 +925,9 @@ Euresys::BufferIndexRange Camera::announce(void *base, int fd, std::size_t size,
                                            void *user_pointer) {
     return impl_->announce(base, fd, size, offset, direct_dma_buf, user_pointer);
 }
-Euresys::BufferInfo Camera::buffer_info(Euresys::Buffer &buffer) { return impl_->buffer_info(buffer); }
 BufferMetadata Camera::buffer_metadata(Euresys::Buffer &buffer) {
     return impl_->buffer_metadata(buffer);
 }
-std::optional<std::size_t> Camera::buffer_offset_x(Euresys::Buffer &buffer) {
-    return impl_->buffer_offset_x(buffer);
-}
-std::optional<std::size_t> Camera::buffer_offset_y(Euresys::Buffer &buffer) {
-    return impl_->buffer_offset_y(buffer);
-}
-std::optional<std::uint64_t> Camera::timestamp_ns(Euresys::Buffer &buffer) {
-    return impl_->timestamp_ns(buffer);
-}
-bool Camera::incomplete(Euresys::Buffer &buffer) { return impl_->incomplete(buffer); }
 std::optional<BufferProgress> Camera::find_acquiring_buffer(
         std::span<const Euresys::BufferIndexRange> ranges) {
     return impl_->find_acquiring_buffer(ranges);
