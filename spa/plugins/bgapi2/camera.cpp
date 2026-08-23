@@ -57,6 +57,7 @@ struct bgapi2_camera {
 	uint32_t announced_count;
 	uint32_t completion_error;
 	enum bgapi2_camera_completion_mode completion_mode;
+	bool defer_completion_info;
 	bool system_open;
 	bool interface_open;
 	bool device_open;
@@ -108,7 +109,8 @@ static void BGAPI2CALL buffer_complete(void *owner, BGAPI2_Buffer *buffer)
 		return;
 	}
 	completion.buffer = buffer;
-	completion.result = read_completion(camera, buffer, &completion);
+	if (!camera->defer_completion_info)
+		completion.result = read_completion(camera, buffer, &completion);
 	camera->completions[index % SPA_IMAGE_SOURCE_MAX_BUFFERS] = completion;
 	spa_ringbuffer_shared_write_update(&camera->completion_ring, index + 1u);
 }
@@ -430,6 +432,7 @@ int bgapi2_camera_open(struct bgapi2_camera **camera_ptr,
 	memset(camera, 0, sizeof(*camera));
 	spa_ringbuffer_shared_init(&camera->completion_ring);
 	camera->completion_mode = options->completion_mode;
+	camera->defer_completion_info = options->defer_completion_info;
 	if ((res = checked(camera, BGAPI2_LoadSystemFromPath(
 			options->producer_path, &camera->system))) < 0 ||
 			(res = checked(camera, BGAPI2_System_Open(camera->system))) < 0)
@@ -853,7 +856,33 @@ int bgapi2_camera_try_get_completion(struct bgapi2_camera *camera,
 	if (completion->buffer == NULL)
 		return -EIO;
 	spa_ringbuffer_shared_read_update(&camera->completion_ring, index + 1u);
+	if (camera->defer_completion_info)
+		completion->result = read_completion(camera, completion->buffer,
+				completion);
 	return 1;
+}
+
+int bgapi2_camera_buffer_is_acquiring(struct bgapi2_camera *camera,
+		BGAPI2_Buffer *buffer, bool *is_acquiring)
+{
+	bo_bool value = 0;
+	int res;
+
+	if (camera == NULL || buffer == NULL || is_acquiring == NULL)
+		return -EINVAL;
+	if ((res = checked(camera, BGAPI2_Buffer_GetIsAcquiring(buffer,
+			&value))) < 0)
+		return res;
+	*is_acquiring = value != 0;
+	return 0;
+}
+
+int bgapi2_camera_get_size_filled(struct bgapi2_camera *camera,
+		BGAPI2_Buffer *buffer, uint64_t *size_filled)
+{
+	if (camera == NULL || buffer == NULL || size_filled == NULL)
+		return -EINVAL;
+	return checked(camera, BGAPI2_Buffer_GetSizeFilled(buffer, size_filled));
 }
 
 #define GET_FRAME_FIELD(function, field) do { \
