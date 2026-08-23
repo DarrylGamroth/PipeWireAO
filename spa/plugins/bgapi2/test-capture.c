@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include <dlfcn.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,9 +32,10 @@ struct test_buffer {
 	struct spa_buffer buffer;
 	struct spa_data data;
 	struct spa_chunk chunk;
-	struct spa_meta metas[2];
+	struct spa_meta metas[3];
 	struct spa_meta_header header;
 	struct spa_meta_acquisition acquisition;
+	struct spa_meta_progressive progressive;
 	void *payload;
 };
 
@@ -172,6 +174,11 @@ static void init_buffer(struct test_buffer *storage, uint32_t size)
 		.size = sizeof(storage->acquisition),
 		.data = &storage->acquisition,
 	};
+	storage->metas[2] = (struct spa_meta) {
+		.type = SPA_META_Progressive,
+		.size = sizeof(storage->progressive),
+		.data = &storage->progressive,
+	};
 	storage->buffer.n_metas = SPA_N_ELEMENTS(storage->metas);
 	storage->buffer.metas = storage->metas;
 	storage->buffer.n_datas = 1;
@@ -186,12 +193,32 @@ static uint64_t monotonic_nsec(void)
 	return (uint64_t)now.tv_sec * SPA_NSEC_PER_SEC + (uint64_t)now.tv_nsec;
 }
 
+static void complete_rejected_progressive(struct spa_io_buffers_latest *io,
+		struct test_buffer storage[REQUESTED_BUFFERS], uint32_t id,
+		uint32_t payload_size)
+{
+	uint32_t committed;
+	enum spa_meta_progressive_state state;
+
+	spa_assert_se(id < REQUESTED_BUFFERS);
+	spa_assert_se(spa_meta_progressive_snapshot_decode(
+			spa_meta_progressive_load_acquire(&storage[id].progressive),
+			&committed, &state));
+	spa_assert_se(state == SPA_META_PROGRESSIVE_STATE_ABORTED);
+	spa_assert_se(committed <= payload_size);
+	spa_assert_se((storage[id].progressive.terminal_flags &
+			SPA_META_PROGRESSIVE_FLAG_PROTOCOL_ERROR) != 0);
+	spa_assert_se(spa_io_buffers_latest_complete(io, id) == 0);
+}
+
 static int capture(const struct spa_handle_factory *factory,
-		const char *producer, const char *completion_mode)
+		const char *producer, const char *completion_mode,
+		const char *progressive_policy)
 {
 	const struct spa_dict_item items[] = {
 		SPA_DICT_ITEM_INIT(SPA_KEY_API_BGAPI2_PRODUCER, producer),
 		SPA_DICT_ITEM_INIT(SPA_KEY_API_BGAPI2_COMPLETION_MODE, completion_mode),
+		SPA_DICT_ITEM_INIT(SPA_KEY_API_BGAPI2_PROGRESSIVE, progressive_policy),
 	};
 	const struct spa_dict info = SPA_DICT_INIT(items, SPA_N_ELEMENTS(items));
 	struct test_buffer storage[REQUESTED_BUFFERS] = { 0 };
@@ -218,7 +245,8 @@ static int capture(const struct spa_handle_factory *factory,
 	uint64_t deadline;
 	int64_t last_pts = SPA_TIME_INVALID;
 	int32_t payload_size = 0;
-	uint32_t frames = 0, i;
+	uint32_t frames = 0, progressive_frames = 0, partial_frames = 0, i;
+	bool progressive_rejected = false;
 	int res;
 
 	handle = calloc(1, factory->get_size(factory, &info));
@@ -287,13 +315,57 @@ static int capture(const struct spa_handle_factory *factory,
 		uint64_t submission;
 		uint32_t id;
 
-		spa_assert_se(spa_node_process(node) >= SPA_STATUS_OK);
+		res = spa_node_process(node);
+		if (res == -ENOTSUP && spa_streq(progressive_policy, "require")) {
+			progressive_rejected = true;
+			break;
+		}
+		spa_assert_se(res >= SPA_STATUS_OK);
 		res = spa_io_buffers_latest_receive(&io, &submission, &id);
 		if (res == -EPIPE) {
 			spa_assert_se(monotonic_nsec() < deadline);
 			continue;
 		}
 		spa_assert_se(res == 0 && id < REQUESTED_BUFFERS);
+		if (storage[id].progressive.version ==
+				SPA_META_PROGRESSIVE_VERSION) {
+			uint32_t committed;
+			enum spa_meta_progressive_state state;
+			bool partial = false;
+
+			progressive_frames++;
+			spa_assert_se(storage[id].progressive.payload_size ==
+					(uint32_t)payload_size);
+			spa_assert_se(spa_meta_progressive_snapshot_decode(
+					spa_meta_progressive_load_acquire(
+							&storage[id].progressive),
+					&committed, &state));
+			while (state == SPA_META_PROGRESSIVE_STATE_ACTIVE) {
+				partial = partial ||
+						(committed > 0 && committed < (uint32_t)payload_size);
+				spa_assert_se(monotonic_nsec() < deadline);
+				res = spa_node_process(node);
+				if (res == -ENOTSUP &&
+						spa_streq(progressive_policy, "require")) {
+					progressive_rejected = true;
+					break;
+				}
+				spa_assert_se(res >= SPA_STATUS_OK);
+				spa_assert_se(spa_meta_progressive_snapshot_decode(
+						spa_meta_progressive_load_acquire(
+								&storage[id].progressive),
+						&committed, &state));
+			}
+			if (progressive_rejected) {
+				complete_rejected_progressive(&io, storage, id,
+						(uint32_t)payload_size);
+				break;
+			}
+			spa_assert_se(state == SPA_META_PROGRESSIVE_STATE_COMPLETE);
+			spa_assert_se(committed == (uint32_t)payload_size);
+			spa_assert_se(storage[id].progressive.terminal_flags == 0);
+			partial_frames += partial;
+		}
 		spa_assert_se(storage[id].chunk.size > 0 &&
 				storage[id].chunk.size <= (uint32_t)payload_size);
 		spa_assert_se(storage[id].header.seq > 0);
@@ -309,6 +381,11 @@ static int capture(const struct spa_handle_factory *factory,
 			spa_assert_se(spa_node_send_command(node, &start) == 0);
 		}
 	}
+	if (progressive_rejected)
+		printf("progressive=require rejected final-size-only producer\n");
+	else
+		printf("captured %u frames: progressive=%u partial-prefix=%u\n",
+				frames, progressive_frames, partial_frames);
 	spa_assert_se(spa_node_send_command(node, &pause) == 0);
 	link.flags = 0;
 	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_OUTPUT, 0,
@@ -333,7 +410,7 @@ static int capture(const struct spa_handle_factory *factory,
 	free(params.storage);
 	for (i = 0; i < REQUESTED_BUFFERS; i++)
 		free(storage[i].payload);
-	return 0;
+	return progressive_rejected ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
 int main(int argc, char *argv[])
@@ -344,7 +421,7 @@ int main(int argc, char *argv[])
 	void *library;
 	int res;
 
-	spa_assert_se(argc == 3 || argc == 4);
+	spa_assert_se(argc >= 3 && argc <= 5);
 	library = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
 	spa_assert_se(library != NULL);
 	enumerate = (spa_handle_factory_enum_func_t)dlsym(library,
@@ -353,7 +430,8 @@ int main(int argc, char *argv[])
 	spa_assert_se(enumerate(&factory, &index) == 1);
 	spa_assert_se(factory != NULL &&
 			spa_streq(factory->name, SPA_NAME_API_BGAPI2_SOURCE));
-	res = capture(factory, argv[2], argc == 4 ? argv[3] : "callback");
+	res = capture(factory, argv[2], argc >= 4 ? argv[3] : "callback",
+			argc == 5 ? argv[4] : "disabled");
 	spa_assert_se(dlclose(library) == 0);
 	return res;
 }
