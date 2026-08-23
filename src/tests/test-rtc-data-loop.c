@@ -374,6 +374,7 @@ struct synthetic_rtc_node {
 	uint32_t pauses;
 	uint32_t suspends;
 	uint32_t process_calls;
+	int process_result;
 };
 
 static void synthetic_emit_info(struct synthetic_rtc_node *node)
@@ -429,7 +430,7 @@ static int synthetic_process(void *object)
 	struct synthetic_rtc_node *node = object;
 
 	SPA_ATOMIC_INC(node->process_calls);
-	return SPA_STATUS_OK;
+	return node->process_result;
 }
 
 static const struct spa_node_methods synthetic_methods = {
@@ -474,11 +475,12 @@ static void wait_for_node_state(struct fixture *fixture,
 }
 
 static struct pw_impl_node *create_synthetic_node(struct fixture *fixture,
-		struct synthetic_rtc_node *synthetic)
+		struct synthetic_rtc_node *synthetic, int process_result)
 {
 	struct pw_impl_node *node;
 
 	synthetic_init(synthetic);
+	synthetic->process_result = process_result;
 	node = pw_context_create_node(fixture->context,
 			pw_properties_new(
 				PW_KEY_NODE_NAME, "synthetic-rtc",
@@ -504,7 +506,7 @@ static void test_rtc_node_lifecycle(void)
 	scheduler = pw_context_load_module(fixture.context,
 			"libpipewire-module-scheduler-v1", NULL, NULL);
 	spa_assert_se(scheduler != NULL);
-	node = create_synthetic_node(&fixture, &synthetic);
+	node = create_synthetic_node(&fixture, &synthetic, SPA_STATUS_OK);
 	wait_for_node_state(&fixture, node, PW_NODE_STATE_RUNNING);
 	wait_until_at_least(&synthetic.process_calls, 1);
 	spa_assert_se(node->rtc_loop != NULL);
@@ -536,11 +538,35 @@ static void test_rtc_node_requires_thread_utils(void)
 	scheduler = pw_context_load_module(fixture.context,
 			"libpipewire-module-scheduler-v1", NULL, NULL);
 	spa_assert_se(scheduler != NULL);
-	node = create_synthetic_node(&fixture, &synthetic);
+	node = create_synthetic_node(&fixture, &synthetic, SPA_STATUS_OK);
 	wait_for_node_state(&fixture, node, PW_NODE_STATE_ERROR);
 	spa_assert_se(node->rtc_loop != NULL);
 	spa_assert_se(!pw_rtc_data_loop_is_running(node->rtc_loop));
 	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.process_calls) == 0);
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.starts) == 1);
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.pauses) == 1);
+
+	pw_impl_node_destroy(node);
+	fixture_clear(&fixture);
+}
+
+static void test_rtc_node_terminal_process_error(void)
+{
+	struct fixture fixture;
+	struct synthetic_rtc_node synthetic;
+	struct pw_impl_module *scheduler;
+	struct pw_impl_node *node;
+
+	fixture_init(&fixture, true);
+	scheduler = pw_context_load_module(fixture.context,
+			"libpipewire-module-scheduler-v1", NULL, NULL);
+	spa_assert_se(scheduler != NULL);
+	node = create_synthetic_node(&fixture, &synthetic, -EIO);
+	wait_for_node_state(&fixture, node, PW_NODE_STATE_ERROR);
+	spa_assert_se(node->info.error != NULL);
+	spa_assert_se(node->rtc_loop != NULL);
+	spa_assert_se(!pw_rtc_data_loop_is_running(node->rtc_loop));
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.process_calls) == 1);
 	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.starts) == 1);
 	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.pauses) == 1);
 
@@ -560,6 +586,7 @@ int main(int argc, char *argv[])
 	test_start_failures();
 	test_rtc_node_lifecycle();
 	test_rtc_node_requires_thread_utils();
+	test_rtc_node_terminal_process_error();
 
 	pw_deinit();
 	return 0;
