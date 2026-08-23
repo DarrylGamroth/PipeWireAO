@@ -119,11 +119,53 @@ static int ensure_rtc_state(struct pw_impl_node *node)
 	bool need_config = SPA_FLAG_IS_SET(node->spa_flags,
 			SPA_NODE_FLAG_NEED_CONFIGURE);
 
-	if (node->active && !need_config)
+	if (node->active && node->runnable && !need_config)
 		state = PW_NODE_STATE_RUNNING;
 	else if (!need_config || state > PW_NODE_STATE_IDLE)
 		state = PW_NODE_STATE_IDLE;
 	return pw_impl_node_set_state(node, state);
+}
+
+static bool rtc_link_is_runnable(struct pw_impl_node *node,
+		struct pw_impl_link *link, struct pw_impl_node *peer)
+{
+	if (!peer->active)
+		return false;
+	pw_impl_link_prepare(link);
+	if (!link->prepared)
+		return false;
+	pw_log_debug("RTC node %p has prepared latest link %p", node, link);
+	return true;
+}
+
+static void check_rtc_runnable(struct pw_impl_node *node)
+{
+	struct pw_impl_port *port;
+	struct pw_impl_link *link;
+	bool have_data_port = false;
+
+	spa_list_for_each(port, &node->output_ports, link) {
+		have_data_port = true;
+		spa_list_for_each(link, &port->links, output_link) {
+			if (rtc_link_is_runnable(node, link, link->input->node)) {
+				node->runnable = true;
+				return;
+			}
+		}
+	}
+	spa_list_for_each(port, &node->input_ports, link) {
+		have_data_port = true;
+		spa_list_for_each(link, &port->links, input_link) {
+			if (rtc_link_is_runnable(node, link, link->output->node)) {
+				node->runnable = true;
+				return;
+			}
+		}
+	}
+
+	/* A portless RTC node is an explicitly activated periodic agent. */
+	if (!have_data_port)
+		node->runnable = true;
 }
 
 /* Make a node runnable. Peer nodes are also made runnable when the passive_mode
@@ -1011,10 +1053,13 @@ again:
 
 	/* RTC-owned nodes use normal control-plane state transitions, but their
 	 * process function is owned by pw_rtc_data_loop rather than a graph
-	 * driver. Keep this independent of graph grouping and rate/quantum work. */
+	 * driver. Topology only gates lifecycle after a latest link is prepared;
+	 * it never invokes process() or assigns a graph driver. */
 	spa_list_for_each(n, &context->node_list, link) {
-		if (!n->exported && is_rtc_process(n))
+		if (!n->exported && is_rtc_process(n)) {
+			check_rtc_runnable(n);
 			ensure_rtc_state(n);
+		}
 	}
 }
 

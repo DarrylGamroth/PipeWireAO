@@ -574,6 +574,47 @@ static void test_rtc_node_terminal_process_error(void)
 	fixture_clear(&fixture);
 }
 
+static void test_rtc_port_node_waits_for_prepared_link(void)
+{
+	struct fixture fixture;
+	struct pw_impl_module *scheduler;
+	struct pw_impl_node *node;
+	struct spa_handle *handle;
+	struct spa_node *implementation;
+	struct pw_loop *loop;
+	uint32_t i;
+
+	fixture_init(&fixture, true);
+	scheduler = pw_context_load_module(fixture.context,
+			"libpipewire-module-scheduler-v1", NULL, NULL);
+	spa_assert_se(scheduler != NULL);
+	handle = pw_load_spa_handle("test/libspa-test", "test.ao-imagesrc",
+			NULL, 0, NULL);
+	spa_assert_se(handle != NULL);
+	spa_assert_se(spa_handle_get_interface(handle, SPA_TYPE_INTERFACE_Node,
+			(void **)&implementation) == 0);
+	node = pw_context_create_node(fixture.context,
+			pw_properties_new(PW_KEY_NODE_NAME, "rtc-port-source", NULL), 0);
+	spa_assert_se(node != NULL);
+	spa_assert_se(pw_impl_node_set_implementation(node, implementation) == 0);
+	spa_assert_se(pw_impl_node_register(node, NULL) == 0);
+	spa_assert_se(pw_impl_node_set_active(node, true) == 0);
+	loop = pw_main_loop_get_loop(fixture.main_loop);
+	for (i = 0; i < 32; i++) {
+		pw_loop_enter(loop);
+		pw_loop_iterate(loop, 0);
+		pw_loop_leave(loop);
+		sched_yield();
+	}
+	spa_assert_se(node->info.state == PW_NODE_STATE_IDLE);
+	spa_assert_se(node->rtc_loop == NULL);
+	spa_assert_se(pw_impl_node_find_port(node, PW_DIRECTION_OUTPUT, 0) != NULL);
+
+	pw_impl_node_destroy(node);
+	spa_assert_se(pw_unload_spa_handle(handle) == 0);
+	fixture_clear(&fixture);
+}
+
 int main(int argc, char *argv[])
 {
 	pw_init(&argc, &argv);
@@ -587,6 +628,7 @@ int main(int argc, char *argv[])
 	test_rtc_node_lifecycle();
 	test_rtc_node_requires_thread_utils();
 	test_rtc_node_terminal_process_error();
+	test_rtc_port_node_waits_for_prepared_link();
 
 	pw_deinit();
 	return 0;
