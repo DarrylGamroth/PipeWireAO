@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
 	{
 		const struct spa_dict_item items[] = {
 			SPA_DICT_ITEM_INIT(SPA_KEY_API_BGAPI2_PRODUCER, "/invalid.cti"),
-			SPA_DICT_ITEM_INIT(SPA_KEY_API_BGAPI2_COMPLETION_MODE, "invalid"),
+			SPA_DICT_ITEM_INIT(SPA_KEY_API_BGAPI2_INTERFACE_INDEX, "invalid"),
 		};
 		const struct spa_dict info = SPA_DICT_INIT(items,
 				SPA_N_ELEMENTS(items));
