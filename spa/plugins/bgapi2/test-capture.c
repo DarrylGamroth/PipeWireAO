@@ -12,6 +12,7 @@
 #include <spa/param/props.h>
 #include <spa/param/video/format-utils.h>
 #include <spa/pod/parser.h>
+#include <spa/pod/builder.h>
 #include <spa/support/plugin.h>
 
 #include "bgapi2.h"
@@ -80,6 +81,50 @@ static bool props_have_values(struct spa_pod *props)
 				name != NULL && value != NULL;
 	}
 	return false;
+}
+
+static struct spa_pod *find_control_value(struct spa_pod *props,
+		const char *requested)
+{
+	struct spa_pod_object *object = (struct spa_pod_object *)props;
+	struct spa_pod_prop *property;
+
+	SPA_POD_OBJECT_FOREACH(object, property) {
+		struct spa_pod_parser parser;
+		struct spa_pod_frame frame;
+
+		if (property->key != SPA_PROP_params)
+			continue;
+		spa_pod_parser_pod(&parser, &property->value);
+		spa_assert_se(spa_pod_parser_push_struct(&parser, &frame) == 0);
+		for (;;) {
+			const char *name = NULL;
+			struct spa_pod *value = NULL;
+
+			if (spa_pod_parser_get_string(&parser, &name) < 0)
+				break;
+			spa_assert_se(spa_pod_parser_get_pod(&parser, &value) == 0);
+			if (spa_streq(name, requested))
+				return value;
+		}
+	}
+	return NULL;
+}
+
+static struct spa_pod *build_control_write(uint8_t *storage, size_t size,
+		const char *name, const struct spa_pod *value)
+{
+	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(storage, size);
+	struct spa_pod_frame object, values;
+
+	spa_pod_builder_push_object(&builder, &object,
+			SPA_TYPE_OBJECT_Props, SPA_PARAM_Props);
+	spa_pod_builder_prop(&builder, SPA_PROP_params, 0);
+	spa_pod_builder_push_struct(&builder, &values);
+	spa_pod_builder_string(&builder, name);
+	spa_pod_builder_primitive(&builder, value);
+	spa_pod_builder_pop(&builder, &values);
+	return spa_pod_builder_pop(&builder, &object);
 }
 
 static const struct spa_node_events node_events = {
@@ -164,6 +209,9 @@ static int capture(const struct spa_handle_factory *factory,
 	struct spa_command start = SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Start);
 	struct spa_command pause = SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Pause);
 	struct spa_pod *format, *buffers_param, *prop_info, *props;
+	struct spa_pod *scalar_value, *scalar_write, *width_value, *width_write;
+	uint8_t scalar_write_storage[512], width_write_storage[512];
+	const char *scalar_name = NULL;
 	const char *property_name = NULL;
 	uint64_t deadline;
 	int64_t last_pts = SPA_TIME_INVALID;
@@ -189,6 +237,21 @@ static int capture(const struct spa_handle_factory *factory,
 			strncmp(property_name, "genicam.", 8) == 0);
 	props = enum_node_one(node, &params, SPA_PARAM_Props);
 	spa_assert_se(props_have_values(props));
+	for (i = 0; i < 3; i++) {
+		static const char *const candidates[] = {
+			"genicam.ExposureTime", "genicam.Gain",
+			"genicam.AcquisitionFrameRate",
+		};
+		if ((scalar_value = find_control_value(props, candidates[i])) != NULL) {
+			scalar_name = candidates[i];
+			break;
+		}
+	}
+	spa_assert_se(scalar_name != NULL && scalar_value != NULL);
+	scalar_write = build_control_write(scalar_write_storage,
+			sizeof(scalar_write_storage), scalar_name, scalar_value);
+	spa_assert_se(spa_node_set_param(node, SPA_PARAM_Props, 0,
+			scalar_write) == 0);
 	format = enum_one(node, &params, SPA_PARAM_EnumFormat);
 	spa_assert_se(spa_node_port_set_param(node, SPA_DIRECTION_OUTPUT, 0,
 			SPA_PARAM_Format, 0, format) == 0);
@@ -207,7 +270,16 @@ static int capture(const struct spa_handle_factory *factory,
 			SPA_IO_BuffersLatestLink, &link, sizeof(link)) == 0);
 	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_OUTPUT, 0, 0,
 			buffers, REQUESTED_BUFFERS) == 0);
+	props = enum_node_one(node, &params, SPA_PARAM_Props);
+	width_value = find_control_value(props, "genicam.Width");
+	spa_assert_se(width_value != NULL);
+	width_write = build_control_write(width_write_storage,
+			sizeof(width_write_storage), "genicam.Width", width_value);
+	spa_assert_se(spa_node_set_param(node, SPA_PARAM_Props, 0,
+			width_write) == -EBUSY);
 	spa_assert_se(spa_node_send_command(node, &start) == 0);
+	spa_assert_se(spa_node_set_param(node, SPA_PARAM_Props, 0,
+			scalar_write) == -EBUSY);
 	deadline = monotonic_nsec() + 3 * SPA_NSEC_PER_SEC;
 	while (frames < REQUESTED_FRAMES) {
 		uint64_t submission;
@@ -241,6 +313,18 @@ static int capture(const struct spa_handle_factory *factory,
 			SPA_IO_BuffersLatestLink, &link, sizeof(link)) == 0);
 	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_OUTPUT, 0, 0,
 			NULL, 0) == 0);
+	spa_assert_se(spa_node_port_set_param(node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_PARAM_Format, 0, NULL) == 0);
+	props = enum_node_one(node, &params, SPA_PARAM_Props);
+	width_value = find_control_value(props, "genicam.Width");
+	spa_assert_se(width_value != NULL);
+	width_write = build_control_write(width_write_storage,
+			sizeof(width_write_storage), "genicam.Width", width_value);
+	spa_assert_se(spa_node_set_param(node, SPA_PARAM_Props, 0,
+			width_write) == 0);
+	format = enum_one(node, &params, SPA_PARAM_EnumFormat);
+	spa_assert_se(spa_node_port_set_param(node, SPA_DIRECTION_OUTPUT, 0,
+			SPA_PARAM_Format, 0, format) == 0);
 	spa_hook_remove(&listener);
 	spa_assert_se(handle->clear(handle) == 0);
 	free(handle);

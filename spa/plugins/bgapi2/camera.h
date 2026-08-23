@@ -111,6 +111,11 @@ int bgapi2_camera_get_feature_integer_range(struct bgapi2_camera *camera,
 		uint32_t index, int64_t *minimum, int64_t *maximum);
 int bgapi2_camera_get_feature_float_range(struct bgapi2_camera *camera,
 		uint32_t index, double *minimum, double *maximum);
+int bgapi2_camera_find_feature(const struct bgapi2_camera *camera,
+		const char *property_name, uint32_t *index);
+int bgapi2_camera_set_feature_value(struct bgapi2_camera *camera,
+		uint32_t index, const struct bgapi2_feature_value *value);
+int bgapi2_camera_refresh_info(struct bgapi2_camera *camera);
 
 /* Buffer creation and revocation are pool-lifecycle operations. */
 int bgapi2_camera_announce(struct bgapi2_camera *camera, void *memory,
