@@ -27,16 +27,9 @@
 #include "bgapi2.h"
 #include "camera.h"
 #include "params.h"
-#include "progressive.h"
 
 #define MIN_BUFFERS 2u
 #define MAX_BUFFERS SPA_IMAGE_SOURCE_MAX_BUFFERS
-
-enum progressive_policy {
-	PROGRESSIVE_DISABLED,
-	PROGRESSIVE_OFFER,
-	PROGRESSIVE_REQUIRE,
-};
 
 struct port {
 	uint64_t info_all;
@@ -50,12 +43,7 @@ struct port {
 struct buffer_slot {
 	struct spa_image_source_buffer *image;
 	BGAPI2_Buffer *camera_buffer;
-	uint64_t sequence;
-	uint64_t queued_size_filled;
 	bool camera_queued;
-	bool progressive;
-	bool have_queued_size;
-	bool partial_observed;
 };
 
 struct impl {
@@ -68,15 +56,13 @@ struct impl {
 	struct spa_node_info info;
 	struct spa_param_info params[2];
 	struct spa_dict props;
-	struct spa_dict_item prop_items[13];
+	struct spa_dict_item prop_items[11];
 	char node_name[192];
 	char node_description[256];
 	char producer_path[PATH_MAX];
 	char interface_index[16];
 	char device_index[16];
 	char stream_index[16];
-	char completion_mode[16];
-	char progressive_mode[16];
 	struct port port;
 	struct spa_buffer_latest *latest;
 	struct spa_image_source_latest transport;
@@ -86,12 +72,7 @@ struct impl {
 	struct buffer_slot slots[MAX_BUFFERS];
 	uint32_t video_format;
 	uint32_t bytes_per_pixel;
-	uint32_t progress_scan_cursor;
-	enum progressive_policy progressive_policy;
-	struct buffer_slot *progressive_slot;
 	bool started;
-	bool progressive_offered;
-	bool progressive_active;
 	bool have_sequence;
 	uint64_t last_sequence;
 };
@@ -116,33 +97,6 @@ static int parse_index(const struct spa_dict *info, const char *key,
 		return 0;
 	}
 	return spa_atou32(text, value, 0) ? 0 : -EINVAL;
-}
-
-static int parse_progressive_policy(const char *value,
-		enum progressive_policy *policy)
-{
-	if (value == NULL || spa_streq(value, "disabled"))
-		*policy = PROGRESSIVE_DISABLED;
-	else if (spa_streq(value, "offer"))
-		*policy = PROGRESSIVE_OFFER;
-	else if (spa_streq(value, "require"))
-		*policy = PROGRESSIVE_REQUIRE;
-	else
-		return -EINVAL;
-	return 0;
-}
-
-static const char *progressive_policy_name(enum progressive_policy policy)
-{
-	switch (policy) {
-	case PROGRESSIVE_OFFER:
-		return "offer";
-	case PROGRESSIVE_REQUIRE:
-		return "require";
-	case PROGRESSIVE_DISABLED:
-	default:
-		return "disabled";
-	}
 }
 
 static int map_pixel_format(const char *name, uint32_t *format,
@@ -403,30 +357,12 @@ static int impl_node_set_io(void *object SPA_UNUSED, uint32_t id SPA_UNUSED,
 
 static int queue_slot(struct impl *this, struct buffer_slot *slot)
 {
-	uint64_t size_filled;
 	int res;
 
 	if ((res = bgapi2_camera_queue(this->camera,
 				slot->camera_buffer)) < 0)
 		return res;
 	slot->camera_queued = true;
-	slot->progressive = false;
-	slot->have_queued_size = false;
-	slot->partial_observed = false;
-	if (!this->progressive_active)
-		return 0;
-	res = bgapi2_camera_get_size_filled(this->camera, slot->camera_buffer,
-			&size_filled);
-	if (res < 0) {
-		if (this->progressive_policy == PROGRESSIVE_OFFER &&
-				(res == -ENODATA || res == -ENOTSUP)) {
-			this->progressive_active = false;
-			return 0;
-		}
-		return res;
-	}
-	slot->queued_size_filled = size_filled;
-	slot->have_queued_size = true;
 	return 0;
 }
 
@@ -447,33 +383,6 @@ static int queue_producer_buffers(struct impl *this)
 	return 0;
 }
 
-static int abort_progressive(struct impl *this, uint32_t terminal_flags)
-{
-	struct buffer_slot *slot = this->progressive_slot;
-	struct spa_meta_progressive *meta;
-	enum spa_meta_progressive_state state;
-	uint32_t committed;
-	int res;
-
-	if (slot == NULL)
-		return 0;
-	meta = spa_buffer_find_meta_data(
-			spa_image_source_buffer_get_buffer(slot->image),
-			SPA_META_Progressive, sizeof(*meta));
-	if (meta == NULL || !spa_meta_progressive_snapshot_decode(
-			spa_meta_progressive_load_acquire(meta), &committed, &state) ||
-			state != SPA_META_PROGRESSIVE_STATE_ACTIVE)
-		return -EPROTO;
-	res = spa_image_source_finish_progressive(&this->source, slot->image,
-			committed, SPA_META_PROGRESSIVE_STATE_ABORTED, terminal_flags);
-	if (res < 0)
-		return res;
-	slot->progressive = false;
-	slot->partial_observed = false;
-	this->progressive_slot = NULL;
-	return 0;
-}
-
 static int stop_source(struct impl *this)
 {
 	int first_error = 0, res;
@@ -483,21 +392,12 @@ static int stop_source(struct impl *this)
 		return 0;
 	if ((res = bgapi2_camera_stop(this->camera)) < 0)
 		first_error = res;
-	if ((res = abort_progressive(this,
-			SPA_META_PROGRESSIVE_FLAG_CANCELLED)) < 0 && first_error == 0)
-		first_error = res;
 	if ((res = bgapi2_camera_discard_buffers(this->camera)) < 0 &&
 			first_error == 0)
 		first_error = res;
-	for (i = 0; i < this->port.n_buffers; i++) {
+	for (i = 0; i < this->port.n_buffers; i++)
 		this->slots[i].camera_queued = false;
-		this->slots[i].progressive = false;
-		this->slots[i].have_queued_size = false;
-		this->slots[i].partial_observed = false;
-	}
 	this->started = false;
-	this->progressive_slot = NULL;
-	this->progress_scan_cursor = 0;
 	if ((res = spa_buffer_latest_worker_end(this->latest)) < 0 &&
 			first_error == 0)
 		first_error = res;
@@ -530,8 +430,6 @@ static int impl_node_send_command(void *object,
 		}
 		this->started = true;
 		this->have_sequence = false;
-		this->progressive_slot = NULL;
-		this->progress_scan_cursor = 0;
 		return 0;
 	case SPA_NODE_COMMAND_Pause:
 	case SPA_NODE_COMMAND_Suspend:
@@ -611,15 +509,6 @@ static int build_port_param(struct impl *this, uint32_t id, uint32_t index,
 					SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Acquisition),
 					SPA_PARAM_META_size,
 					SPA_POD_Int(sizeof(struct spa_meta_acquisition)));
-			return 1;
-		case 2:
-			if (!this->progressive_offered)
-				return 0;
-			*param = spa_pod_builder_add_object(builder,
-					SPA_TYPE_OBJECT_ParamMeta, id,
-					SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Progressive),
-					SPA_PARAM_META_size,
-					SPA_POD_Int(sizeof(struct spa_meta_progressive)));
 			return 1;
 		default:
 			return 0;
@@ -736,9 +625,6 @@ static int release_buffers(struct impl *this)
 		memset(slot, 0, sizeof(*slot));
 	}
 	this->port.n_buffers = 0;
-	this->progressive_active = false;
-	this->progressive_slot = NULL;
-	this->progress_scan_cursor = 0;
 	return first_error;
 }
 
@@ -748,7 +634,6 @@ static int impl_node_port_use_buffers(void *object,
 {
 	struct impl *this = object;
 	bool prepared = false;
-	bool progressive_metadata;
 	uint32_t i;
 	int res;
 
@@ -763,7 +648,6 @@ static int impl_node_port_use_buffers(void *object,
 			buffers == NULL || n_buffers < MIN_BUFFERS ||
 			n_buffers > MAX_BUFFERS)
 		return -EINVAL;
-	progressive_metadata = this->progressive_offered;
 	for (i = 0; i < n_buffers; i++) {
 		struct spa_data *data;
 
@@ -773,15 +657,7 @@ static int impl_node_port_use_buffers(void *object,
 				data->maxsize < this->camera_info.payload_size ||
 				data->chunk == NULL)
 			return -EINVAL;
-		if (progressive_metadata && spa_buffer_find_meta_data(buffers[i],
-				SPA_META_Progressive,
-				sizeof(struct spa_meta_progressive)) == NULL)
-			progressive_metadata = false;
 	}
-	if (this->progressive_policy == PROGRESSIVE_REQUIRE &&
-			!progressive_metadata)
-		return -ENOTSUP;
-	this->progressive_active = progressive_metadata;
 	for (i = 0; i < n_buffers; i++) {
 		struct buffer_slot *slot = &this->slots[i];
 		struct spa_data *data = &buffers[i]->datas[0];
@@ -808,8 +684,6 @@ static int impl_node_port_use_buffers(void *object,
 		slot->image = image;
 		spa_image_source_buffer_set_user_data(image, slot);
 	}
-	this->progressive_slot = NULL;
-	this->progress_scan_cursor = 0;
 	return 0;
 
 error:
@@ -826,8 +700,6 @@ error:
 	if (prepared)
 		(void) spa_image_source_latest_teardown(&this->transport, &this->source);
 	this->port.n_buffers = 0;
-	this->progressive_active = false;
-	this->progressive_slot = NULL;
 	return res;
 }
 
@@ -875,174 +747,6 @@ static int recycle_buffers(struct impl *this)
 	return changed ? 1 : 0;
 }
 
-static int begin_progressive(struct impl *this, struct buffer_slot *slot,
-		uint64_t size_filled)
-{
-	struct spa_meta_acquisition acquisition;
-	struct spa_image_frame frame;
-	struct spa_image_progressive progressive;
-	uint32_t committed;
-	uint32_t payload_size = (uint32_t)this->camera_info.payload_size;
-	uint32_t granularity = (uint32_t)this->camera_info.width *
-			this->bytes_per_pixel;
-	int res;
-
-	if (this->progressive_slot != NULL || slot == NULL || slot->image == NULL ||
-			!slot->camera_queued || slot->progressive)
-		return -EPROTO;
-	if (!bgapi2_progressive_committed_prefix(size_filled, payload_size,
-			granularity, &committed))
-		return -EPROTO;
-	spa_meta_acquisition_init(&acquisition);
-	slot->sequence = this->have_sequence ? this->last_sequence + 1u : 1u;
-	frame = (struct spa_image_frame) {
-		.version = SPA_VERSION_IMAGE_FRAME,
-		.data_index = 0,
-		.offset = 0,
-		.size = payload_size,
-		.stride = (int32_t)granularity,
-		.sequence = slot->sequence,
-		.pts = monotonic_nsec(),
-		.acquisition = &acquisition,
-	};
-	progressive = (struct spa_image_progressive) {
-		.version = SPA_VERSION_IMAGE_PROGRESSIVE,
-		.payload_size = payload_size,
-		.commit_granularity = granularity,
-		.committed = committed,
-	};
-	res = spa_image_source_begin_progressive(&this->source, slot->image,
-			&frame, &progressive);
-	if (res < 0)
-		return res;
-	slot->progressive = true;
-	slot->partial_observed = committed > 0 && committed < payload_size;
-	this->progressive_slot = slot;
-	return 1;
-}
-
-static int poll_progressive(struct impl *this)
-{
-	struct buffer_slot *slot;
-	uint64_t size_filled;
-	uint32_t committed;
-	uint32_t count;
-	int res;
-
-	if (!this->progressive_active)
-		return 0;
-	if ((slot = this->progressive_slot) != NULL) {
-		res = bgapi2_camera_get_size_filled(this->camera,
-				slot->camera_buffer, &size_filled);
-		if (res < 0) {
-			(void) abort_progressive(this,
-					SPA_META_PROGRESSIVE_FLAG_PROTOCOL_ERROR);
-			return res;
-		}
-		if (!bgapi2_progressive_committed_prefix(size_filled,
-				(uint32_t)this->camera_info.payload_size,
-				(uint32_t)this->camera_info.width * this->bytes_per_pixel,
-				&committed)) {
-			(void) abort_progressive(this,
-					SPA_META_PROGRESSIVE_FLAG_PROTOCOL_ERROR);
-			return -EPROTO;
-		}
-		slot->partial_observed = slot->partial_observed ||
-				(committed > 0 &&
-				 committed < (uint32_t)this->camera_info.payload_size);
-		return spa_image_source_update_progressive(&this->source,
-				slot->image, committed);
-	}
-
-	/* Probe at most one producer-owned buffer per duty cycle. A change from
-	 * the value observed immediately after queueing identifies a new producer
-	 * fill epoch without the allocation-bearing Euresys IsAcquiring query. */
-	for (count = 0; count < this->port.n_buffers; count++) {
-		uint32_t index = this->progress_scan_cursor;
-
-		this->progress_scan_cursor = index + 1u == this->port.n_buffers ?
-				0 : index + 1u;
-		slot = &this->slots[index];
-		if (!slot->camera_queued || slot->image == NULL ||
-				!slot->have_queued_size)
-			continue;
-		res = bgapi2_camera_get_size_filled(this->camera,
-				slot->camera_buffer, &size_filled);
-		if (res < 0) {
-			if (this->progressive_policy == PROGRESSIVE_OFFER &&
-					(res == -ENODATA || res == -ENOTSUP)) {
-				this->progressive_active = false;
-				return 0;
-			}
-			return res;
-		}
-		if (size_filled == slot->queued_size_filled)
-			return 0;
-		return begin_progressive(this, slot, size_filled);
-	}
-	return 0;
-}
-
-static int finish_progressive(struct impl *this,
-		const struct bgapi2_camera_completion *completion,
-		struct buffer_slot *slot)
-{
-	const struct bgapi2_frame_info *info = &completion->frame;
-	struct spa_meta_progressive *meta;
-	enum spa_meta_progressive_state state;
-	uint64_t stride, expected, available, size;
-	uint32_t current, committed, prefix = 0;
-	uint32_t terminal_flags = 0;
-	bool required_partial_missing;
-	int res;
-
-	if (this->progressive_slot != slot || !slot->progressive)
-		return -EPROTO;
-	meta = spa_buffer_find_meta_data(
-			spa_image_source_buffer_get_buffer(slot->image),
-			SPA_META_Progressive, sizeof(*meta));
-	if (meta == NULL || !spa_meta_progressive_snapshot_decode(
-			spa_meta_progressive_load_acquire(meta), &current, &state) ||
-			state != SPA_META_PROGRESSIVE_STATE_ACTIVE)
-		return -EPROTO;
-	stride = this->camera_info.width * this->bytes_per_pixel + info->x_padding;
-	expected = stride * this->camera_info.height;
-	available = info->size_filled > info->image_offset ?
-			info->size_filled - info->image_offset : 0;
-	size = info->image_length < available ? info->image_length : available;
-	if (completion->result < 0)
-		terminal_flags |= SPA_META_PROGRESSIVE_FLAG_PROTOCOL_ERROR;
-	if (info->incomplete)
-		terminal_flags |= SPA_META_PROGRESSIVE_FLAG_INCOMPLETE;
-	if (info->image_offset != 0 || stride != meta->commit_granularity ||
-			expected != meta->payload_size || size > expected)
-		terminal_flags |= SPA_META_PROGRESSIVE_FLAG_INVALID_LAYOUT;
-	else if (size != expected)
-		terminal_flags |= SPA_META_PROGRESSIVE_FLAG_CORRUPTED;
-	if (!bgapi2_progressive_committed_prefix(info->size_filled,
-			meta->payload_size, meta->commit_granularity, &prefix))
-		terminal_flags |= SPA_META_PROGRESSIVE_FLAG_PROTOCOL_ERROR;
-	required_partial_missing =
-			this->progressive_policy == PROGRESSIVE_REQUIRE &&
-			!slot->partial_observed;
-	if (required_partial_missing)
-		terminal_flags |= SPA_META_PROGRESSIVE_FLAG_PROTOCOL_ERROR;
-	committed = terminal_flags == 0 ? meta->payload_size :
-			SPA_MAX(current, prefix);
-	res = spa_image_source_finish_progressive(&this->source, slot->image,
-			committed, terminal_flags == 0 ?
-			SPA_META_PROGRESSIVE_STATE_COMPLETE :
-			SPA_META_PROGRESSIVE_STATE_ABORTED, terminal_flags);
-	if (res < 0)
-		return res;
-	slot->progressive = false;
-	slot->partial_observed = false;
-	this->progressive_slot = NULL;
-	if (completion->result < 0)
-		return completion->result;
-	return required_partial_missing ? -ENOTSUP : 1;
-}
-
 static int publish_buffer(struct impl *this,
 		const struct bgapi2_camera_completion *completion)
 {
@@ -1066,20 +770,12 @@ static int publish_buffer(struct impl *this,
 			slot->image == NULL)
 		return -EPROTO;
 	slot->camera_queued = false;
-	slot->have_queued_size = false;
 	if (this->have_sequence && info->frame_id != this->last_sequence + 1)
 		header_flags |= SPA_META_HEADER_FLAG_DISCONT;
 	this->have_sequence = true;
 	this->last_sequence = info->frame_id;
-	if (slot->progressive)
-		return finish_progressive(this, completion, slot);
 	if (completion->result < 0) {
 		res = completion->result;
-		goto recycle;
-	}
-	if (this->progressive_policy == PROGRESSIVE_REQUIRE &&
-			this->progressive_active) {
-		res = -ENOTSUP;
 		goto recycle;
 	}
 	buffer = spa_image_source_buffer_get_buffer(slot->image);
@@ -1124,19 +820,12 @@ static int impl_node_process(void *object)
 {
 	struct impl *this = object;
 	struct bgapi2_camera_completion completion;
-	bool changed;
+	bool changed = false;
 	int res;
 
 	spa_return_val_if_fail(this != NULL, -EINVAL);
 	if (!this->started)
 		return SPA_STATUS_OK;
-	/* Observe a final prefix before consuming a completion that may already be
-	 * waiting in the callback SPSC. The deferred completion-info policy keeps
-	 * these buffer queries under the same RTC owner. */
-	res = poll_progressive(this);
-	if (res < 0)
-		return res;
-	changed = res > 0;
 	res = bgapi2_camera_try_get_completion(this->camera, &completion);
 	if (res < 0)
 		return res;
@@ -1228,11 +917,6 @@ static void configure_props(struct impl *this,
 			this->camera_info.device_index);
 	snprintf(this->stream_index, sizeof(this->stream_index), "%u",
 			this->camera_info.stream_index);
-	snprintf(this->completion_mode, sizeof(this->completion_mode), "%s",
-			options->completion_mode == BGAPI2_CAMERA_COMPLETION_POLLING ?
-			"polling" : "callback");
-	snprintf(this->progressive_mode, sizeof(this->progressive_mode), "%s",
-			progressive_policy_name(this->progressive_policy));
 #define ADD_ITEM(key, value) \
 	this->prop_items[n_items++] = SPA_DICT_ITEM_INIT((key), (value))
 	ADD_ITEM(SPA_KEY_DEVICE_API, "bgapi2");
@@ -1246,8 +930,6 @@ static void configure_props(struct impl *this,
 	ADD_ITEM(SPA_KEY_API_BGAPI2_INTERFACE_INDEX, this->interface_index);
 	ADD_ITEM(SPA_KEY_API_BGAPI2_DEVICE_INDEX, this->device_index);
 	ADD_ITEM(SPA_KEY_API_BGAPI2_STREAM_INDEX, this->stream_index);
-	ADD_ITEM(SPA_KEY_API_BGAPI2_COMPLETION_MODE, this->completion_mode);
-	ADD_ITEM(SPA_KEY_API_BGAPI2_PROGRESSIVE, this->progressive_mode);
 #undef ADD_ITEM
 	this->props = SPA_DICT_INIT(this->prop_items, n_items);
 }
@@ -1270,32 +952,13 @@ static int impl_init(const struct spa_handle_factory *factory SPA_UNUSED,
 			SPA_IMAGE_SOURCE_FLAG_REQUIRE_ACQUISITION,
 	};
 	const struct bgapi2_camera_info *camera_info;
-	const char *completion_mode, *progressive_mode;
-	uint64_t progressive_size;
 	int res;
 
 	spa_return_val_if_fail(handle != NULL, -EINVAL);
 	memset(this, 0, sizeof(*this));
 	options.producer_path = info == NULL ? NULL :
 			spa_dict_lookup(info, SPA_KEY_API_BGAPI2_PRODUCER);
-	completion_mode = info == NULL ? NULL :
-			spa_dict_lookup(info, SPA_KEY_API_BGAPI2_COMPLETION_MODE);
-	progressive_mode = info == NULL ? NULL :
-			spa_dict_lookup(info, SPA_KEY_API_BGAPI2_PROGRESSIVE);
-	if (parse_progressive_policy(progressive_mode,
-			&this->progressive_policy) < 0)
-		return -EINVAL;
-	if (completion_mode == NULL || spa_streq(completion_mode, "callback"))
-		options.completion_mode = BGAPI2_CAMERA_COMPLETION_CALLBACK;
-	else if (spa_streq(completion_mode, "polling"))
-		options.completion_mode = BGAPI2_CAMERA_COMPLETION_POLLING;
-	else
-		return -EINVAL;
-	if (this->progressive_policy != PROGRESSIVE_DISABLED &&
-			options.completion_mode != BGAPI2_CAMERA_COMPLETION_CALLBACK)
-		return -EINVAL;
-	options.defer_completion_info =
-			this->progressive_policy != PROGRESSIVE_DISABLED;
+	options.completion_mode = BGAPI2_CAMERA_COMPLETION_CALLBACK;
 	if (options.producer_path == NULL ||
 			parse_index(info, SPA_KEY_API_BGAPI2_INTERFACE_INDEX,
 				BGAPI2_CAMERA_ANY_INTERFACE, &options.interface_index) < 0 ||
@@ -1323,18 +986,6 @@ static int impl_init(const struct spa_handle_factory *factory SPA_UNUSED,
 		return -ENOTSUP;
 	}
 	this->camera_info = *camera_info;
-	progressive_size = this->camera_info.width * this->bytes_per_pixel *
-			this->camera_info.height;
-	if (this->progressive_policy == PROGRESSIVE_REQUIRE &&
-			progressive_size != this->camera_info.payload_size) {
-		res = -ENOTSUP;
-		goto error;
-	}
-	this->progressive_offered =
-			this->progressive_policy != PROGRESSIVE_DISABLED &&
-			progressive_size == this->camera_info.payload_size;
-	if (this->progressive_offered)
-		config.flags |= SPA_IMAGE_SOURCE_FLAG_ALLOW_PROGRESSIVE;
 	this->node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
 			SPA_VERSION_NODE, &impl_node, this);
 	this->info_all = SPA_NODE_CHANGE_MASK_FLAGS | SPA_NODE_CHANGE_MASK_PROPS |
