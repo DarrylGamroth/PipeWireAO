@@ -565,51 +565,48 @@ static int recycle_buffers(struct impl *this)
 	return changed ? 1 : 0;
 }
 
-static int publish_buffer(struct impl *this, BGAPI2_Buffer *camera_buffer)
+static int publish_buffer(struct impl *this,
+		const struct bgapi2_camera_completion *completion)
 {
-	struct bgapi2_frame_info info;
+	const struct bgapi2_frame_info *info = &completion->frame;
+	BGAPI2_Buffer *camera_buffer = completion->buffer;
 	struct spa_meta_acquisition acquisition;
 	struct spa_image_frame frame;
 	struct buffer_slot *slot;
 	struct spa_buffer *buffer;
 	struct spa_data *data;
-	void *user_data = NULL;
 	uint64_t stride, expected, available, size;
 	uint32_t header_flags = 0, chunk_flags = 0;
 	int res;
 
-	res = bgapi2_camera_get_user_data(this->camera, camera_buffer, &user_data);
-	if (res < 0 || user_data == NULL) {
+	if (completion->result < 0 || completion->user_data == NULL) {
 		(void) bgapi2_camera_queue(this->camera, camera_buffer);
-		return res < 0 ? res : -EPROTO;
+		return completion->result < 0 ? completion->result : -EPROTO;
 	}
-	slot = user_data;
+	slot = completion->user_data;
 	if (slot->camera_buffer != camera_buffer || !slot->camera_queued ||
 			slot->image == NULL)
 		return -EPROTO;
 	slot->camera_queued = false;
-	if ((res = bgapi2_camera_get_frame_info(this->camera, camera_buffer,
-			&info)) < 0)
-		goto recycle;
 	buffer = spa_image_source_buffer_get_buffer(slot->image);
 	data = &buffer->datas[0];
-	stride = this->camera_info.width * this->bytes_per_pixel + info.x_padding;
+	stride = this->camera_info.width * this->bytes_per_pixel + info->x_padding;
 	expected = stride * this->camera_info.height;
-	available = info.size_filled > info.image_offset ?
-			info.size_filled - info.image_offset : 0;
-	size = info.image_length < available ? info.image_length : available;
+	available = info->size_filled > info->image_offset ?
+			info->size_filled - info->image_offset : 0;
+	size = info->image_length < available ? info->image_length : available;
 	if (size > expected)
 		size = expected;
-	if (info.image_offset > UINT32_MAX || size > UINT32_MAX ||
-			stride > INT32_MAX || info.image_offset + size > data->maxsize) {
+	if (info->image_offset > UINT32_MAX || size > UINT32_MAX ||
+			stride > INT32_MAX || info->image_offset + size > data->maxsize) {
 		res = -ENOSPC;
 		goto recycle;
 	}
-	if (this->have_sequence && info.frame_id != this->last_sequence + 1)
+	if (this->have_sequence && info->frame_id != this->last_sequence + 1)
 		header_flags |= SPA_META_HEADER_FLAG_DISCONT;
 	this->have_sequence = true;
-	this->last_sequence = info.frame_id;
-	if (info.incomplete || !info.image_present || size != expected)
+	this->last_sequence = info->frame_id;
+	if (info->incomplete || size != expected)
 		chunk_flags |= SPA_CHUNK_FLAG_CORRUPTED;
 	spa_meta_acquisition_init(&acquisition);
 	frame = (struct spa_image_frame) {
@@ -617,10 +614,10 @@ static int publish_buffer(struct impl *this, BGAPI2_Buffer *camera_buffer)
 		.data_index = 0,
 		.header_flags = header_flags,
 		.chunk_flags = chunk_flags,
-		.offset = (uint32_t)info.image_offset,
+		.offset = (uint32_t)info->image_offset,
 		.size = (uint32_t)size,
 		.stride = (int32_t)stride,
-		.sequence = info.frame_id,
+		.sequence = info->frame_id,
 		.pts = monotonic_nsec(),
 		.acquisition = &acquisition,
 	};
@@ -637,7 +634,7 @@ recycle:
 static int impl_node_process(void *object)
 {
 	struct impl *this = object;
-	BGAPI2_Buffer *camera_buffer = NULL;
+	struct bgapi2_camera_completion completion;
 	bool changed;
 	int res;
 
@@ -648,11 +645,11 @@ static int impl_node_process(void *object)
 	if (res < 0)
 		return res;
 	changed = res > 0;
-	res = bgapi2_camera_try_get_filled(this->camera, &camera_buffer);
+	res = bgapi2_camera_try_get_completion(this->camera, &completion);
 	if (res < 0)
 		return res;
 	if (res == 1) {
-		res = publish_buffer(this, camera_buffer);
+		res = publish_buffer(this, &completion);
 		if (res < 0)
 			return res;
 		changed = true;
