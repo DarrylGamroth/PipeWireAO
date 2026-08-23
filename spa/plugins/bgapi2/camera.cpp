@@ -631,6 +631,77 @@ int bgapi2_camera_get_feature_float_range(struct bgapi2_camera *camera,
 	return checked(camera, BGAPI2_Node_GetDoubleMax(feature->node, maximum));
 }
 
+int bgapi2_camera_find_feature(const struct bgapi2_camera *camera,
+		const char *property_name, uint32_t *index)
+{
+	if (camera == nullptr || camera->feature_store == nullptr ||
+			property_name == nullptr || index == nullptr)
+		return -EINVAL;
+	for (size_t i = 0; i < camera->feature_store->features.size(); i++)
+		if (camera->feature_store->features[i].property_name == property_name) {
+			*index = static_cast<uint32_t>(i);
+			return 0;
+		}
+	return -ENOENT;
+}
+
+int bgapi2_camera_set_feature_value(struct bgapi2_camera *camera,
+		uint32_t index, const struct bgapi2_feature_value *value)
+{
+	feature_record *feature = get_feature(camera, index);
+	bo_bool available = 0, writable = 0;
+	int res;
+
+	if (feature == nullptr || value == nullptr || value->kind != feature->kind)
+		return -EINVAL;
+	if (camera->acquiring)
+		return -EBUSY;
+	if ((res = checked(camera, BGAPI2_Node_GetAvailable(feature->node,
+			&available))) < 0 ||
+			(res = checked(camera, BGAPI2_Node_IsWriteable(feature->node,
+			&writable))) < 0)
+		return res;
+	if (!available)
+		return -ENODATA;
+	if (!writable)
+		return -EACCES;
+	switch (feature->kind) {
+	case BGAPI2_FEATURE_BOOLEAN:
+		return checked(camera, BGAPI2_Node_SetBool(feature->node,
+				value->boolean));
+	case BGAPI2_FEATURE_INTEGER:
+		return checked(camera, BGAPI2_Node_SetInt(feature->node,
+				value->integer));
+	case BGAPI2_FEATURE_FLOATING:
+		return checked(camera, BGAPI2_Node_SetDouble(feature->node,
+				value->floating));
+	case BGAPI2_FEATURE_ENUMERATION:
+		if (value->enumeration < 0 ||
+				static_cast<size_t>(value->enumeration) >=
+				feature->enum_entries.size())
+			return -EINVAL;
+		return checked(camera, BGAPI2_Node_SetString(feature->node,
+				feature->enum_entries[value->enumeration].c_str()));
+	case BGAPI2_FEATURE_STRING:
+		if (value->string == nullptr)
+			return -EINVAL;
+		return checked(camera, BGAPI2_Node_SetString(feature->node,
+				value->string));
+	case BGAPI2_FEATURE_COMMAND:
+		return -EINVAL;
+	}
+	return -EINVAL;
+}
+
+int bgapi2_camera_refresh_info(struct bgapi2_camera *camera)
+{
+	if (camera == nullptr)
+		return -EINVAL;
+	if (camera->acquiring || camera->announced_count != 0)
+		return -EBUSY;
+	return query_info(camera);
+}
+
 int bgapi2_camera_announce(struct bgapi2_camera *camera, void *memory,
 		uint64_t size, void *user_data, BGAPI2_Buffer **buffer)
 {
