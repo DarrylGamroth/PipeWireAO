@@ -20,6 +20,10 @@
 #define SPA_KEY_API_EGRABBER_BUFFER_COUNT "api.egrabber.buffer-count"
 #define SPA_KEY_API_EGRABBER_CONTROL "api.egrabber.control"
 #define SPA_KEY_API_EGRABBER_TRANSPORT "api.egrabber.transport"
+#define SPA_KEY_API_EGRABBER_PROGRESSIVE "api.egrabber.progressive"
+#define SPA_KEY_API_EGRABBER_ACQUISITION_DOMAIN "api.egrabber.acquisition-domain"
+#define SPA_KEY_API_EGRABBER_ACQUISITION_GENERATION "api.egrabber.acquisition-generation"
+#define SPA_KEY_API_EGRABBER_ACQUISITION_SEQUENCE_CONTEXT "api.egrabber.acquisition-sequence-context"
 
 extern "C" {
 

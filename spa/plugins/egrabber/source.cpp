@@ -33,6 +33,7 @@
 #include <spa/utils/string.h>
 
 #include "camera.hpp"
+#include "acquisition_key.hpp"
 #include "egrabber.hpp"
 #include "frame_layout.hpp"
 #include "frame_sequence.hpp"
@@ -42,10 +43,12 @@
 namespace {
 
 namespace gc = Euresys::gc;
+namespace ge = Euresys::ge;
 using Euresys::Buffer;
 using Euresys::BufferIndexRange;
 using Euresys::NewBufferData;
 using egrabber_pipewire::BufferMetadata;
+using egrabber_pipewire::AcquisitionKeySequence;
 using egrabber_pipewire::Camera;
 using egrabber_pipewire::DeliveredFrameLayout;
 using egrabber_pipewire::FrameSequence;
@@ -60,6 +63,11 @@ struct buffer_slot {
 	struct spa_image_source_buffer *image = nullptr;
 	BufferIndexRange range;
 	std::optional<Buffer> completed;
+	uint64_t acquisition_generation = 0;
+	uint64_t acquisition_sequence = 0;
+	bool acquisition_identity_valid = false;
+	bool readout_observed = false;
+	bool acquisition_discontinuity = false;
 };
 
 uint64_t monotonic_nsec()
@@ -90,13 +98,16 @@ struct impl {
 	uint64_t info_all = 0;
 	struct spa_node_info info = SPA_NODE_INFO_INIT();
 	struct spa_dict node_props = {};
-	struct spa_dict_item node_items[16] = {};
+	struct spa_dict_item node_items[24] = {};
 	Options options;
 	std::string node_name;
 	std::string description;
 	std::string interface_index;
 	std::string device_index;
 	std::string stream_index;
+	std::string acquisition_domain;
+	std::string acquisition_generation;
+	std::string acquisition_sequence_context;
 	port output;
 	std::unique_ptr<Camera> camera;
 	struct spa_buffer_latest *latest = nullptr;
@@ -106,11 +117,65 @@ struct impl {
 	std::vector<BufferIndexRange> ranges;
 	FrameSequence frame_sequence;
 	TimestampMapper timestamp_mapper;
+	AcquisitionKeySequence acquisition_keys;
+	std::optional<egrabber_pipewire::TransportEvent> pending_readout;
 	spa_fraction frame_rate = SPA_FRACTION(0, 1);
 	uint32_t video_format = SPA_VIDEO_FORMAT_UNKNOWN;
 	uint32_t queued_buffers = 0;
 	bool started = false;
 };
+
+uint32_t acquisition_context(const Options &options,
+		const egrabber_pipewire::TransportEvent &event)
+{
+	switch (options.acquisition_sequence_context) {
+	case 1:
+		return event.context1;
+	case 2:
+		return event.context2;
+	case 3:
+		return event.context3;
+	default:
+		throw std::runtime_error("invalid acquisition sequence context");
+	}
+}
+
+void reset_observation(buffer_slot &slot)
+{
+	slot.acquisition_generation = 0;
+	slot.acquisition_sequence = 0;
+	slot.acquisition_identity_valid = false;
+	slot.readout_observed = false;
+	slot.acquisition_discontinuity = false;
+}
+
+void prepare_readout(impl *self, buffer_slot &slot,
+		const egrabber_pipewire::TransportEvent &event)
+{
+	if (slot.readout_observed)
+		throw std::runtime_error("duplicate StartOfCameraReadout for one buffer");
+	const auto key = self->acquisition_keys.observe(
+			acquisition_context(self->options, event));
+	slot.acquisition_generation = key.generation;
+	slot.acquisition_sequence = key.sequence;
+	slot.acquisition_identity_valid = true;
+	slot.readout_observed = true;
+	slot.acquisition_discontinuity = key.discontinuity;
+}
+
+void poll_readout(impl *self)
+{
+	if (!self->pending_readout)
+		return;
+	const auto observation = self->camera->find_acquiring_buffer(self->ranges);
+	if (!observation)
+		return;
+	if (observation->position >= self->output.n_buffers)
+		throw std::runtime_error("eGrabber acquiring buffer index is out of range");
+	prepare_readout(self, self->slots[observation->position],
+			*self->pending_readout);
+	self->pending_readout.reset();
+}
 
 uint32_t video_format(const Camera &camera)
 {
@@ -368,6 +433,7 @@ int release_buffers(impl *self)
 
 	try {
 		self->camera->clear_frame_callback();
+		self->camera->set_transport_event_callback({});
 		self->camera->disable_events();
 		for (auto &slot : self->slots)
 			slot.completed.reset();
@@ -382,7 +448,9 @@ int release_buffers(impl *self)
 		if (slot.image != nullptr)
 			spa_image_source_buffer_set_user_data(slot.image, nullptr);
 		slot.image = nullptr;
+		reset_observation(slot);
 	}
+	self->pending_readout.reset();
 	if (self->output.n_buffers != 0) {
 		int teardown = spa_image_source_latest_teardown(
 				&self->transport, &self->source);
@@ -482,22 +550,37 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 					static_cast<size_t>(std::numeric_limits<int32_t>::max()))
 				throw std::runtime_error("eGrabber line pitch exceeds SPA stride");
 			const auto sequence = self->frame_sequence.next(metadata.frame_id);
+			if (self->options.acquisition_domain && !slot->readout_observed &&
+					self->pending_readout) {
+				prepare_readout(self, *slot, *self->pending_readout);
+				self->pending_readout.reset();
+			}
 			const auto timestamp = self->timestamp_mapper.map(
 					self->camera->timestamp_ns(completed).value_or(0),
 					monotonic_nsec());
 			struct spa_meta_acquisition acquisition;
 			if (!spa_meta_acquisition_init(&acquisition))
 				throw std::runtime_error("could not initialize acquisition metadata");
+			if (slot->acquisition_identity_valid &&
+					!spa_meta_acquisition_set_identity(&acquisition,
+							self->options.acquisition_domain->data(),
+							slot->acquisition_generation,
+							slot->acquisition_sequence))
+				throw std::runtime_error("could not set eGrabber acquisition identity");
 			struct spa_image_frame frame = {
 				.version = SPA_VERSION_IMAGE_FRAME,
 				.data_index = 0,
-				.header_flags = sequence.discontinuity || timestamp.discontinuity
+				.header_flags = sequence.discontinuity || timestamp.discontinuity ||
+						slot->acquisition_discontinuity ||
+						(self->options.acquisition_domain &&
+						 !slot->acquisition_identity_valid)
 					? SPA_META_HEADER_FLAG_DISCONT : 0u,
 				.chunk_flags = layout.corrupted ? SPA_CHUNK_FLAG_CORRUPTED : 0u,
 				.offset = static_cast<uint32_t>(layout.image_offset),
 				.size = static_cast<uint32_t>(layout.data_size),
 				.stride = static_cast<int32_t>(layout.line_pitch),
-				.sequence = sequence.sequence,
+				.sequence = slot->acquisition_identity_valid
+					? slot->acquisition_sequence : sequence.sequence,
 				.pts = timestamp.pts,
 				.acquisition = &acquisition,
 			};
@@ -506,14 +589,31 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 					&self->source, slot->image, &frame);
 			if (publish < 0) {
 				auto failed = std::move(slot->completed);
+				reset_observation(*slot);
 				self->camera->recycle(*failed);
 				self->queued_buffers++;
 				throw std::runtime_error("could not publish eGrabber image");
 			}
 		});
+		self->camera->set_transport_event_callback(
+				[self](const egrabber_pipewire::TransportEvent &event) {
+			if (event.kind == egrabber_pipewire::TransportEventKind::data_stream &&
+					event.id ==
+					ge::EVENT_DATA_NUMID_DATASTREAM_START_OF_CAMERA_READOUT &&
+					self->options.acquisition_domain) {
+				if (self->pending_readout)
+					throw std::runtime_error(
+							"overlapping StartOfCameraReadout events");
+				self->pending_readout = event;
+			}
+			if (event.kind == egrabber_pipewire::TransportEventKind::data_stream &&
+					event.id == ge::EVENT_DATA_NUMID_DATASTREAM_FAILURE)
+				throw std::runtime_error("eGrabber reported a data-stream failure");
+		});
 	} catch (...) {
 		try {
 			self->camera->clear_frame_callback();
+			self->camera->set_transport_event_callback({});
 			if (!self->ranges.empty())
 				self->camera->release(self->ranges);
 		} catch (...) {
@@ -525,6 +625,7 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 				spa_image_source_buffer_set_user_data(slot.image, nullptr);
 			slot.image = nullptr;
 			slot.completed.reset();
+			reset_observation(slot);
 		}
 		(void) spa_image_source_teardown(&self->source);
 		return -EIO;
@@ -567,6 +668,7 @@ int recycle_buffers(impl *self, bool reclaim)
 		if (slot == nullptr || slot->image != image || !slot->completed)
 			return -EPROTO;
 		auto completed = std::move(slot->completed);
+		reset_observation(*slot);
 		self->camera->recycle(*completed);
 		self->queued_buffers++;
 		if (reclaim)
@@ -587,6 +689,7 @@ int process(void *object)
 		if (res < 0)
 			return res;
 		const bool processed = self->camera->process_event(0);
+		poll_readout(self);
 		res = recycle_buffers(self, false);
 		if (res < 0)
 			return res;
@@ -621,6 +724,9 @@ int send_command(void *object, const struct spa_command *command)
 			self->started = true;
 			self->frame_sequence.reset();
 			self->timestamp_mapper.request_reset();
+			if (self->options.acquisition_domain)
+				self->acquisition_keys.start();
+			self->pending_readout.reset();
 			self->camera->start();
 			return 0;
 		case SPA_NODE_COMMAND_Pause:
@@ -629,6 +735,7 @@ int send_command(void *object, const struct spa_command *command)
 				return 0;
 			self->camera->stop();
 			self->started = false;
+			self->pending_readout.reset();
 			return spa_buffer_latest_worker_end(self->latest);
 		default:
 			return -ENOTSUP;
@@ -725,6 +832,13 @@ void configure_node_props(impl *self)
 	self->interface_index = std::to_string(self->options.interface_index);
 	self->device_index = std::to_string(self->options.device_index);
 	self->stream_index = std::to_string(self->options.stream_index);
+	if (self->options.acquisition_domain)
+		self->acquisition_domain = egrabber_pipewire::format_acquisition_domain(
+				*self->options.acquisition_domain);
+	self->acquisition_generation = std::to_string(
+			self->options.acquisition_generation);
+	self->acquisition_sequence_context = std::to_string(
+			self->options.acquisition_sequence_context);
 
 #define ADD_ITEM(key, value) \
 	self->node_items[n_items++] = SPA_DICT_ITEM_INIT(key, value)
@@ -737,6 +851,16 @@ void configure_node_props(impl *self)
 	ADD_ITEM(SPA_KEY_API_EGRABBER_INTERFACE_INDEX, self->interface_index.c_str());
 	ADD_ITEM(SPA_KEY_API_EGRABBER_DEVICE_INDEX, self->device_index.c_str());
 	ADD_ITEM(SPA_KEY_API_EGRABBER_STREAM_INDEX, self->stream_index.c_str());
+	ADD_ITEM(SPA_KEY_API_EGRABBER_PROGRESSIVE,
+			egrabber_pipewire::progressive_policy_name(self->options.progressive));
+	if (self->options.acquisition_domain) {
+		ADD_ITEM(SPA_KEY_API_EGRABBER_ACQUISITION_DOMAIN,
+				self->acquisition_domain.c_str());
+		ADD_ITEM(SPA_KEY_API_EGRABBER_ACQUISITION_GENERATION,
+				self->acquisition_generation.c_str());
+		ADD_ITEM(SPA_KEY_API_EGRABBER_ACQUISITION_SEQUENCE_CONTEXT,
+				self->acquisition_sequence_context.c_str());
+	}
 	if (!identity.vendor.empty())
 		ADD_ITEM(SPA_KEY_DEVICE_VENDOR_NAME, identity.vendor.c_str());
 	if (!identity.model.empty())
@@ -770,12 +894,18 @@ int init(const struct spa_handle_factory *, struct spa_handle *handle,
 	self = new (handle) impl{};
 	self->handle.get_interface = get_interface;
 	self->handle.clear = clear;
-	read_options(self->options, info);
 	self->log = static_cast<spa_log *>(spa_support_find(support, n_support,
 			SPA_TYPE_INTERFACE_Log));
 	spa_hook_list_init(&self->hooks);
 	try {
+		read_options(self->options, info);
+		self->acquisition_keys = AcquisitionKeySequence(
+				self->options.acquisition_generation);
 		self->camera = std::make_unique<Camera>(self->options);
+		if (self->options.acquisition_domain &&
+				!self->camera->progressive_supported())
+			throw std::invalid_argument(
+					"acquisition identity requires Grablink or Coaxlink StartOfCameraReadout events");
 		if (self->camera->width() > std::numeric_limits<uint32_t>::max() ||
 				self->camera->height() > std::numeric_limits<uint32_t>::max() ||
 				self->camera->payload_size() >
@@ -790,6 +920,9 @@ int init(const struct spa_handle_factory *, struct spa_handle *handle,
 		self->video_format = video_format(*self->camera);
 		if (const auto rate = self->camera->frame_rate(); rate && *rate > 0.0)
 			self->frame_rate = frame_rate(*rate);
+	} catch (const std::invalid_argument &) {
+		self->~impl();
+		return -EINVAL;
 	} catch (...) {
 		self->~impl();
 		return -EIO;
