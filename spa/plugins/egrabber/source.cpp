@@ -178,6 +178,17 @@ void reset_observation(buffer_slot &slot)
 	slot.progressive = false;
 }
 
+std::size_t delivered_line_pitch(const Camera &camera,
+		const BufferMetadata &metadata)
+{
+	const auto natural = camera.natural_line_pitch();
+	if (!metadata.x_padding)
+		return natural;
+	if (*metadata.x_padding > std::numeric_limits<std::size_t>::max() - natural)
+		throw std::runtime_error("eGrabber line pitch overflows size_t");
+	return natural + *metadata.x_padding;
+}
+
 void prepare_readout(impl *self, buffer_slot &slot,
 		const egrabber_pipewire::TransportEvent &event,
 		const egrabber_pipewire::BufferProgress &observation)
@@ -993,7 +1004,6 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 			self->queued_buffers--;
 
 			Buffer completed(data);
-			const auto info = self->camera->buffer_info(completed);
 			const BufferMetadata metadata = self->camera->buffer_metadata(completed);
 			const bool supported_payload = !metadata.payload_type ||
 					*metadata.payload_type == gc::PAYLOAD_TYPE_UNKNOWN ||
@@ -1009,14 +1019,14 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 							self->camera->payload_size(), self->camera->pixel_format(),
 						},
 						DeliveredFrameLayout{
-							info.width, info.deliveredHeight, info.linePitch,
-							info.pixelFormat,
-							self->camera->buffer_offset_x(completed),
-							self->camera->buffer_offset_y(completed),
+							self->camera->width(), self->camera->height(),
+							delivered_line_pitch(*self->camera, metadata),
+							self->camera->pixel_format(), self->camera->offset_x(),
+							self->camera->offset_y(),
 							metadata.image_offset, metadata.size_filled,
 							metadata.data_size, metadata.x_padding,
 							metadata.image_present, metadata.data_larger_than_buffer,
-							supported_payload, self->camera->incomplete(completed),
+							supported_payload, metadata.incomplete.value_or(false),
 						});
 			} catch (const std::runtime_error &) {
 				if (!self->progressive_active)
@@ -1054,7 +1064,7 @@ int port_use_buffers(void *object, enum spa_direction direction, uint32_t,
 			if (!layout)
 				throw std::runtime_error("eGrabber delivered an invalid frame layout");
 			const auto timestamp = self->timestamp_mapper.map(
-					self->camera->timestamp_ns(*slot->completed).value_or(0),
+					metadata.timestamp_ns.value_or(0),
 					monotonic_nsec());
 			const auto acquisition = acquisition_metadata(self, *slot);
 			struct spa_image_frame frame = {
