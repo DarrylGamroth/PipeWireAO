@@ -5,6 +5,14 @@ eGrabber. Enable it with `-Degrabber=enabled`; use `-Degrabber-prefix=PATH`
 when the SDK is not installed under `/opt/euresys/egrabber`. A disabled build
 does not inspect or include the proprietary SDK.
 
+`api.egrabber.producer` accepts the Euresys `gigelink`, `grablink`, and
+`coaxlink` aliases or a CTI filesystem path passed to `EGenTL`. The loader is
+therefore not syntactically limited to Euresys CTIs, but this plugin supports
+and qualifies only the Euresys producers. A third-party GenTL producer may load
+for complete frames, but its eGrabber compatibility is not assumed. Progressive
+operation specifically requires the Euresys Grablink or Coaxlink producer and
+its custom `StartOfCameraReadout` event contract.
+
 ## Implemented slice
 
 The `api.egrabber.source` factory currently provides complete-frame capture and
