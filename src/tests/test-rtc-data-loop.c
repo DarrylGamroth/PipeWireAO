@@ -291,6 +291,7 @@ static void test_process_error(void)
 	spa_assert_se(pw_rtc_data_loop_get_result(loop) == -EIO);
 	spa_assert_se(fixture.thread_utils.acquires == 1);
 	spa_assert_se(fixture.thread_utils.requested_priority == 73);
+	spa_assert_se(fixture.thread_utils.joins == 1);
 	pw_rtc_data_loop_destroy(loop);
 	fixture_clear(&fixture);
 }
