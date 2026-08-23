@@ -27,6 +27,7 @@
 #include <spa/monitor/type-info.h>
 #include <spa/monitor/utils.h>
 #include <spa/node/command.h>
+#include <spa/node/buffer-latest.h>
 #include <spa/node/event.h>
 #include <spa/node/io.h>
 #include <spa/node/keys.h>
