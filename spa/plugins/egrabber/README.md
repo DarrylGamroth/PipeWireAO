@@ -16,6 +16,9 @@ mapped-host progressive publication:
 - standard device-to-source object creation with stable selector, vendor,
   model, serial, user-ID, and transport properties;
 - standard SPA node, port, format, buffer, metadata, I/O, and command methods;
+- explicit `Mono8` and little-endian `Mono10`, `Mono12`, `Mono14`, and
+  `Mono16` format support without starting acquisition during source
+  construction;
 - typed scalar GenICam discovery and readback through `SPA_PARAM_PropInfo` and
   `SPA_PARAM_Props`;
 - immutable `SPA_NODE_FLAG_RTC_PROCESS` ownership;
@@ -60,8 +63,11 @@ is still bound return `-EBUSY` without changing the camera.
 
 ## Current qualification
 
-The factory test loads and enumerates the plugin without opening hardware. The
-device test discovers the connected producer, verifies an unchanged rescan
+The factory test loads and enumerates the plugin without opening hardware. A
+source retains `EGrabberDiscovery` only until its selected `EGrabber` has been
+constructed; it does not retain exclusive discovery-list authority or capture
+a probe frame during initialization. The device test discovers the connected
+producer, verifies an unchanged rescan
 emits no duplicate object, and checks the standard manager-to-device-to-node
 property chain; it skips when no camera is present. A normal PipeWireAO host
 supplies loop utilities and receives one-second serialized discovery
