@@ -5,6 +5,7 @@
 #include <spa/buffer/alloc.h>
 #include <spa/buffer/buffer.h>
 #include <spa/buffer/image-source.h>
+#include <spa/buffer/image-source-latest.h>
 #include <spa/buffer/type-info.h>
 #include <spa/control/control.h>
 #include <spa/control/type-info.h>
