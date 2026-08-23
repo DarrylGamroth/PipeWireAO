@@ -329,7 +329,6 @@ public:
     }
 
     std::optional<BufferProgress> buffer_progress(const BufferIndexRange &range) {
-        std::lock_guard lock(mutex_);
         const auto index = range.indexAt(0);
         try {
             if (grabber_.getBufferInfo<bool8_t>(
@@ -413,7 +412,6 @@ public:
     }
 
     void recycle(Buffer &buffer) {
-        std::lock_guard lock(mutex_);
         buffer.push(grabber_);
     }
 

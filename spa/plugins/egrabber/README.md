@@ -121,9 +121,13 @@ A slot whose release point has not been signalled remains locally held while
 the bounded scan examines the rest of the pool; a late or failed subscriber
 therefore produces pool starvation rather than blocking acquisition.
 
-This is functional complete-mode evidence, not strict real-time admission.
-The callback path itself is lock-free, but the imported camera facade still
-takes an uncontended mutex when it recycles completed buffers.
+The complete and progressive process paths do not take application-owned
+locks. Buffer completion, progress queries, and recycling are exclusively
+owned by the node's `SPA_NODE_FLAG_RTC_PROCESS` data loop. PipeWireAO routes
+public Start, Pause, and Suspend commands through the implementation-node state
+machine; Pause and Suspend stop and join that loop before they reach the SPA
+node. Configuration and teardown remain on the stopped control path and retain
+their camera-facade mutex.
 
 An eight-second `heaptrack` capture on 2026-08-23 used the connected 640x480
 Mono8 Gigelink camera, eight mapped host buffers, and ten completed frames. The
@@ -172,6 +176,19 @@ Each run captured the same ten live frames. This experiment demonstrates
 allocation and CPU-work reduction for the polling implementation; it is not an
 open-loop frame-latency or tail-jitter qualification.
 
+After RTC lifecycle serialization and removal of the progress/recycle locks, a
+second clean-build capture reproduced the same 1,098 allocations under the
+whole `process()` call: 1,053 under actual event delivery and 45 while nine
+buffers were queued again. Of the event-delivery calls, 393 were under the ten
+dynamic buffer-metadata queries for each of ten completed frames; the remaining
+660 were in the Euresys event bridge and Gigelink producer. The 45 recycle calls
+consisted of 18 Euresys `NewBufferData` boxing allocations and 27 allocations
+inside the producer's `DSQueueBuffer`. Removing the application mutex therefore
+does not change the allocation count, as expected. Public `Buffer::push` is
+retained because its `NewBufferData` owner fields are documented as internal;
+bypassing its camera-owner dispatch to call `DSQueueBuffer` directly would rely
+on an unsupported vendor representation.
+
 The eGrabber CallbackOnDemand API exposes no readiness file descriptor. The
 plugin therefore has no honest EventFd or Hybrid readiness source and does not
 add a helper thread or private handoff merely to synthesize one. PipeWireAO's
@@ -195,9 +212,10 @@ readiness; this plugin currently uses its functional BusySpin profile only.
   Grablink/Coaxlink hardware. The connected Gigelink device cannot exercise
   this path.
 - Remove or bound actual-event allocations from the vendor callback and dynamic
-  buffer-information paths, and remove the recycle mutex or prove it cannot
-  contend, before admitting the eGrabber process function to a strict BusySpin
-  deployment.
+  buffer-information paths before admitting the eGrabber process function to a
+  strict BusySpin deployment. The application-owned process path is lock-free,
+  but the connected Gigelink producer still allocates while delivering actual
+  events, querying buffer information, and queuing recycled buffers.
 - Keep the standalone application only as a physical Grablink/Coaxlink
   progressive and DMA-BUF behavior oracle until those paths are qualified in
   the SPA plugin.
