@@ -14,6 +14,13 @@
 #define N_BUFFERS 4u
 #define DEFAULT_ITERATIONS 200000u
 
+enum benchmark_operation {
+	BENCHMARK_CALLBACK,
+	BENCHMARK_POLLING,
+	BENCHMARK_IS_ACQUIRING,
+	BENCHMARK_SIZE_FILLED,
+};
+
 struct slot {
 	BGAPI2_Buffer *buffer;
 	void *memory;
@@ -96,23 +103,35 @@ int main(int argc, char *argv[])
 	uint32_t iterations = DEFAULT_ITERATIONS, i;
 	size_t empty_count = 0;
 	uint32_t frames = 0;
+	enum benchmark_operation operation;
+	const char *operation_name;
 	int call_res = -EIO, exit_status = EXIT_FAILURE;
 	const char *stage = "argument validation";
 
 	if (argc < 3 || argc > 4 ||
 			(argc == 4 && (!spa_atou32(argv[3], &iterations, 0) ||
 			iterations == 0))) {
-		fprintf(stderr, "usage: %s PRODUCER.cti callback|polling [ITERATIONS]\n",
+		fprintf(stderr, "usage: %s PRODUCER.cti callback|polling|is-acquiring|size-filled [ITERATIONS]\n",
 				argv[0]);
 		return EXIT_FAILURE;
 	}
 	options.producer_path = argv[1];
-	if (strcmp(argv[2], "callback") == 0)
+	operation_name = argv[2];
+	if (strcmp(argv[2], "callback") == 0) {
+		operation = BENCHMARK_CALLBACK;
 		options.completion_mode = BGAPI2_CAMERA_COMPLETION_CALLBACK;
-	else if (strcmp(argv[2], "polling") == 0)
+	} else if (strcmp(argv[2], "polling") == 0) {
+		operation = BENCHMARK_POLLING;
 		options.completion_mode = BGAPI2_CAMERA_COMPLETION_POLLING;
-	else
+	} else if (strcmp(argv[2], "is-acquiring") == 0) {
+		operation = BENCHMARK_IS_ACQUIRING;
+		options.completion_mode = BGAPI2_CAMERA_COMPLETION_CALLBACK;
+	} else if (strcmp(argv[2], "size-filled") == 0) {
+		operation = BENCHMARK_SIZE_FILLED;
+		options.completion_mode = BGAPI2_CAMERA_COMPLETION_CALLBACK;
+	} else {
 		return EXIT_FAILURE;
+	}
 	clock_samples = malloc((size_t)iterations * sizeof(*clock_samples));
 	empty_samples = malloc((size_t)iterations * sizeof(*empty_samples));
 	stage = "sample allocation";
@@ -153,12 +172,27 @@ int main(int argc, char *argv[])
 			bgapi2_camera_queue(camera, completion.buffer) < 0)
 		goto done;
 	for (i = 0; i < iterations; i++) {
+		bool acquiring;
+		uint64_t size_filled;
+
 		stage = "measurement";
 		before = monotonic_raw_nsec();
-		call_res = bgapi2_camera_try_get_completion(camera, &completion);
+		if (operation == BENCHMARK_IS_ACQUIRING)
+			call_res = bgapi2_camera_buffer_is_acquiring(camera,
+					slots[0].buffer, &acquiring);
+		else if (operation == BENCHMARK_SIZE_FILLED)
+			call_res = bgapi2_camera_get_size_filled(camera,
+					slots[0].buffer, &size_filled);
+		else
+			call_res = bgapi2_camera_try_get_completion(camera, &completion);
 		after = monotonic_raw_nsec();
 		if (call_res < 0)
 			goto done;
+		if (operation == BENCHMARK_IS_ACQUIRING ||
+				operation == BENCHMARK_SIZE_FILLED) {
+			empty_samples[empty_count++] = after - before;
+			continue;
+		}
 		if (call_res == 0)
 			empty_samples[empty_count++] = after - before;
 		else {
@@ -169,9 +203,12 @@ int main(int argc, char *argv[])
 		}
 	}
 	printf("producer=%s mode=%s cpu=%d iterations=%u empty=%zu frames=%u\n",
-			argv[1], argv[2], sched_getcpu(), iterations, empty_count, frames);
+			argv[1], operation_name, sched_getcpu(), iterations, empty_count,
+			frames);
 	report("clock-pair baseline", clock_samples, iterations);
-	report("empty completion poll", empty_samples, empty_count);
+	report(operation == BENCHMARK_IS_ACQUIRING ? "is-acquiring query" :
+			operation == BENCHMARK_SIZE_FILLED ? "size-filled query" :
+			"empty completion poll", empty_samples, empty_count);
 	exit_status = EXIT_SUCCESS;
 
 done:
