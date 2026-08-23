@@ -7,7 +7,8 @@ does not inspect or include the proprietary SDK.
 
 ## Implemented slice
 
-The `api.egrabber.source` factory currently provides complete-frame capture:
+The `api.egrabber.source` factory currently provides complete-frame capture and
+mapped-host progressive publication:
 
 - `api.egrabber.enum.manager` snapshot discovery and one
   `api.egrabber.device` object per discovered camera;
@@ -19,6 +20,9 @@ The `api.egrabber.source` factory currently provides complete-frame capture:
 - immutable `SPA_NODE_FLAG_RTC_PROCESS` ownership;
 - `SPA_IO_BuffersLatestLink` fan-out without graph-ready callbacks;
 - mapped `MemPtr` or `MemFd` buffers announced directly to eGrabber;
+- optional StartOfCameraReadout progressive publication on Grablink and
+  Coaxlink, with whole-row release publication from `BUFFER_INFO_SIZE_FILLED`,
+  immutable active metadata, and explicit complete or aborted terminal state;
 - fixed `SPA_META_Header` and Version 1 `SPA_META_Acquisition` publication;
 - monotonic `SPA_META_Header.pts` mapping from the vendor camera timestamp,
   reset on every Start and marked discontinuous when the camera clock resets or
@@ -61,6 +65,12 @@ Gigelink camera it negotiates the live format, announces eight aligned
 PipeWireAO-owned buffers, captures ten frames, validates Acquisition metadata,
 returns every subscriber lease, and performs ordered teardown.
 
+Gigelink is complete-only: `progressive=offer` falls back to complete frames and
+`progressive=require` is rejected. Grablink/Coaxlink progressive behavior is
+implemented against the vendor StartOfCameraReadout, acquiring-buffer, and
+filled-size contract, but remains a hardware qualification item. Progressive
+publication rejects DMA-BUF by design.
+
 This is functional complete-mode evidence, not strict real-time admission.
 The imported camera facade still takes uncontended mutexes around SDK queries,
 and earlier hardware profiling found repeated allocations inside `gigelink.cti`
@@ -75,8 +85,9 @@ profile.
   physical exposure-start mapping and uncertainty. The current completion-time
   anchor restores generic Header PTS behavior but does not claim an
   `SPA_META_Acquisition.exposure_start` value.
-- Add StartOfCameraReadout progressive publication for Grablink and Coaxlink;
-  Gigelink remains complete-only.
+- Qualify StartOfCameraReadout progressive publication on Grablink/Coaxlink
+  hardware, including partial-row, completion, incomplete-frame, restart, and
+  cancellation behavior.
 - Add optional DMA-BUF complete capture and explicit synchronization.
 - Integrate SDK readiness with EventFd and Hybrid RTC wait policies without
   adding a readiness syscall to BusySpin.

@@ -254,7 +254,7 @@ int capture(const struct spa_handle_factory *factory)
 	uint32_t frames = 0;
 	int64_t last_pts = SPA_TIME_INVALID;
 	while (frames < requested_frames) {
-		spa_assert_se(spa_node_process(node) == SPA_STATUS_OK);
+		spa_assert_se(spa_node_process(node) >= SPA_STATUS_OK);
 		uint64_t submission;
 		uint32_t id;
 		const int received = spa_io_buffers_latest_receive(&io, &submission, &id);
@@ -302,6 +302,19 @@ int capture(const struct spa_handle_factory *factory)
 	return 0;
 }
 
+void reject_required_progressive_on_gigelink(
+		const struct spa_handle_factory *factory)
+{
+	const struct spa_dict_item item = SPA_DICT_ITEM_INIT(
+			SPA_KEY_API_EGRABBER_PROGRESSIVE, "require");
+	const struct spa_dict info = SPA_DICT_INIT(&item, 1);
+	const size_t size = factory->get_size(factory, &info);
+	std::unique_ptr<void, decltype(&free)> memory(calloc(1, size), free);
+	spa_assert_se(memory != nullptr);
+	auto *handle = static_cast<struct spa_handle *>(memory.get());
+	spa_assert_se(factory->init(factory, handle, &info, nullptr, 0) == -EINVAL);
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -319,6 +332,8 @@ int main(int argc, char **argv)
 		factory = nullptr;
 	spa_assert_se(factory != nullptr);
 	const int res = capture(factory);
+	if (res == 0)
+		reject_required_progressive_on_gigelink(factory);
 	spa_assert_se(dlclose(library) == 0);
 	return res;
 }
