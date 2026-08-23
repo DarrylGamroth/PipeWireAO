@@ -52,7 +52,6 @@ pipewire_headers = [
 ]
 
 pipewire_sources = [
-  'buffer-latest.c',
   'buffers.c',
   'image-source.c',
   'impl-core.c',
