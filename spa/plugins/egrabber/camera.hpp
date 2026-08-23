@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 
+struct spa_log;
+
 namespace egrabber_pipewire {
 
 class BufferChangeRequired : public std::runtime_error {
@@ -82,7 +84,7 @@ public:
     using FrameCallback = std::function<void(const Euresys::NewBufferData &)>;
     using TransportEventCallback = std::function<void(const TransportEvent &)>;
 
-    explicit Camera(const Options &options);
+    Camera(const Options &options, struct spa_log *log);
     ~Camera();
     Camera(const Camera &) = delete;
     Camera &operator=(const Camera &) = delete;

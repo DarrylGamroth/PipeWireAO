@@ -2,6 +2,7 @@
 
 #include "camera.hpp"
 #include "control_backend.hpp"
+#include "egrabber.hpp"
 #include "egrabber_control.hpp"
 
 #include <spa/pod/parser.h>
@@ -9,8 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <condition_variable>
-#include <iostream>
+#include <exception>
 #include <limits>
 #include <mutex>
 #include <stdexcept>
@@ -29,6 +29,16 @@ using Euresys::NewBufferData;
 using Euresys::RemoteModule;
 using Euresys::StreamModule;
 using Euresys::UserMemory;
+
+template<typename Function>
+void collect_cleanup_error(std::exception_ptr &first_error,
+                           Function &&function) noexcept {
+    try {
+        function();
+    } catch (...) {
+        if (!first_error) first_error = std::current_exception();
+    }
+}
 
 struct CameraSelection {
     Euresys::EGrabberCameraInfo camera;
@@ -98,20 +108,14 @@ public:
         : EGrabber<Euresys::CallbackOnDemand>(selection.camera, gc::DEVICE_ACCESS_CONTROL) {}
 
     void set_frame_callback(FrameCallback callback) {
-        std::unique_lock lock(callback_mutex_);
-        callback_idle_.wait(lock, [&] { return active_callbacks_ == 0; });
         frame_callback_ = std::move(callback);
     }
 
     void clear_frame_callback() {
-        std::unique_lock lock(callback_mutex_);
-        callback_idle_.wait(lock, [&] { return active_callbacks_ == 0; });
         frame_callback_ = {};
     }
 
     void set_event_callback(EventCallback callback) {
-        std::unique_lock lock(callback_mutex_);
-        callback_idle_.wait(lock, [&] { return active_callbacks_ == 0; });
         event_callback_ = std::move(callback);
     }
 
@@ -129,58 +133,33 @@ public:
                 return false;
             throw;
         }
-        FrameCallback *callback;
-        EventCallback *event_callback;
-        {
-            std::lock_guard lock(callback_mutex_);
-            ++active_callbacks_;
-            callback = &frame_callback_;
-            event_callback = &event_callback_;
+        if (position == 1) {
+            if (frame_callback_) frame_callback_(event.data1);
+            else Buffer(event.data1).push(*this);
+        } else if (position == 2 && event_callback_) {
+            event_callback_({TransportEventKind::data_stream, event.data2.timestamp,
+                event.data2.numid, event.data2.context1, event.data2.context2,
+                event.data2.context3});
+        } else if (position == 3 && event_callback_) {
+            event_callback_({TransportEventKind::device_error, event.data3.timestamp,
+                event.data3.numid, event.data3.context1, event.data3.context2,
+                event.data3.context3});
+        } else if (position == 4 && event_callback_) {
+            event_callback_({TransportEventKind::remote_device, event.data4.timestamp,
+                event.data4.eventId, event.data4.eventNs, 0, 0});
         }
-        try {
-            if (position == 1) {
-                if (*callback) (*callback)(event.data1);
-                else Buffer(event.data1).push(*this);
-            } else if (position == 2 && *event_callback) {
-                (*event_callback)({TransportEventKind::data_stream, event.data2.timestamp,
-                    event.data2.numid, event.data2.context1, event.data2.context2,
-                    event.data2.context3});
-            } else if (position == 3 && *event_callback) {
-                (*event_callback)({TransportEventKind::device_error, event.data3.timestamp,
-                    event.data3.numid, event.data3.context1, event.data3.context2,
-                    event.data3.context3});
-            } else if (position == 4 && *event_callback) {
-                (*event_callback)({TransportEventKind::remote_device, event.data4.timestamp,
-                    event.data4.eventId, event.data4.eventNs, 0, 0});
-            }
-        } catch (...) {
-            finish_callback();
-            throw;
-        }
-        finish_callback();
         return true;
     }
 
 private:
-    void finish_callback() {
-        {
-            std::lock_guard lock(callback_mutex_);
-            --active_callbacks_;
-        }
-        callback_idle_.notify_all();
-    }
-
-    std::mutex callback_mutex_;
-    std::condition_variable callback_idle_;
     FrameCallback frame_callback_;
     EventCallback event_callback_;
-    std::size_t active_callbacks_ = 0;
 };
 
 struct Camera::Impl {
 public:
-    explicit Impl(const Options &options)
-        : gentl_(producer_path(options.producer)),
+    Impl(const Options &options, struct spa_log *log)
+        : log_(log), gentl_(producer_path(options.producer)),
           discovery_(std::make_unique<Euresys::EGrabberDiscovery>(gentl_)),
           selection_(select_camera(*discovery_, options)), grabber_(selection_),
           buffer_count_(options.buffer_count),
@@ -439,9 +418,16 @@ public:
 
     void release(const std::vector<BufferIndexRange> &ranges) {
         std::lock_guard lock(mutex_);
-        grabber_.flushBuffers(gc::ACQ_QUEUE_UNQUEUED_TO_INPUT);
-        grabber_.flushBuffers(gc::ACQ_QUEUE_ALL_DISCARD);
-        for (const auto &range : ranges) grabber_.revoke(range);
+        std::exception_ptr first_error;
+        collect_cleanup_error(first_error, [&] {
+            grabber_.flushBuffers(gc::ACQ_QUEUE_UNQUEUED_TO_INPUT);
+        });
+        collect_cleanup_error(first_error, [&] {
+            grabber_.flushBuffers(gc::ACQ_QUEUE_ALL_DISCARD);
+        });
+        for (const auto &range : ranges)
+            collect_cleanup_error(first_error, [&] { grabber_.revoke(range); });
+        if (first_error) std::rethrow_exception(first_error);
     }
 
     void start() {
@@ -476,22 +462,32 @@ public:
 
     void disable_events() {
         std::lock_guard lock(mutex_);
+        std::exception_ptr first_error;
         if (remote_device_event_enabled_) {
-            grabber_.disableEvent<Euresys::RemoteDeviceData>();
-            remote_device_event_enabled_ = false;
+            collect_cleanup_error(first_error, [&] {
+                grabber_.disableEvent<Euresys::RemoteDeviceData>();
+                remote_device_event_enabled_ = false;
+            });
         }
         if (device_error_event_enabled_) {
-            grabber_.disableEvent<Euresys::DeviceErrorData>();
-            device_error_event_enabled_ = false;
+            collect_cleanup_error(first_error, [&] {
+                grabber_.disableEvent<Euresys::DeviceErrorData>();
+                device_error_event_enabled_ = false;
+            });
         }
         if (data_stream_event_enabled_) {
-            grabber_.disableEvent<Euresys::DataStreamData>();
-            data_stream_event_enabled_ = false;
+            collect_cleanup_error(first_error, [&] {
+                grabber_.disableEvent<Euresys::DataStreamData>();
+                data_stream_event_enabled_ = false;
+            });
         }
         if (buffer_event_enabled_) {
-            grabber_.disableEvent<NewBufferData>();
-            buffer_event_enabled_ = false;
+            collect_cleanup_error(first_error, [&] {
+                grabber_.disableEvent<NewBufferData>();
+                buffer_event_enabled_ = false;
+            });
         }
+        if (first_error) std::rethrow_exception(first_error);
     }
 
     void set_feature(const Feature &feature, const spa_pod *value,
@@ -601,8 +597,8 @@ public:
                     synchronize_transport_layout();
                     refresh_layout();
                 } catch (const std::exception &error) {
-                    std::cerr << "Could not roll back " << feature.name << ": "
-                              << error.what() << '\n';
+                    spa_log_warn(log_, "could not roll back %s: %s",
+                                 feature.name.c_str(), error.what());
                 }
             }
             throw;
@@ -686,7 +682,7 @@ private:
             return;
         }
         if (options.control == "remote") {
-            control_ = make_remote_control_backend(grabber_);
+            control_ = make_remote_control_backend(grabber_, log_);
             return;
         }
 #ifdef HAVE_CLPROTOCOL_CONTROL
@@ -704,14 +700,14 @@ private:
             serial_transport_ = make_grablink_serial_transport(grabber_);
             try {
                 control_ = make_clprotocol_control_backend(*serial_transport_, cl_options);
-                std::cerr << "Camera control backend: CLProtocol\n";
+                spa_log_info(log_, "camera control backend: CLProtocol");
                 return;
             } catch (const std::exception &error) {
                 serial_transport_.reset();
                 if (options.control == "clprotocol" || options.camera_serial)
                     throw;
-                std::cerr << "CLProtocol auto-detection failed, using the eGrabber "
-                             "RemoteModule: " << error.what() << '\n';
+                spa_log_warn(log_, "CLProtocol auto-detection failed; using the "
+                             "eGrabber RemoteModule: %s", error.what());
             }
         } else if (options.camera_serial) {
             throw std::runtime_error("--camera-serial requires an installed CLProtocol backend");
@@ -723,7 +719,7 @@ private:
             throw std::runtime_error(
                 "this build has no CLProtocol support; configure Meson with -Dgenicam_root=PATH");
 #endif
-        control_ = make_remote_control_backend(grabber_);
+        control_ = make_remote_control_backend(grabber_, log_);
     }
 
     const Feature *control_feature(std::string_view name) const {
@@ -851,6 +847,7 @@ private:
         return nullptr;
     }
 
+    struct spa_log *log_;
     EGenTL gentl_;
     std::unique_ptr<Euresys::EGrabberDiscovery> discovery_;
     CameraSelection selection_;
@@ -878,7 +875,8 @@ private:
     bool remote_device_event_enabled_ = false;
 };
 
-Camera::Camera(const Options &options) : impl_(std::make_unique<Impl>(options)) {}
+Camera::Camera(const Options &options, struct spa_log *log)
+    : impl_(std::make_unique<Impl>(options, log)) {}
 Camera::~Camera() = default;
 std::size_t Camera::width() const { return impl_->width(); }
 std::size_t Camera::height() const { return impl_->height(); }
