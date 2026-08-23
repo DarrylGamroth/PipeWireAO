@@ -27,7 +27,6 @@ struct bgapi2_camera_options {
 	uint64_t interface_timeout_ms;
 	uint64_t device_timeout_ms;
 	enum bgapi2_camera_completion_mode completion_mode;
-	bool defer_completion_info;
 };
 
 struct bgapi2_camera_info {
@@ -135,18 +134,15 @@ int bgapi2_camera_start(struct bgapi2_camera *camera);
 int bgapi2_camera_stop(struct bgapi2_camera *camera);
 
 /*
- * RTC owner operations. Completion polling only consumes the local SPSC and
- * does not call BGAPI2. Queueing returns ownership to the GenTL producer, so
- * the producer's queue behavior remains part of the measured RTC contract.
+ * RTC owner operations. The source's callback profile consumes only the local
+ * SPSC; the polling profile exists for adapter benchmarks and calls BGAPI2.
+ * Queueing returns ownership to the GenTL producer, so the producer's queue
+ * behavior remains part of the measured RTC contract.
  */
 int bgapi2_camera_queue(struct bgapi2_camera *camera,
 		BGAPI2_Buffer *buffer);
 int bgapi2_camera_try_get_completion(struct bgapi2_camera *camera,
 		struct bgapi2_camera_completion *completion);
-int bgapi2_camera_buffer_is_acquiring(struct bgapi2_camera *camera,
-		BGAPI2_Buffer *buffer, bool *is_acquiring);
-int bgapi2_camera_get_size_filled(struct bgapi2_camera *camera,
-		BGAPI2_Buffer *buffer, uint64_t *size_filled);
 
 #ifdef __cplusplus
 }

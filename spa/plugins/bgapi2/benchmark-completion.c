@@ -19,8 +19,6 @@
 enum benchmark_operation {
 	BENCHMARK_CALLBACK,
 	BENCHMARK_POLLING,
-	BENCHMARK_IS_ACQUIRING,
-	BENCHMARK_SIZE_FILLED,
 	BENCHMARK_QUEUE,
 };
 
@@ -126,7 +124,7 @@ int main(int argc, char *argv[])
 	const char *stage = "argument validation";
 
 	if (argc < 3 || argc > 4) {
-		fprintf(stderr, "usage: %s PRODUCER.cti callback|polling|is-acquiring|size-filled|queue [ITERATIONS]\n",
+		fprintf(stderr, "usage: %s PRODUCER.cti callback|polling|queue [ITERATIONS]\n",
 				argv[0]);
 		return EXIT_FAILURE;
 	}
@@ -138,12 +136,6 @@ int main(int argc, char *argv[])
 	} else if (strcmp(argv[2], "polling") == 0) {
 		operation = BENCHMARK_POLLING;
 		options.completion_mode = BGAPI2_CAMERA_COMPLETION_POLLING;
-	} else if (strcmp(argv[2], "is-acquiring") == 0) {
-		operation = BENCHMARK_IS_ACQUIRING;
-		options.completion_mode = BGAPI2_CAMERA_COMPLETION_CALLBACK;
-	} else if (strcmp(argv[2], "size-filled") == 0) {
-		operation = BENCHMARK_SIZE_FILLED;
-		options.completion_mode = BGAPI2_CAMERA_COMPLETION_CALLBACK;
 	} else if (strcmp(argv[2], "queue") == 0) {
 		operation = BENCHMARK_QUEUE;
 		options.completion_mode = BGAPI2_CAMERA_COMPLETION_CALLBACK;
@@ -218,27 +210,12 @@ int main(int argc, char *argv[])
 		goto done;
 	}
 	for (i = 0; i < iterations; i++) {
-		bool acquiring;
-		uint64_t size_filled;
-
 		stage = "measurement";
 		before = monotonic_raw_nsec();
-		if (operation == BENCHMARK_IS_ACQUIRING)
-			call_res = bgapi2_camera_buffer_is_acquiring(camera,
-					slots[0].buffer, &acquiring);
-		else if (operation == BENCHMARK_SIZE_FILLED)
-			call_res = bgapi2_camera_get_size_filled(camera,
-					slots[0].buffer, &size_filled);
-		else
-			call_res = bgapi2_camera_try_get_completion(camera, &completion);
+		call_res = bgapi2_camera_try_get_completion(camera, &completion);
 		after = monotonic_raw_nsec();
 		if (call_res < 0)
 			goto done;
-		if (operation == BENCHMARK_IS_ACQUIRING ||
-				operation == BENCHMARK_SIZE_FILLED) {
-			operation_samples[sample_count++] = after - before;
-			continue;
-		}
 		if (call_res == 0)
 			operation_samples[sample_count++] = after - before;
 		else {
@@ -252,9 +229,7 @@ int main(int argc, char *argv[])
 			argv[1], operation_name, sched_getcpu(), iterations, sample_count,
 			frames);
 	report("clock-pair baseline", clock_samples, iterations);
-	report(operation == BENCHMARK_IS_ACQUIRING ? "is-acquiring query" :
-			operation == BENCHMARK_SIZE_FILLED ? "size-filled query" :
-			"empty completion poll", operation_samples, sample_count);
+	report("empty completion poll", operation_samples, sample_count);
 	exit_status = EXIT_SUCCESS;
 
 done:

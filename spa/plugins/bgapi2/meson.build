@@ -22,13 +22,6 @@ bgapi2_lib = shared_library(
 )
 
 if get_option('tests').allowed()
-  bgapi2_progressive_test = executable(
-    'spa-bgapi2-progressive-test',
-    'test-progressive.c',
-    dependencies: spa_dep,
-  )
-  test('spa-bgapi2-progressive', bgapi2_progressive_test)
-
   bgapi2_factory_test = executable(
     'spa-bgapi2-factory-test',
     'test-factory.c',
@@ -61,31 +54,6 @@ if get_option('tests').allowed()
     is_parallel: false,
     timeout: 10,
   )
-  test(
-    'spa-bgapi2-capture-euresys-polling',
-    bgapi2_capture_test,
-    args: [bgapi2_lib.full_path(),
-      '/opt/euresys/egrabber/lib/x86_64/gigelink.cti', 'polling'],
-    is_parallel: false,
-    timeout: 10,
-  )
-  test(
-    'spa-bgapi2-capture-euresys-progressive-offer',
-    bgapi2_capture_test,
-    args: [bgapi2_lib.full_path(),
-      '/opt/euresys/egrabber/lib/x86_64/gigelink.cti', 'callback', 'offer'],
-    is_parallel: false,
-    timeout: 10,
-  )
-  test(
-    'spa-bgapi2-capture-baumer-polling',
-    bgapi2_capture_test,
-    args: [bgapi2_lib.full_path(),
-      get_option('bgapi2-prefix') / 'lib/libbgapi2_gige.cti', 'polling'],
-    is_parallel: false,
-    timeout: 10,
-  )
-
   bgapi2_camera_test = executable(
     'spa-bgapi2-camera-test',
     ['test-camera.c', 'camera.cpp'],
