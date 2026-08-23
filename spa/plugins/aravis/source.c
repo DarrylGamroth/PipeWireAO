@@ -14,15 +14,18 @@
 #include <spa/node/utils.h>
 #include <spa/param/buffers.h>
 #include <spa/param/format-utils.h>
+#include <spa/param/props.h>
 #include <spa/param/video/format-utils.h>
 #include <spa/param/video/raw-utils.h>
 #include <spa/pod/filter.h>
+#include <spa/pod/parser.h>
 #include <spa/support/plugin.h>
 #include <spa/utils/keys.h>
 #include <spa/utils/string.h>
 
 #include "aravis.h"
 #include "camera.h"
+#include "params.h"
 
 #define MIN_BUFFERS 2u
 #define MAX_BUFFERS SPA_IMAGE_SOURCE_MAX_BUFFERS
@@ -50,6 +53,7 @@ struct impl {
 	struct spa_callbacks callbacks;
 	uint64_t info_all;
 	struct spa_node_info info;
+	struct spa_param_info params[2];
 	struct spa_dict props;
 	struct spa_dict_item prop_items[8];
 	char node_name[192];
@@ -146,18 +150,185 @@ static int impl_node_set_callbacks(void *object,
 	return 0;
 }
 
-static int impl_node_enum_params(void *object SPA_UNUSED,
-		int seq SPA_UNUSED, uint32_t id SPA_UNUSED, uint32_t start SPA_UNUSED,
-		uint32_t num SPA_UNUSED, const struct spa_pod *filter SPA_UNUSED)
+static int impl_node_enum_params(void *object, int seq, uint32_t id,
+		uint32_t start, uint32_t num, const struct spa_pod *filter)
 {
-	return -ENOENT;
+	struct impl *this = object;
+	struct spa_pod_dynamic_builder dynamic;
+	struct spa_pod_builder_state state;
+	struct spa_result_node_params result = { 0 };
+	uint8_t storage[4096];
+	uint32_t count = 0;
+
+	spa_return_val_if_fail(this != NULL && num > 0, -EINVAL);
+	if (id != SPA_PARAM_PropInfo && id != SPA_PARAM_Props)
+		return -ENOENT;
+	spa_pod_dynamic_builder_init(&dynamic, storage, sizeof(storage), 4096);
+	spa_pod_builder_get_state(&dynamic.b, &state);
+	result.id = id;
+	result.next = start;
+	while (count < num) {
+		struct spa_pod *param;
+
+		result.index = result.next++;
+		spa_pod_builder_reset(&dynamic.b, &state);
+		if (id == SPA_PARAM_PropInfo)
+			param = aravis_build_feature_prop_info(this->camera,
+					result.index, &dynamic.b);
+		else if (result.index == 0)
+			param = aravis_build_feature_props(this->camera, &dynamic.b);
+		else
+			param = NULL;
+		if (param == NULL)
+			break;
+		if (spa_pod_filter(&dynamic.b, &result.param, param, filter) < 0)
+			continue;
+		spa_node_emit_result(&this->hooks, seq, 0,
+				SPA_RESULT_TYPE_NODE_PARAMS, &result);
+		count++;
+	}
+	spa_pod_dynamic_builder_clean(&dynamic);
+	return 0;
 }
 
-static int impl_node_set_param(void *object SPA_UNUSED,
-		uint32_t id SPA_UNUSED, uint32_t flags SPA_UNUSED,
-		const struct spa_pod *param SPA_UNUSED)
+static int parse_feature_value(enum aravis_feature_kind kind,
+		const struct spa_pod *pod, struct aravis_feature_value *value)
 {
-	return -ENOENT;
+	uint32_t id;
+
+	memset(value, 0, sizeof(*value));
+	value->kind = kind;
+	switch (kind) {
+	case ARAVIS_FEATURE_BOOLEAN:
+		return spa_pod_get_bool(pod, &value->boolean);
+	case ARAVIS_FEATURE_INTEGER:
+		return spa_pod_get_long(pod, &value->integer);
+	case ARAVIS_FEATURE_FLOATING:
+		return spa_pod_get_double(pod, &value->floating);
+	case ARAVIS_FEATURE_ENUMERATION:
+		if (spa_pod_get_int(pod, &value->enumeration) == 0)
+			return 0;
+		if (spa_pod_get_id(pod, &id) < 0 || id > INT32_MAX)
+			return -EINVAL;
+		value->enumeration = (int32_t)id;
+		return 0;
+	case ARAVIS_FEATURE_STRING:
+		return spa_pod_get_string(pod, &value->string);
+	case ARAVIS_FEATURE_COMMAND:
+		return -EINVAL;
+	}
+	return -EINVAL;
+}
+
+static int refresh_layout_params(struct impl *this)
+{
+	const struct aravis_camera_info *info;
+	uint32_t format, bytes_per_pixel;
+	int res;
+
+	if ((res = aravis_camera_refresh_info(this->camera)) < 0)
+		return res;
+	info = aravis_camera_get_info(this->camera);
+	if (info == NULL || info->payload_size > INT32_MAX ||
+			map_pixel_format(info->pixel_format, &format, &bytes_per_pixel) < 0 ||
+			info->width > INT32_MAX / bytes_per_pixel)
+		return -ENOTSUP;
+	this->camera_info = *info;
+	this->video_format = format;
+	this->bytes_per_pixel = bytes_per_pixel;
+	this->port.have_format = false;
+	this->port.params[0].flags ^= SPA_PARAM_INFO_SERIAL;
+	this->port.params[1].flags ^= SPA_PARAM_INFO_SERIAL;
+	this->port.params[2].flags ^= SPA_PARAM_INFO_SERIAL;
+	this->port.info.change_mask |= SPA_PORT_CHANGE_MASK_PARAMS;
+	emit_port_info(this, false);
+	return 0;
+}
+
+static int impl_node_set_param(void *object, uint32_t id,
+		uint32_t flags SPA_UNUSED, const struct spa_pod *param)
+{
+	struct impl *this = object;
+	struct aravis_feature_info info;
+	struct aravis_feature_value value;
+	struct spa_pod_object *object_param;
+	struct spa_pod_prop *property;
+	const char *name = NULL;
+	struct spa_pod *value_pod = NULL;
+	uint32_t feature_index, operations = 0;
+	int res;
+
+	spa_return_val_if_fail(this != NULL, -EINVAL);
+	if (id != SPA_PARAM_Props)
+		return -ENOENT;
+	if (param == NULL)
+		return 0;
+	if (!spa_pod_is_object(param) ||
+			SPA_POD_OBJECT_TYPE(param) != SPA_TYPE_OBJECT_Props)
+		return -EINVAL;
+	object_param = (struct spa_pod_object *)param;
+	SPA_POD_OBJECT_FOREACH(object_param, property) {
+		struct spa_pod_parser parser;
+		struct spa_pod_frame frame;
+
+		if (property->key != SPA_PROP_params)
+			continue;
+		spa_pod_parser_pod(&parser, &property->value);
+		if (spa_pod_parser_push_struct(&parser, &frame) < 0)
+			return -EINVAL;
+		for (;;) {
+			const char *candidate = NULL;
+			struct spa_pod *candidate_value = NULL;
+
+			if (spa_pod_parser_get_string(&parser, &candidate) < 0)
+				break;
+			if (spa_pod_parser_get_pod(&parser, &candidate_value) < 0)
+				return -EINVAL;
+			if (++operations > 1)
+				return -EINVAL;
+			name = candidate;
+			value_pod = candidate_value;
+		}
+	}
+	if (operations == 0)
+		return 0;
+	if (this->started)
+		return -EBUSY;
+	if ((res = aravis_camera_find_feature(this->camera, name,
+			&feature_index)) < 0 ||
+			(res = aravis_camera_get_feature_info(this->camera, feature_index,
+			&info)) < 0)
+		return res;
+	if (!info.available)
+		return -ENODATA;
+	if (!info.writable)
+		return -EACCES;
+	if (info.changes_layout && this->port.n_buffers != 0)
+		return -EBUSY;
+	if ((res = parse_feature_value(info.kind, value_pod, &value)) < 0)
+		return res;
+	if (spa_streq(info.name, "PixelFormat")) {
+		const char *entry;
+		uint32_t format, bytes_per_pixel;
+
+		if (value.enumeration < 0 ||
+				(uint32_t)value.enumeration >= info.n_enum_entries ||
+				(entry = aravis_camera_get_feature_enum_entry(this->camera,
+					feature_index, (uint32_t)value.enumeration)) == NULL)
+			return -EINVAL;
+		if (map_pixel_format(entry, &format, &bytes_per_pixel) < 0)
+			return -ENOTSUP;
+	}
+	if ((res = aravis_camera_set_feature_value(this->camera, feature_index,
+			&value)) < 0)
+		return res;
+	if (info.changes_layout && (res = refresh_layout_params(this)) < 0)
+		return res;
+	this->params[0].flags ^= SPA_PARAM_INFO_SERIAL;
+	this->params[1].flags ^= SPA_PARAM_INFO_SERIAL;
+	this->info.change_mask |= SPA_NODE_CHANGE_MASK_PARAMS;
+	emit_node_info(this, false);
+	return 0;
 }
 
 static int impl_node_set_io(void *object SPA_UNUSED, uint32_t id SPA_UNUSED,
@@ -775,6 +946,12 @@ static int impl_init(const struct spa_handle_factory *factory SPA_UNUSED,
 	this->info = SPA_NODE_INFO_INIT();
 	this->info.max_output_ports = 1;
 	this->info.flags = SPA_NODE_FLAG_RT | SPA_NODE_FLAG_RTC_PROCESS;
+	this->params[0] = SPA_PARAM_INFO(SPA_PARAM_PropInfo,
+			SPA_PARAM_INFO_READ);
+	this->params[1] = SPA_PARAM_INFO(SPA_PARAM_Props,
+			SPA_PARAM_INFO_READWRITE);
+	this->info.params = this->params;
+	this->info.n_params = SPA_N_ELEMENTS(this->params);
 	configure_props(this, &options);
 	this->info.props = &this->props;
 	this->port.info_all = SPA_PORT_CHANGE_MASK_FLAGS |
