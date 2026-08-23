@@ -1,4 +1,5 @@
 egrabber_sources = [
+  'acquisition_key.cpp',
   'camera.cpp',
   'device.cpp',
   'feature.cpp',
@@ -23,6 +24,13 @@ egrabber_lib = shared_library(
 )
 
 if get_option('tests').allowed()
+  egrabber_acquisition_key_test = executable(
+    'spa-egrabber-acquisition-key-test',
+    ['test-acquisition-key.cpp', 'acquisition_key.cpp'],
+    dependencies: [spa_dep],
+  )
+  test('spa-egrabber-acquisition-key', egrabber_acquisition_key_test)
+
   egrabber_frame_layout_test = executable(
     'spa-egrabber-frame-layout-test',
     ['test-frame-layout.cpp', 'frame_layout.cpp'],
@@ -50,6 +58,13 @@ if get_option('tests').allowed()
     dependencies: [spa_dep],
   )
   test('spa-egrabber-timestamp-mapper', egrabber_timestamp_mapper_test)
+
+  egrabber_options_test = executable(
+    'spa-egrabber-options-test',
+    ['test-options.cpp', 'options.cpp'],
+    dependencies: [spa_dep],
+  )
+  test('spa-egrabber-options', egrabber_options_test)
 
   egrabber_factory_test = executable(
     'spa-egrabber-factory-test',

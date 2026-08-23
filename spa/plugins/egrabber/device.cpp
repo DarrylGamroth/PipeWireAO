@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <memory>
 #include <new>
+#include <stdexcept>
 #include <string>
 
 #include <spa/monitor/device.h>
@@ -38,6 +39,9 @@ struct impl {
 	std::string device_index;
 	std::string stream_index;
 	std::string buffer_count;
+	std::string acquisition_domain;
+	std::string acquisition_generation;
+	std::string acquisition_sequence_context;
 };
 
 void add_identity_items(const impl *self, struct spa_dict_item *items,
@@ -51,6 +55,16 @@ void add_identity_items(const impl *self, struct spa_dict_item *items,
 	ADD_ITEM(SPA_KEY_API_EGRABBER_STREAM_INDEX, self->stream_index.c_str());
 	ADD_ITEM(SPA_KEY_API_EGRABBER_BUFFER_COUNT, self->buffer_count.c_str());
 	ADD_ITEM(SPA_KEY_API_EGRABBER_CONTROL, self->options.control.c_str());
+	ADD_ITEM(SPA_KEY_API_EGRABBER_PROGRESSIVE,
+			egrabber_pipewire::progressive_policy_name(self->options.progressive));
+	if (self->options.acquisition_domain) {
+		ADD_ITEM(SPA_KEY_API_EGRABBER_ACQUISITION_DOMAIN,
+				self->acquisition_domain.c_str());
+		ADD_ITEM(SPA_KEY_API_EGRABBER_ACQUISITION_GENERATION,
+				self->acquisition_generation.c_str());
+		ADD_ITEM(SPA_KEY_API_EGRABBER_ACQUISITION_SEQUENCE_CONTEXT,
+				self->acquisition_sequence_context.c_str());
+	}
 	if (self->options.serial)
 		ADD_ITEM(SPA_KEY_API_EGRABBER_SERIAL, self->options.serial->c_str());
 	if (self->options.user_id)
@@ -62,7 +76,7 @@ void add_identity_items(const impl *self, struct spa_dict_item *items,
 
 void emit_info(impl *self)
 {
-	struct spa_dict_item device_items[18];
+	struct spa_dict_item device_items[24];
 	uint32_t n_device_items = 0;
 	add_identity_items(self, device_items, n_device_items);
 #define ADD_DEVICE_ITEM(key, value) \
@@ -87,7 +101,7 @@ void emit_info(impl *self)
 	info.props = &device_props;
 	spa_device_emit_info(&self->hooks, &info);
 
-	struct spa_dict_item node_items[16];
+	struct spa_dict_item node_items[24];
 	uint32_t n_node_items = 0;
 	add_identity_items(self, node_items, n_node_items);
 #define ADD_NODE_ITEM(key, value) \
@@ -186,7 +200,12 @@ int init(const struct spa_handle_factory *, struct spa_handle *handle,
 	spa_hook_list_init(&self->hooks);
 	self->device.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Device,
 			SPA_VERSION_DEVICE, &device_methods, self);
-	egrabber_pipewire::read_options(self->options, info);
+	try {
+		egrabber_pipewire::read_options(self->options, info);
+	} catch (const std::invalid_argument &) {
+		self->~impl();
+		return -EINVAL;
+	}
 	self->path = lookup(info, SPA_KEY_OBJECT_PATH);
 	self->name = lookup(info, SPA_KEY_DEVICE_NAME);
 	self->description = lookup(info, SPA_KEY_DEVICE_DESCRIPTION);
@@ -197,6 +216,13 @@ int init(const struct spa_handle_factory *, struct spa_handle *handle,
 	self->device_index = std::to_string(self->options.device_index);
 	self->stream_index = std::to_string(self->options.stream_index);
 	self->buffer_count = std::to_string(self->options.buffer_count);
+	if (self->options.acquisition_domain)
+		self->acquisition_domain = egrabber_pipewire::format_acquisition_domain(
+				*self->options.acquisition_domain);
+	self->acquisition_generation = std::to_string(
+			self->options.acquisition_generation);
+	self->acquisition_sequence_context = std::to_string(
+			self->options.acquisition_sequence_context);
 	return 0;
 }
 
