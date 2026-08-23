@@ -26,7 +26,6 @@ struct bgapi2_camera {
 	BGAPI2_Node *acquisition_stop;
 	BGAPI2_Node *acquisition_abort;
 	struct bgapi2_camera_info info;
-	BGAPI2_RESULT last_result;
 	bool system_open;
 	bool interface_open;
 	bool device_open;
@@ -34,9 +33,8 @@ struct bgapi2_camera {
 	bool acquiring;
 };
 
-static int fail(struct bgapi2_camera *camera, BGAPI2_RESULT result)
+static int fail(BGAPI2_RESULT result)
 {
-	camera->last_result = result;
 	switch (result) {
 	case BGAPI2_RESULT_ACCESS_DENIED:
 		return -EACCES;
@@ -58,11 +56,10 @@ static int fail(struct bgapi2_camera *camera, BGAPI2_RESULT result)
 	}
 }
 
-static int checked_result(struct bgapi2_camera *camera, BGAPI2_RESULT result)
+static int checked_result(struct bgapi2_camera *, BGAPI2_RESULT result)
 {
 	if (result != BGAPI2_RESULT_SUCCESS)
-		return fail(camera, result);
-	camera->last_result = BGAPI2_RESULT_SUCCESS;
+		return fail(result);
 	return 0;
 }
 
@@ -145,8 +142,11 @@ static int find_device(struct bgapi2_camera *camera,
 				camera->interface, &n_devices)) == 0 &&
 				options->device_index < n_devices &&
 				checked(camera, BGAPI2_Interface_GetDevice(camera->interface,
-				options->device_index, &camera->device)) == 0)
+				options->device_index, &camera->device)) == 0) {
+			camera->info.interface_index = index;
+			camera->info.device_index = options->device_index;
 			return 0;
+		}
 		close_interface(camera);
 	}
 	return -ENODEV;
@@ -201,6 +201,7 @@ int bgapi2_camera_open(struct bgapi2_camera **camera_ptr,
 			(res = checked(camera, BGAPI2_DataStream_Open(camera->stream))) < 0)
 		goto error;
 	camera->stream_open = true;
+	camera->info.stream_index = options->stream_index;
 	if ((res = checked(camera, BGAPI2_DataStream_SetNewBufferEventMode(
 			camera->stream, EVENTMODE_POLLING))) < 0 ||
 			(res = query_info(camera)) < 0 ||
@@ -242,11 +243,6 @@ const struct bgapi2_camera_info *bgapi2_camera_get_info(
 		const struct bgapi2_camera *camera)
 {
 	return camera == NULL ? NULL : &camera->info;
-}
-
-BGAPI2_RESULT bgapi2_camera_get_last_result(const struct bgapi2_camera *camera)
-{
-	return camera == NULL ? BGAPI2_RESULT_INVALID_HANDLE : camera->last_result;
 }
 
 int bgapi2_camera_announce(struct bgapi2_camera *camera, void *memory,
@@ -351,13 +347,10 @@ int bgapi2_camera_try_get_filled(struct bgapi2_camera *camera,
 	*buffer = NULL;
 	result = BGAPI2_CALL(BGAPI2_DataStream_GetFilledBuffer(
 			camera->stream, buffer, 0));
-	if (result == BGAPI2_RESULT_TIMEOUT) {
-		camera->last_result = result;
+	if (result == BGAPI2_RESULT_TIMEOUT)
 		return 0;
-	}
 	if (result != BGAPI2_RESULT_SUCCESS)
-		return fail(camera, result);
-	camera->last_result = result;
+		return fail(result);
 	return *buffer == NULL ? -EIO : 1;
 }
 
