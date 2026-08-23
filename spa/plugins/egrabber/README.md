@@ -143,10 +143,34 @@ heaptrack_print /tmp/pwao-egrabber-profile.zst \
   --flamegraph-cost-type allocations
 ```
 
-The larger obstacle is the empty RTC poll. `getPendingEventCount<Any>()`
-accounted for about 1.3 million transport allocation calls during the same
-eight-second run. It currently prevents strict BusySpin admission even before
-the remaining per-frame metadata queries and recycle mutex are considered.
+PipeWireAO `64301ed9c` removes that empty-poll obstacle. The RTC owner now calls
+the SDK's no-timeout `processEventFilter` overload, which returns normally when
+no event is queued and invokes the enabled callbacks synchronously when work is
+present. Callback exceptions are retained and rethrown after the vendor C
+callback returns; they do not unwind through C. No timeout, readiness query,
+helper thread, or private handoff remains.
+
+A comparable eight-second `heaptrack` run reduced allocations attributed to
+`process_event` from 1,276,059 to 1,053 and total test allocations from
+1,425,092 to 150,086. The remaining 1,053 calls occur on actual vendor event
+delivery and frame handling, not at empty-poll frequency. Three alternating
+`perf stat` runs compared `b3e3ff9b1` with `64301ed9c`, both GCC 14.2
+debug-optimized builds without LTO:
+
+| Median counter | Pending-count baseline | No-timeout callback | Change |
+| --- | ---: | ---: | ---: |
+| Task CPU | 1,014.45 ms | 640.00 ms | -36.9% |
+| Cycles | 4.296 billion | 2.604 billion | -39.4% |
+| Instructions | 9.933 billion | 4.627 billion | -53.4% |
+| Branches | 2.135 billion | 0.880 billion | -58.8% |
+| Context switches | 2,576 | 2,390 | -7.2% |
+| CPU migrations | 51 | 51 | unchanged |
+
+The environment was Linux 6.12.57 on an AMD Ryzen 7 6800H, one eight-core
+socket with SMT, one NUMA node, and the `amd-pstate-epp` `powersave` governor.
+Each run captured the same ten live frames. This experiment demonstrates
+allocation and CPU-work reduction for the polling implementation; it is not an
+open-loop frame-latency or tail-jitter qualification.
 
 The eGrabber CallbackOnDemand API exposes no readiness file descriptor. The
 plugin therefore has no honest EventFd or Hybrid readiness source and does not
@@ -170,9 +194,10 @@ readiness; this plugin currently uses its functional BusySpin profile only.
 - Qualify complete-frame DMA-BUF and SyncObj timeline behavior on supported
   Grablink/Coaxlink hardware. The connected Gigelink device cannot exercise
   this path.
-- Replace or bound the allocation-heavy CallbackOnDemand empty readiness probe,
-  remaining dynamic buffer-information calls, and recycle mutex before
-  admitting the eGrabber process function to a strict BusySpin deployment.
+- Remove or bound actual-event allocations from the vendor callback and dynamic
+  buffer-information paths, and remove the recycle mutex or prove it cannot
+  contend, before admitting the eGrabber process function to a strict BusySpin
+  deployment.
 - Keep the standalone application only as a physical Grablink/Coaxlink
   progressive and DMA-BUF behavior oracle until those paths are qualified in
   the SPA plugin.
