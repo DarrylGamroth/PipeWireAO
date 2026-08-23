@@ -166,6 +166,7 @@ int capture(const struct spa_handle_factory *factory)
 
 	const uint64_t deadline = monotonic_nsec() + 3 * SPA_NSEC_PER_SEC;
 	uint32_t frames = 0;
+	int64_t last_pts = SPA_TIME_INVALID;
 	while (frames < requested_frames) {
 		spa_assert_se(spa_node_process(node) == SPA_STATUS_OK);
 		uint64_t submission;
@@ -180,6 +181,10 @@ int capture(const struct spa_handle_factory *factory)
 		spa_assert_se(storage[id].chunk.size > 0);
 		spa_assert_se(storage[id].chunk.size <=
 				static_cast<uint32_t>(payload_size));
+		spa_assert_se(storage[id].header.pts != SPA_TIME_INVALID);
+		if (last_pts != SPA_TIME_INVALID)
+			spa_assert_se(storage[id].header.pts > last_pts);
+		last_pts = storage[id].header.pts;
 		spa_assert_se(spa_meta_acquisition_is_valid(&storage[id].metas[1]));
 		spa_assert_se(spa_io_buffers_latest_complete(&io, id) == 0);
 		frames++;
