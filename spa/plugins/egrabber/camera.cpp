@@ -29,7 +29,6 @@ using Euresys::NewBufferData;
 using Euresys::RemoteModule;
 using Euresys::StreamModule;
 using Euresys::UserMemory;
-using Euresys::UserMemoryArray;
 
 struct CameraSelection {
     Euresys::EGrabberCameraInfo camera;
@@ -186,6 +185,7 @@ public:
           selection_(select_camera(*discovery_, options)), grabber_(selection_),
           buffer_count_(options.buffer_count),
           progressive_supported_(supports_progressive_dma(options, selection_.identity)) {
+        discovery_.reset();
         configure_control(options);
         update_identity_from_control();
         synchronize_transport_layout();
@@ -199,7 +199,6 @@ public:
         refresh_buffer_requirements();
         try { host_memory_type_ = grabber_.getString<StreamModule>("MemoryType"); }
         catch (...) {}
-        pixel_byte_order_ = probe_pixel_byte_order();
         features_ = control_->features();
     }
 
@@ -210,7 +209,6 @@ public:
     std::size_t payload_size() const { return payload_size_; }
     std::size_t natural_line_pitch() const { return natural_line_pitch_; }
     const std::string &pixel_format() const { return pixel_format_; }
-    std::optional<PixelByteOrder> pixel_byte_order() const { return pixel_byte_order_; }
     const std::vector<Feature> &features() const { return features_; }
     const CameraIdentity &identity() const { return selection_.identity; }
     bool progressive_supported() const { return progressive_supported_; }
@@ -311,21 +309,6 @@ public:
     std::optional<std::size_t> buffer_offset_y(Buffer &buffer) {
         try { return buffer.getInfo<std::size_t>(grabber_, gc::BUFFER_INFO_YOFFSET); }
         catch (...) { return std::nullopt; }
-    }
-
-    std::optional<PixelByteOrder> buffer_byte_order(Buffer &buffer) {
-        try {
-            return decode_byte_order(buffer.getInfo<std::int32_t>(
-                grabber_, gc::BUFFER_INFO_PIXEL_ENDIANNESS));
-        } catch (...) { return std::nullopt; }
-    }
-
-    std::optional<PixelByteOrder> buffer_byte_order(const BufferIndexRange &range) {
-        std::lock_guard lock(mutex_);
-        try {
-            return decode_byte_order(grabber_.getBufferInfo<std::int32_t>(
-                range.indexAt(0), gc::BUFFER_INFO_PIXEL_ENDIANNESS));
-        } catch (...) { return std::nullopt; }
     }
 
     std::optional<std::uint64_t> timestamp_ns(Buffer &buffer) {
@@ -610,9 +593,6 @@ public:
                         std::numeric_limits<std::int32_t>::max()))
                     throw std::runtime_error(
                         "updated camera layout exceeds SPA integer limits");
-                if (gentl_.imageGetBytesPerPixel(pixel_format_) > 1 && !pixel_byte_order_)
-                    throw std::runtime_error(
-                        "could not determine the camera pixel byte order");
             }
         } catch (...) {
             if (allow_buffer_change && value_applied && restore) {
@@ -845,81 +825,6 @@ private:
         buffer_count_ = std::max(buffer_count_, announce_minimum_);
     }
 
-    static std::optional<PixelByteOrder> decode_byte_order(std::int32_t value) {
-        if (value == gc::PIXELENDIANNESS_LITTLE) return PixelByteOrder::little;
-        if (value == gc::PIXELENDIANNESS_BIG) return PixelByteOrder::big;
-        return std::nullopt;
-    }
-
-    std::optional<PixelByteOrder> probe_pixel_byte_order() {
-        if (gentl_.imageGetBytesPerPixel(pixel_format_) <= 1.0) return std::nullopt;
-        std::string original_memory_type;
-        try {
-            original_memory_type = grabber_.getString<StreamModule>("MemoryType");
-            if (!host_memory_type_.empty() && original_memory_type != host_memory_type_)
-                grabber_.setString<StreamModule>("MemoryType", host_memory_type_);
-        } catch (...) {}
-        struct RestoreMemoryType {
-            CallbackGrabber &grabber;
-            std::string value;
-            ~RestoreMemoryType() {
-                if (!value.empty()) {
-                    try { grabber.setString<StreamModule>("MemoryType", value); } catch (...) {}
-                }
-            }
-        } restore_memory_type{grabber_, original_memory_type};
-        const auto probe_buffer_size = payload_size_ +
-            (buffer_alignment_ - payload_size_ % buffer_alignment_) % buffer_alignment_;
-        std::vector<std::byte> storage(
-            probe_buffer_size * announce_minimum_ + buffer_alignment_ - 1);
-        auto address = reinterpret_cast<std::uintptr_t>(storage.data());
-        const auto remainder = address % buffer_alignment_;
-        if (remainder != 0) address += buffer_alignment_ - remainder;
-        const auto range = grabber_.announceAndQueue(UserMemoryArray(
-            UserMemory(reinterpret_cast<void *>(address),
-                       probe_buffer_size * announce_minimum_, nullptr),
-            probe_buffer_size));
-        std::optional<PixelByteOrder> result;
-        try {
-            result = decode_byte_order(grabber_.getBufferInfo<std::int32_t>(
-                range.indexAt(0), gc::BUFFER_INFO_PIXEL_ENDIANNESS));
-        } catch (...) {}
-        if (!result) {
-            const bool event_was_enabled = buffer_event_enabled_;
-            try {
-                if (!event_was_enabled) {
-                    grabber_.enableEvent<NewBufferData>();
-                    buffer_event_enabled_ = true;
-                }
-                grabber_.start(1);
-                auto data = grabber_.pop(1000);
-                Buffer buffer(data);
-                try {
-                    result = decode_byte_order(buffer.getInfo<std::int32_t>(
-                        grabber_, gc::BUFFER_INFO_PIXEL_ENDIANNESS));
-                } catch (...) {}
-                grabber_.stop();
-                if (!result)
-                    result = infer_unpacked_byte_order(pixel_format_,
-                        reinterpret_cast<const std::byte *>(address), payload_size_);
-                if (!event_was_enabled) {
-                    grabber_.disableEvent<NewBufferData>();
-                    buffer_event_enabled_ = false;
-                }
-            } catch (const std::exception &error) {
-                std::cerr << "Pixel byte-order probe failed: " << error.what() << '\n';
-                try { grabber_.stop(); } catch (...) {}
-                if (!event_was_enabled) {
-                    try { grabber_.disableEvent<NewBufferData>(); } catch (...) {}
-                    buffer_event_enabled_ = false;
-                }
-            }
-        }
-        try { grabber_.flushBuffers(gc::ACQ_QUEUE_ALL_DISCARD); } catch (...) {}
-        try { grabber_.revoke(range); } catch (...) {}
-        return result;
-    }
-
     void refresh_layout() {
         width_ = read_dimension("Width", grabber_.getWidth());
         height_ = read_dimension("Height", grabber_.getHeight());
@@ -929,7 +834,6 @@ private:
         pixel_format_ = grabber_.getPixelFormat();
         natural_line_pitch_ = width_ * gentl_.imageGetBytesPerPixel(pixel_format_);
         refresh_buffer_requirements();
-        pixel_byte_order_ = probe_pixel_byte_order();
     }
 
     const Feature *frame_rate_feature() const {
@@ -963,7 +867,6 @@ private:
     std::size_t announce_minimum_ = 2;
     std::size_t buffer_alignment_ = 1;
     std::string pixel_format_;
-    std::optional<PixelByteOrder> pixel_byte_order_;
     std::string host_memory_type_;
     bool progressive_supported_ = false;
     std::vector<Feature> features_;
@@ -987,9 +890,6 @@ std::size_t Camera::buffer_count() const { return impl_->buffer_count(); }
 std::size_t Camera::announce_minimum() const { return impl_->announce_minimum(); }
 std::size_t Camera::buffer_alignment() const { return impl_->buffer_alignment(); }
 const std::string &Camera::pixel_format() const { return impl_->pixel_format(); }
-std::optional<PixelByteOrder> Camera::pixel_byte_order() const {
-    return impl_->pixel_byte_order();
-}
 const std::vector<Feature> &Camera::features() const { return impl_->features(); }
 const CameraIdentity &Camera::identity() const { return impl_->identity(); }
 bool Camera::progressive_supported() const { return impl_->progressive_supported(); }
@@ -1017,13 +917,6 @@ std::optional<std::size_t> Camera::buffer_offset_x(Euresys::Buffer &buffer) {
 }
 std::optional<std::size_t> Camera::buffer_offset_y(Euresys::Buffer &buffer) {
     return impl_->buffer_offset_y(buffer);
-}
-std::optional<PixelByteOrder> Camera::buffer_byte_order(Euresys::Buffer &buffer) {
-    return impl_->buffer_byte_order(buffer);
-}
-std::optional<PixelByteOrder> Camera::buffer_byte_order(
-    const Euresys::BufferIndexRange &range) {
-    return impl_->buffer_byte_order(range);
 }
 std::optional<std::uint64_t> Camera::timestamp_ns(Euresys::Buffer &buffer) {
     return impl_->timestamp_ns(buffer);
