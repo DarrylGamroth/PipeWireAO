@@ -4,6 +4,7 @@
 #define SPA_API_IMPL	SPA_EXPORT
 #include <spa/buffer/alloc.h>
 #include <spa/buffer/buffer.h>
+#include <spa/buffer/image-source.h>
 #include <spa/buffer/type-info.h>
 #include <spa/control/control.h>
 #include <spa/control/type-info.h>
