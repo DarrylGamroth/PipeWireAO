@@ -235,6 +235,8 @@ static const struct spa_type_info spa_type_format[] = {
 	{ SPA_FORMAT_NDARRAY_layout, SPA_TYPE_Id, SPA_TYPE_INFO_FORMAT_NDARRAY_BASE "layout",
 		spa_type_ndarray_layout },
 	{ SPA_FORMAT_NDARRAY_rate, SPA_TYPE_Fraction, SPA_TYPE_INFO_FORMAT_NDARRAY_BASE "rate", NULL },
+	{ SPA_FORMAT_NDARRAY_schema, SPA_TYPE_String, SPA_TYPE_INFO_FORMAT_NDARRAY_BASE "schema", NULL },
+	{ SPA_FORMAT_NDARRAY_profile, SPA_TYPE_String, SPA_TYPE_INFO_FORMAT_NDARRAY_BASE "profile", NULL },
 
 	{ SPA_FORMAT_VIDEO_deviceId, SPA_TYPE_Bytes, SPA_TYPE_INFO_FORMAT_BASE "deviceId", NULL },
 	{ 0, 0, NULL, NULL },
