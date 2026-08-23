@@ -1130,17 +1130,13 @@ static int impl_node_process(void *object)
 	spa_return_val_if_fail(this != NULL, -EINVAL);
 	if (!this->started)
 		return SPA_STATUS_OK;
-	res = recycle_buffers(this);
-	if (res < 0)
-		return res;
-	changed = res > 0;
 	/* Observe a final prefix before consuming a completion that may already be
 	 * waiting in the callback SPSC. The deferred completion-info policy keeps
 	 * these buffer queries under the same RTC owner. */
 	res = poll_progressive(this);
 	if (res < 0)
 		return res;
-	changed = changed || res > 0;
+	changed = res > 0;
 	res = bgapi2_camera_try_get_completion(this->camera, &completion);
 	if (res < 0)
 		return res;
@@ -1150,6 +1146,13 @@ static int impl_node_process(void *object)
 			return res;
 		changed = true;
 	}
+	/* QueueBuffer is producer-controlled and may allocate. Return released
+	 * leases only after observing and publishing data that is already ready so
+	 * requeue jitter consumes pool headroom instead of preceding completion. */
+	res = recycle_buffers(this);
+	if (res < 0)
+		return res;
+	changed = changed || res > 0;
 	return changed ? SPA_STATUS_HAVE_DATA : SPA_STATUS_OK;
 }
 
