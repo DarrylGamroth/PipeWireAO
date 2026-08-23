@@ -2,6 +2,7 @@ bgapi2_sources = [
   'plugin.c',
   'source.c',
   'camera.cpp',
+  'params.c',
 ]
 
 bgapi2_dependencies = [spa_dep, bgapi2_dep]

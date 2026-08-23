@@ -9,7 +9,9 @@
 #include <spa/node/io.h>
 #include <spa/node/node.h>
 #include <spa/param/buffers.h>
+#include <spa/param/props.h>
 #include <spa/param/video/format-utils.h>
+#include <spa/pod/parser.h>
 #include <spa/support/plugin.h>
 
 #include "bgapi2.h"
@@ -19,7 +21,8 @@
 
 struct param_result {
 	uint32_t expected;
-	uint8_t storage[4096];
+	uint8_t *storage;
+	size_t capacity;
 	struct spa_pod *param;
 };
 
@@ -47,9 +50,36 @@ static void on_result(void *data, int seq SPA_UNUSED, int res,
 	if (params->id != capture->expected || params->param == NULL)
 		return;
 	size = SPA_POD_SIZE(params->param);
-	spa_assert_se(size <= sizeof(capture->storage));
+	if (size > capture->capacity) {
+		capture->storage = realloc(capture->storage, size);
+		spa_assert_se(capture->storage != NULL);
+		capture->capacity = size;
+	}
 	memcpy(capture->storage, params->param, size);
 	capture->param = (struct spa_pod *)capture->storage;
+}
+
+static bool props_have_values(struct spa_pod *props)
+{
+	struct spa_pod_object *object = (struct spa_pod_object *)props;
+	struct spa_pod_prop *property;
+
+	SPA_POD_OBJECT_FOREACH(object, property) {
+		struct spa_pod_parser parser;
+		struct spa_pod_frame frame;
+		const char *name = NULL;
+		struct spa_pod *value = NULL;
+
+		if (property->key != SPA_PROP_params)
+			continue;
+		spa_pod_parser_pod(&parser, &property->value);
+		if (spa_pod_parser_push_struct(&parser, &frame) < 0)
+			return false;
+		return spa_pod_parser_get_string(&parser, &name) == 0 &&
+				spa_pod_parser_get_pod(&parser, &value) == 0 &&
+				name != NULL && value != NULL;
+	}
+	return false;
 }
 
 static const struct spa_node_events node_events = {
@@ -64,6 +94,16 @@ static struct spa_pod *enum_one(struct spa_node *node,
 	capture->param = NULL;
 	spa_assert_se(spa_node_port_enum_params(node, 1, SPA_DIRECTION_OUTPUT, 0,
 			id, 0, 1, NULL) == 0);
+	spa_assert_se(capture->param != NULL);
+	return capture->param;
+}
+
+static struct spa_pod *enum_node_one(struct spa_node *node,
+		struct param_result *capture, uint32_t id)
+{
+	capture->expected = id;
+	capture->param = NULL;
+	spa_assert_se(spa_node_enum_params(node, 1, id, 0, 1, NULL) == 0);
 	spa_assert_se(capture->param != NULL);
 	return capture->param;
 }
@@ -123,7 +163,8 @@ static int capture(const struct spa_handle_factory *factory,
 	struct spa_video_info_raw video = { 0 };
 	struct spa_command start = SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Start);
 	struct spa_command pause = SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Pause);
-	struct spa_pod *format, *buffers_param;
+	struct spa_pod *format, *buffers_param, *prop_info, *props;
+	const char *property_name = NULL;
 	uint64_t deadline;
 	int64_t last_pts = SPA_TIME_INVALID;
 	int32_t payload_size = 0;
@@ -141,6 +182,13 @@ static int capture(const struct spa_handle_factory *factory,
 			(void **)&node) == 0);
 	spa_assert_se(spa_node_add_listener(node, &listener, &node_events,
 			&params) == 0);
+	prop_info = enum_node_one(node, &params, SPA_PARAM_PropInfo);
+	spa_assert_se(spa_pod_parse_object(prop_info, SPA_TYPE_OBJECT_PropInfo, NULL,
+			SPA_PROP_INFO_name, SPA_POD_String(&property_name)) >= 0);
+	spa_assert_se(property_name != NULL &&
+			strncmp(property_name, "genicam.", 8) == 0);
+	props = enum_node_one(node, &params, SPA_PARAM_Props);
+	spa_assert_se(props_have_values(props));
 	format = enum_one(node, &params, SPA_PARAM_EnumFormat);
 	spa_assert_se(spa_node_port_set_param(node, SPA_DIRECTION_OUTPUT, 0,
 			SPA_PARAM_Format, 0, format) == 0);
@@ -196,6 +244,7 @@ static int capture(const struct spa_handle_factory *factory,
 	spa_hook_remove(&listener);
 	spa_assert_se(handle->clear(handle) == 0);
 	free(handle);
+	free(params.storage);
 	for (i = 0; i < REQUESTED_BUFFERS; i++)
 		free(storage[i].payload);
 	return 0;

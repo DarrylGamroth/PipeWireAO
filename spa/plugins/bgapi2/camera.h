@@ -57,6 +57,38 @@ struct bgapi2_camera_completion {
 	int result;
 };
 
+enum bgapi2_feature_kind {
+	BGAPI2_FEATURE_BOOLEAN,
+	BGAPI2_FEATURE_INTEGER,
+	BGAPI2_FEATURE_FLOATING,
+	BGAPI2_FEATURE_ENUMERATION,
+	BGAPI2_FEATURE_STRING,
+	BGAPI2_FEATURE_COMMAND,
+};
+
+struct bgapi2_feature_info {
+	const char *name;
+	const char *property_name;
+	const char *description;
+	enum bgapi2_feature_kind kind;
+	uint32_t n_enum_entries;
+	bool available;
+	bool readable;
+	bool writable;
+	bool changes_layout;
+};
+
+struct bgapi2_feature_value {
+	enum bgapi2_feature_kind kind;
+	union {
+		bool boolean;
+		int64_t integer;
+		double floating;
+		int32_t enumeration;
+		const char *string;
+	};
+};
+
 struct bgapi2_camera;
 
 /* Discovery, feature lookup, and teardown are control-path operations. */
@@ -65,6 +97,20 @@ int bgapi2_camera_open(struct bgapi2_camera **camera,
 void bgapi2_camera_close(struct bgapi2_camera *camera);
 const struct bgapi2_camera_info *bgapi2_camera_get_info(
 		const struct bgapi2_camera *camera);
+
+/* GenICam discovery and feature access are stopped control-path operations. */
+uint32_t bgapi2_camera_get_feature_count(const struct bgapi2_camera *camera);
+int bgapi2_camera_get_feature_info(struct bgapi2_camera *camera,
+		uint32_t index, struct bgapi2_feature_info *info);
+const char *bgapi2_camera_get_feature_enum_entry(
+		const struct bgapi2_camera *camera, uint32_t index,
+		uint32_t entry_index);
+int bgapi2_camera_get_feature_value(struct bgapi2_camera *camera,
+		uint32_t index, struct bgapi2_feature_value *value);
+int bgapi2_camera_get_feature_integer_range(struct bgapi2_camera *camera,
+		uint32_t index, int64_t *minimum, int64_t *maximum);
+int bgapi2_camera_get_feature_float_range(struct bgapi2_camera *camera,
+		uint32_t index, double *minimum, double *maximum);
 
 /* Buffer creation and revocation are pool-lifecycle operations. */
 int bgapi2_camera_announce(struct bgapi2_camera *camera, void *memory,
