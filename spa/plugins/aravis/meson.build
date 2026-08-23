@@ -53,4 +53,10 @@ if get_option('tests').allowed()
     is_parallel: false,
     timeout: 15,
   )
+
+  executable(
+    'spa-aravis-completion-benchmark',
+    ['benchmark-completion.c', 'camera.c'],
+    dependencies: [spa_dep, aravis_dep],
+  )
 endif
