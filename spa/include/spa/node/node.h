@@ -67,6 +67,9 @@ struct spa_node_info {
 							  *  immediately produce or consume data
 							  *  but might offload the work to a worker
 							  *  thread. */
+#define SPA_NODE_FLAG_RTC_PROCESS		(1u<<7)	/**< process is exclusively owned by a
+							  *  PipeWireAO RTC data loop and must not
+							  *  be invoked by the graph scheduler. */
 	uint64_t flags;
 	struct spa_dict *props;			/**< extra node properties */
 	struct spa_param_info *params;		/**< parameter information */

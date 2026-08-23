@@ -782,6 +782,7 @@ struct pw_impl_node {
 	char **link_groups;		/** groups this node is linked to */
 	char **sync_groups;		/** sync groups this node is in */
 	uint64_t spa_flags;
+	unsigned int spa_flags_initialized:1;
 
 	unsigned int registered:1;
 	unsigned int active:1;		/**< if the node is active */
