@@ -221,6 +221,10 @@ option('bgapi2-prefix',
        description: 'Baumer GAPI2 SDK installation prefix',
        type: 'string',
        value: '/opt/baumer-gapi-sdk-c')
+option('aravis',
+       description: 'Enable Aravis GenTL SPA plugin integration',
+       type: 'feature',
+       value: 'disabled')
 option('videoconvert',
        description: 'Enable videoconvert spa plugin integration',
        type: 'feature',

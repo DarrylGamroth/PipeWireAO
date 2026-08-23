@@ -93,6 +93,15 @@ if bgapi2_found
   subdir('bgapi2')
 endif
 
+aravis_dep = dependency(
+  'aravis-0.10',
+  required: get_option('aravis'),
+)
+summary({'Aravis GenTL': aravis_dep.found()}, bool_yn: true, section: 'Backend')
+if aravis_dep.found()
+  subdir('aravis')
+endif
+
 subdir('aec')
 plugin_dependencies = []
 if get_option('audioconvert').allowed()
