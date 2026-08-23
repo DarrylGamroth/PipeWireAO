@@ -46,9 +46,8 @@ int main(int argc, char *argv[])
 	struct bgapi2_camera *camera = NULL;
 	const struct bgapi2_camera_info *info;
 	struct test_slot slots[N_BUFFERS] = { 0 };
-	struct bgapi2_frame_info frame;
-	BGAPI2_Buffer *filled = NULL;
-	void *user_data = NULL;
+	struct bgapi2_camera_completion completion;
+	const struct bgapi2_frame_info *frame;
 	uint64_t deadline;
 	uint32_t i;
 	int res;
@@ -97,26 +96,24 @@ int main(int argc, char *argv[])
 	}
 	deadline = monotonic_nsec() + 2000000000u;
 	do {
-		res = bgapi2_camera_try_get_filled(camera, &filled);
+		res = bgapi2_camera_try_get_completion(camera, &completion);
 		if (res == 0)
 			usleep(1000);
 	} while (res == 0 && monotonic_nsec() < deadline);
-	if (res != 1 || filled == NULL ||
-			bgapi2_camera_get_user_data(camera, filled, &user_data) < 0 ||
-			user_data == NULL ||
-			bgapi2_camera_get_frame_info(camera, filled, &frame) < 0 ||
-			frame.size_filled == 0 || frame.width != info->width ||
-			frame.height != info->height || !frame.image_present ||
-			frame.incomplete) {
+	frame = &completion.frame;
+	if (res != 1 || completion.result < 0 || completion.buffer == NULL ||
+			completion.user_data == NULL || frame->size_filled == 0 ||
+			frame->width != info->width || frame->height != info->height ||
+			frame->incomplete) {
 		fprintf(stderr, "camera did not deliver a valid external buffer\n");
 		release_slots(camera, slots);
 		bgapi2_camera_close(camera);
 		return EXIT_FAILURE;
 	}
 	printf("frame %llu: %llu bytes in slot %td\n",
-			(unsigned long long)frame.frame_id,
-			(unsigned long long)frame.size_filled,
-			(struct test_slot *)user_data - slots);
+			(unsigned long long)frame->frame_id,
+			(unsigned long long)frame->size_filled,
+			(struct test_slot *)completion.user_data - slots);
 	release_slots(camera, slots);
 	bgapi2_camera_close(camera);
 	return EXIT_SUCCESS;
