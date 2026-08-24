@@ -796,6 +796,20 @@ struct pw_data_loop *pw_context_get_data_loop(struct pw_context *context)
 	return acquire_data_loop(impl, NULL, NULL);
 }
 
+struct pw_data_loop *pw_context_find_data_loop(struct pw_context *context,
+		struct pw_loop *loop)
+{
+	struct impl *impl = SPA_CONTAINER_OF(context, struct impl, this);
+	uint32_t i;
+
+	for (i = 0; i < impl->n_data_loops; i++) {
+		if (impl->data_loops[i].impl != NULL &&
+		    impl->data_loops[i].impl->loop == loop)
+			return impl->data_loops[i].impl;
+	}
+	return NULL;
+}
+
 SPA_EXPORT
 struct pw_loop *pw_context_acquire_loop(struct pw_context *context, const struct spa_dict *props)
 {

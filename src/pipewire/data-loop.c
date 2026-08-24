@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <limits.h>
+#include <string.h>
 #include <sys/resource.h>
 
 #include "pipewire/log.h"
@@ -79,6 +80,46 @@ static void *do_loop(void *user_data)
 	return NULL;
 }
 
+static void *do_poll_loop(void *user_data)
+{
+	struct pw_data_loop *this = user_data;
+	struct pw_data_loop_source *source;
+	int res;
+	bool work;
+
+	pw_log_debug("%p: enter polling thread", this);
+	pw_loop_enter(this->loop);
+
+	while (SPA_LIKELY(SPA_ATOMIC_LOAD(this->running))) {
+		work = false;
+		spa_list_for_each(source, &this->poll_source_list, link) {
+			if (!source->enabled)
+				continue;
+			res = source->process(source->data);
+			if (SPA_UNLIKELY(res < 0))
+				source->enabled = false;
+			else if (res > 0)
+				work = true;
+		}
+
+		/* Let administrative callers take the loop lock between bounded
+		 * scans. Uncontended pthread mutex operations remain in userspace. */
+		if (!work)
+			pw_data_loop_relax();
+		res = spa_loop_control_yield(this->loop->control);
+		if (SPA_UNLIKELY(res < 0)) {
+			pw_log_error("%p: polling loop yield failed: %s",
+					this, spa_strerror(res));
+			SPA_ATOMIC_STORE(this->running, false);
+			break;
+		}
+	}
+
+	pw_log_debug("%p: leave polling thread", this);
+	pw_loop_leave(this->loop);
+	return NULL;
+}
+
 static void *run_thread(void *data)
 {
 	struct pw_data_loop *this = data;
@@ -126,6 +167,7 @@ static struct pw_data_loop *loop_new(struct pw_loop *loop, const struct spa_dict
 
 	pw_log_debug("%p: new", this);
 	spa_hook_list_init(&this->listener_list);
+	spa_list_init(&this->poll_source_list);
 
 	if (loop == NULL) {
 		loop = pw_loop_new(props);
@@ -162,6 +204,25 @@ static struct pw_data_loop *loop_new(struct pw_loop *loop, const struct spa_dict
 		}
 		if ((str = spa_dict_lookup(props, SPA_KEY_THREAD_RESET_ON_FORK)) != NULL)
 			this->reset_on_fork = spa_atob(str);
+		if ((str = spa_dict_lookup(props, PW_KEY_LOOP_IDLE)) != NULL) {
+			if (spa_streq(str, "busy-spin")) {
+				if (!spa_interface_callback_check(&this->loop->control->iface,
+						struct spa_loop_control_methods, yield, 3)) {
+					res = -ENOTSUP;
+					pw_log_error("loop does not support polling lock handoff");
+					goto error_free;
+				}
+				this->polling = true;
+				this->cancel = false;
+				this->wake_on_stop = false;
+				this->run = do_poll_loop;
+				this->run_data = this;
+			} else if (!spa_streq(str, "eventfd")) {
+				res = -EINVAL;
+				pw_log_error("invalid %s value '%s'", PW_KEY_LOOP_IDLE, str);
+				goto error_free;
+			}
+		}
 	}
 	if (class == NULL)
 		class = this->rt_prio != 0 ? "data.rt" : "data";
@@ -442,4 +503,42 @@ int pw_data_loop_set_rt_policy(struct pw_data_loop *loop,
 bool pw_data_loop_is_running(struct pw_data_loop *loop)
 {
 	return loop != NULL && SPA_ATOMIC_LOAD(loop->running);
+}
+
+bool pw_data_loop_is_polling(struct pw_data_loop *loop)
+{
+	return loop != NULL && loop->polling;
+}
+
+int pw_data_loop_add_poll_source(struct pw_data_loop *loop,
+		struct pw_data_loop_source *source)
+{
+	/* The caller owns loop->loop, or the data-loop thread is stopped. */
+	if (loop == NULL || source == NULL || source->process == NULL)
+		return -EINVAL;
+	if (!loop->polling)
+		return -ENOTSUP;
+	if (source->added)
+		return -EEXIST;
+
+	spa_list_append(&loop->poll_source_list, &source->link);
+	source->enabled = true;
+	source->added = true;
+	return 0;
+}
+
+int pw_data_loop_remove_poll_source(struct pw_data_loop *loop,
+		struct pw_data_loop_source *source)
+{
+	/* The caller owns loop->loop, or the data-loop thread is stopped. */
+	if (loop == NULL || source == NULL)
+		return -EINVAL;
+	if (!source->added)
+		return 0;
+
+	source->enabled = false;
+	spa_list_remove(&source->link);
+	spa_list_init(&source->link);
+	source->added = false;
+	return 0;
 }
