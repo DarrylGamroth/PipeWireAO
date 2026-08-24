@@ -20,11 +20,14 @@
 #include <spa/param/props.h>
 #include <spa/param/video/format-utils.h>
 #include <spa/pod/parser.h>
+#include <spa/support/log-impl.h>
 #include <spa/support/plugin.h>
 
 #include "egrabber.hpp"
 
 namespace {
+
+SPA_LOG_IMPL(logger);
 
 constexpr uint32_t requested_buffers = 8;
 constexpr uint32_t requested_frames = 10;
@@ -161,13 +164,22 @@ uint64_t monotonic_nsec()
 	return static_cast<uint64_t>(now.tv_sec) * SPA_NSEC_PER_SEC + now.tv_nsec;
 }
 
-int capture(const struct spa_handle_factory *factory)
+int capture(const struct spa_handle_factory *factory, const char *producer)
 {
-	const size_t size = factory->get_size(factory, nullptr);
+	const struct spa_dict_item item = SPA_DICT_ITEM_INIT(
+			SPA_KEY_API_EGRABBER_PRODUCER, producer == nullptr ? "" : producer);
+	const struct spa_dict info = SPA_DICT_INIT(&item,
+			producer == nullptr ? 0u : 1u);
+	const struct spa_dict *factory_info = producer == nullptr ? nullptr : &info;
+	const struct spa_support support[] = {
+		SPA_SUPPORT_INIT(SPA_TYPE_INTERFACE_Log, &logger.log),
+	};
+	const size_t size = factory->get_size(factory, factory_info);
 	std::unique_ptr<void, decltype(&free)> memory(calloc(1, size), free);
 	spa_assert_se(memory != nullptr);
 	auto *handle = static_cast<struct spa_handle *>(memory.get());
-	const int initialized = factory->init(factory, handle, nullptr, nullptr, 0);
+	const int initialized = factory->init(factory, handle, factory_info,
+			support, SPA_N_ELEMENTS(support));
 	if (initialized < 0)
 		return 77;
 
@@ -327,7 +339,7 @@ void reject_required_progressive_on_gigelink(
 
 int main(int argc, char **argv)
 {
-	spa_assert_se(argc == 2);
+	spa_assert_se(argc == 2 || argc == 3);
 	void *library = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
 	spa_assert_se(library != nullptr);
 	auto enumerate = reinterpret_cast<spa_handle_factory_enum_func_t>(
@@ -339,8 +351,9 @@ int main(int argc, char **argv)
 			!spa_streq(factory->name, SPA_NAME_API_EGRABBER_SOURCE))
 		factory = nullptr;
 	spa_assert_se(factory != nullptr);
-	const int res = capture(factory);
-	if (res == 0)
+	const char *producer = argc == 3 ? argv[2] : nullptr;
+	const int res = capture(factory, producer);
+	if (res == 0 && producer == nullptr)
 		reject_required_progressive_on_gigelink(factory);
 	spa_assert_se(dlclose(library) == 0);
 	return res;
