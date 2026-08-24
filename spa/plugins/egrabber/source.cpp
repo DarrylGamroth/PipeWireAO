@@ -1566,10 +1566,19 @@ int init(const struct spa_handle_factory *, struct spa_handle *handle,
 		self->video_format = video_format(*self->camera);
 		if (const auto rate = self->camera->frame_rate(); rate && *rate > 0.0)
 			self->frame_rate = frame_rate(*rate);
-	} catch (const std::invalid_argument &) {
+	} catch (const std::invalid_argument &error) {
+		spa_log_error(self->log, "could not initialize eGrabber source: %s",
+				error.what());
 		self->~impl();
 		return -EINVAL;
+	} catch (const std::exception &error) {
+		spa_log_error(self->log, "could not initialize eGrabber source: %s",
+				error.what());
+		self->~impl();
+		return -EIO;
 	} catch (...) {
+		spa_log_error(self->log,
+				"could not initialize eGrabber source: unknown exception");
 		self->~impl();
 		return -EIO;
 	}
