@@ -11,11 +11,13 @@
 #include <unistd.h>
 
 #include <pipewire/pipewire.h>
+#include <pipewire/impl-link.h>
 #include <pipewire/impl-module.h>
 #include <pipewire/private.h>
 #include <pipewire/thread.h>
 
 #include <spa/node/utils.h>
+#include <spa/param/video/format-utils.h>
 #include <spa/utils/atomic.h>
 
 struct test_thread_utils {
@@ -487,6 +489,27 @@ static void wait_for_node_state(struct fixture *fixture,
 	}
 }
 
+static void wait_for_link_prepared(struct fixture *fixture,
+		struct pw_impl_link *link)
+{
+	struct timespec start, now;
+	uint64_t elapsed;
+
+	spa_assert_se(clock_gettime(CLOCK_MONOTONIC, &start) == 0);
+	while (!link->prepared) {
+		struct pw_loop *loop = pw_main_loop_get_loop(fixture->main_loop);
+
+		pw_loop_enter(loop);
+		pw_loop_iterate(loop, 0);
+		pw_loop_leave(loop);
+		sched_yield();
+		spa_assert_se(clock_gettime(CLOCK_MONOTONIC, &now) == 0);
+		elapsed = (uint64_t)(now.tv_sec - start.tv_sec) * SPA_NSEC_PER_SEC +
+			(uint64_t)(now.tv_nsec - start.tv_nsec);
+		spa_assert_se(elapsed < 2 * SPA_NSEC_PER_SEC);
+	}
+}
+
 static struct pw_impl_node *create_synthetic_node(struct fixture *fixture,
 		struct synthetic_rtc_node *synthetic, int process_result)
 {
@@ -647,6 +670,159 @@ static void test_rtc_port_node_waits_for_prepared_link(void)
 	fixture_clear(&fixture);
 }
 
+struct final_link_observation {
+	struct pw_impl_node *node;
+	uint32_t *processing;
+	uint32_t destroys;
+	uint32_t rtc_running;
+	uint32_t processing_on_destroy;
+};
+
+static uint32_t *final_link_processing;
+
+static int final_link_process(void *data)
+{
+	spa_assert_se(final_link_processing != NULL);
+	SPA_ATOMIC_INC(*final_link_processing);
+	usleep(20000);
+	SPA_ATOMIC_DEC(*final_link_processing);
+	return SPA_STATUS_OK;
+}
+
+static void final_link_destroyed(void *data)
+{
+	struct final_link_observation *observation = data;
+
+	SPA_ATOMIC_INC(observation->destroys);
+	if (observation->node->rtc_loop != NULL &&
+			pw_rtc_data_loop_is_running(observation->node->rtc_loop))
+		SPA_ATOMIC_STORE(observation->rtc_running, true);
+	if (SPA_ATOMIC_LOAD(*observation->processing) != 0)
+		SPA_ATOMIC_STORE(observation->processing_on_destroy, true);
+}
+
+static const struct pw_impl_link_events final_link_events = {
+	PW_VERSION_IMPL_LINK_EVENTS,
+	.destroy = final_link_destroyed,
+};
+
+static void test_rtc_final_link_quiesce(void)
+{
+	struct spa_video_info_raw info = {
+		.format = SPA_VIDEO_FORMAT_GRAY16_LE,
+		.size = SPA_RECTANGLE(64, 64),
+		.framerate = SPA_FRACTION(1000, 1),
+	};
+	struct fixture fixture;
+	uint32_t processing = 0;
+	struct final_link_observation first_observation = {
+		.processing = &processing,
+	};
+	struct final_link_observation final_observation = {
+		.processing = &processing,
+	};
+	struct pw_impl_module *scheduler;
+	struct pw_impl_node *source;
+	struct pw_impl_port *output_port, *input_port[2];
+	struct pw_impl_link *link[2];
+	struct pw_core *core;
+	struct pw_stream *input[2];
+	struct spa_handle *handle;
+	struct spa_node *implementation;
+	struct spa_node_methods test_methods;
+	struct spa_hook link_listener[2];
+	struct spa_pod_builder builder;
+	struct spa_pod *format;
+	const struct spa_pod *params[1];
+	uint8_t pod_buffer[256];
+	uint32_t i;
+
+	fixture_init(&fixture, true);
+	scheduler = pw_context_load_module(fixture.context,
+			"libpipewire-module-scheduler-v1", NULL, NULL);
+	spa_assert_se(scheduler != NULL);
+	core = pw_context_connect_self(fixture.context, NULL, 0);
+	spa_assert_se(core != NULL);
+
+	handle = pw_load_spa_handle("test/libspa-test", "test.ao-imagesrc",
+			NULL, 0, NULL);
+	spa_assert_se(handle != NULL);
+	spa_assert_se(spa_handle_get_interface(handle, SPA_TYPE_INTERFACE_Node,
+			(void **)&implementation) == 0);
+	test_methods = *(const struct spa_node_methods *)
+			implementation->iface.cb.funcs;
+	test_methods.process = final_link_process;
+	implementation->iface.cb.funcs = &test_methods;
+	source = pw_context_create_node(fixture.context,
+			pw_properties_new(PW_KEY_NODE_NAME, "rtc-final-link-source", NULL), 0);
+	spa_assert_se(source != NULL);
+	spa_assert_se(pw_impl_node_set_implementation(source, implementation) == 0);
+	spa_assert_se(pw_impl_node_register(source, NULL) == 0);
+
+	output_port = pw_impl_node_find_port(source, PW_DIRECTION_OUTPUT, 0);
+	spa_assert_se(output_port != NULL);
+	final_link_processing = &processing;
+	for (i = 0; i < SPA_N_ELEMENTS(input); i++) {
+		spa_pod_builder_init(&builder, pod_buffer, sizeof(pod_buffer));
+		format = spa_format_video_raw_build(&builder,
+				SPA_PARAM_EnumFormat, &info);
+		spa_assert_se(format != NULL);
+		input[i] = pw_stream_new(core, "rtc-final-link-input", NULL);
+		spa_assert_se(input[i] != NULL);
+		params[0] = format;
+		spa_assert_se(pw_stream_connect(input[i], PW_DIRECTION_INPUT,
+				PW_ID_ANY,
+				PW_STREAM_FLAG_NO_CONVERT |
+				PW_STREAM_FLAG_BUFFER_LATEST,
+				params, SPA_N_ELEMENTS(params)) == 0);
+		spa_assert_se(pw_impl_node_register(input[i]->node, NULL) == 0);
+		input_port[i] = pw_impl_node_find_port(input[i]->node,
+				PW_DIRECTION_INPUT, 0);
+		spa_assert_se(input_port[i] != NULL);
+		link[i] = pw_context_create_link(fixture.context, output_port,
+				input_port[i], NULL, NULL, 0);
+		spa_assert_se(link[i] != NULL);
+		spa_assert_se(pw_impl_link_register(link[i], NULL) == 0);
+		spa_assert_se(pw_impl_node_set_active(input[i]->node, true) == 0);
+		wait_for_link_prepared(&fixture, link[i]);
+		spa_assert_se(pw_stream_buffer_latest_worker_begin(input[i]) == 0);
+		if (i == 0) {
+			spa_assert_se(pw_impl_node_set_active(source, true) == 0);
+			wait_for_node_state(&fixture, source, PW_NODE_STATE_RUNNING);
+		}
+	}
+	spa_assert_se(source->rtc_loop != NULL);
+	spa_assert_se(pw_rtc_data_loop_is_running(source->rtc_loop));
+	wait_until_at_least(&processing, 1);
+
+	first_observation.node = source;
+	pw_impl_link_add_listener(link[0], &link_listener[0], &final_link_events,
+			&first_observation);
+	pw_impl_link_destroy(link[0]);
+	spa_assert_se(SPA_ATOMIC_LOAD(first_observation.destroys) == 1);
+	spa_assert_se(SPA_ATOMIC_LOAD(first_observation.rtc_running) == 1);
+	spa_assert_se(pw_rtc_data_loop_is_running(source->rtc_loop));
+	spa_assert_se(pw_stream_buffer_latest_worker_end(input[0]) == 0);
+
+	wait_until_at_least(&processing, 1);
+	final_observation.node = source;
+	pw_impl_link_add_listener(link[1], &link_listener[1], &final_link_events,
+			&final_observation);
+	pw_impl_link_destroy(link[1]);
+	spa_assert_se(SPA_ATOMIC_LOAD(final_observation.destroys) == 1);
+	spa_assert_se(SPA_ATOMIC_LOAD(final_observation.rtc_running) == 0);
+	spa_assert_se(SPA_ATOMIC_LOAD(final_observation.processing_on_destroy) == 0);
+	wait_for_node_state(&fixture, source, PW_NODE_STATE_IDLE);
+
+	spa_assert_se(pw_stream_buffer_latest_worker_end(input[1]) == 0);
+	pw_stream_destroy(input[0]);
+	pw_stream_destroy(input[1]);
+	pw_impl_node_destroy(source);
+	final_link_processing = NULL;
+	spa_assert_se(pw_unload_spa_handle(handle) == 0);
+	fixture_clear(&fixture);
+}
+
 int main(int argc, char *argv[])
 {
 	pw_init(&argc, &argv);
@@ -661,6 +837,7 @@ int main(int argc, char *argv[])
 	test_rtc_node_requires_thread_utils();
 	test_rtc_node_terminal_process_error();
 	test_rtc_port_node_waits_for_prepared_link();
+	test_rtc_final_link_quiesce();
 
 	pw_deinit();
 	return 0;
