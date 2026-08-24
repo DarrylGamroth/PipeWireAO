@@ -76,6 +76,7 @@ extern "C" {
 #define PW_KEY_LOOP_CLASS		"loop.class"		/**< the classes this loop handles, array of strings */
 #define PW_KEY_LOOP_RT_PRIO		"loop.rt-prio"		/**< realtime priority of the loop */
 #define PW_KEY_LOOP_CANCEL		"loop.cancel"		/**< if the loop can be canceled */
+#define PW_KEY_LOOP_IDLE		"loop.idle"		/**< idle policy, one of "eventfd" or "busy-spin" */
 
 /* context */
 #define PW_KEY_CONTEXT_PROFILE_MODULES	"context.profile.modules"	/**< a context profile for modules, deprecated */
