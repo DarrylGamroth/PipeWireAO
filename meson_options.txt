@@ -205,22 +205,6 @@ option('libcamera',
        description: 'Enable libcamera spa plugin integration',
        type: 'feature',
        value: 'auto')
-option('egrabber',
-       description: 'Enable Euresys eGrabber SPA plugin integration',
-       type: 'feature',
-       value: 'disabled')
-option('egrabber-prefix',
-       description: 'Euresys eGrabber SDK installation prefix',
-       type: 'string',
-       value: '/opt/euresys/egrabber')
-option('bgapi2',
-       description: 'Enable Baumer GAPI2 SPA plugin integration',
-       type: 'feature',
-       value: 'disabled')
-option('bgapi2-prefix',
-       description: 'Baumer GAPI2 SDK installation prefix',
-       type: 'string',
-       value: '/opt/baumer-gapi-sdk-c')
 option('aravis',
        description: 'Enable Aravis GenTL SPA plugin integration',
        type: 'feature',
