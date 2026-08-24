@@ -1549,6 +1549,48 @@ static uint32_t port_count_buffer_latest_links(struct pw_impl_port *port)
 	return count;
 }
 
+static bool rtc_node_has_other_runnable_link(struct pw_impl_node *node,
+		struct pw_impl_link *removed)
+{
+	struct pw_impl_port *port;
+	struct pw_impl_link *link;
+
+	spa_list_for_each(port, &node->output_ports, link) {
+		spa_list_for_each(link, &port->links, output_link) {
+			if (link != removed && !link->destroyed && link->prepared &&
+					link->input != NULL && link->input->node->active)
+				return true;
+		}
+	}
+	spa_list_for_each(port, &node->input_ports, link) {
+		spa_list_for_each(link, &port->links, input_link) {
+			if (link != removed && !link->destroyed && link->prepared &&
+					link->output != NULL && link->output->node->active)
+				return true;
+		}
+	}
+	return false;
+}
+
+static void quiesce_final_rtc_link(struct pw_impl_link *link)
+{
+	struct pw_impl_node *output = link->output->node;
+	struct pw_impl_node *input = link->input->node;
+	int res;
+
+	if (SPA_FLAG_IS_SET(output->spa_flags, SPA_NODE_FLAG_RTC_PROCESS) &&
+			!rtc_node_has_other_runnable_link(output, link) &&
+			(res = pw_impl_node_set_state(output, PW_NODE_STATE_IDLE)) < 0)
+		pw_log_warn("%p: failed to quiesce RTC output node %s: %s",
+				link, output->name, spa_strerror(res));
+	if (input != output &&
+			SPA_FLAG_IS_SET(input->spa_flags, SPA_NODE_FLAG_RTC_PROCESS) &&
+			!rtc_node_has_other_runnable_link(input, link) &&
+			(res = pw_impl_node_set_state(input, PW_NODE_STATE_IDLE)) < 0)
+		pw_log_warn("%p: failed to quiesce RTC input node %s: %s",
+				link, input->name, spa_strerror(res));
+}
+
 SPA_EXPORT
 struct pw_impl_link *pw_context_create_link(struct pw_context *context,
 			    struct pw_impl_port *output,
@@ -1908,6 +1950,7 @@ void pw_impl_link_destroy(struct pw_impl_link *link)
 	pw_log_debug("%p: destroy", impl);
 	pw_log_info("(%s) destroy", link->name);
 
+	quiesce_final_rtc_link(link);
 	link->destroyed = true;
 	pw_impl_link_emit_destroy(link);
 
