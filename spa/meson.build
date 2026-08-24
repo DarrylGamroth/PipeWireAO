@@ -32,9 +32,20 @@ pkgconfig.generate(filebase : 'lib@0@'.format(spa_name),
   subdirs : spa_name,
   description : 'PipeWireAO Simple Plugin API',
   version : spaversion,
-  extra_cflags : ['-D_REENTRANT', '-fno-strict-aliasing', '-fno-strict-overflow'],
-  variables : ['plugindir=${libdir}/@0@'.format(spa_name)],
-  uninstalled_variables : ['plugindir=${prefix}/spa/plugins'],
+  extra_cflags : [
+    '-I${spa_includedir}',
+    '-D_REENTRANT',
+    '-fno-strict-aliasing',
+    '-fno-strict-overflow',
+  ],
+  variables : [
+    'plugindir=${libdir}/@0@'.format(spa_name),
+    'spa_includedir=${includedir}/@0@'.format(spa_name),
+  ],
+  uninstalled_variables : [
+    'plugindir=${prefix}/spa/plugins',
+    'spa_includedir=${srcdir}/spa/include',
+  ],
 )
 
 subdir('include')
