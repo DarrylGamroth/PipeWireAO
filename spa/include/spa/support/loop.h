@@ -38,7 +38,7 @@ extern "C" {
 struct spa_loop { struct spa_interface iface; };
 
 #define SPA_TYPE_INTERFACE_LoopControl	SPA_TYPE_INFO_INTERFACE_BASE "LoopControl"
-#define SPA_VERSION_LOOP_CONTROL	2
+#define SPA_VERSION_LOOP_CONTROL	3
 struct spa_loop_control { struct spa_interface iface; };
 
 #define SPA_TYPE_INTERFACE_LoopUtils	SPA_TYPE_INFO_INTERFACE_BASE "LoopUtils"
@@ -244,7 +244,7 @@ SPA_API_LOOP void spa_loop_control_hook_after(struct spa_hook_list *l)
 struct spa_loop_control_methods {
 	/* the version of this structure. This can be used to expand this
 	 * structure in the future */
-#define SPA_VERSION_LOOP_CONTROL_METHODS	2
+#define SPA_VERSION_LOOP_CONTROL_METHODS	3
 	uint32_t version;
 
 	/** get the loop fd
@@ -374,6 +374,21 @@ struct spa_loop_control_methods {
 	 * \return 0 on success or a negative return value on error.
 	 */
 	int (*accept) (void *object);
+
+	/** Dispatch control work and yield the entered loop lock without polling
+	 * file descriptors.
+	 *
+	 * This function must be called by the thread that entered the loop and
+	 * with no additional recursive loop locks held. It dispatches queued
+	 * invokes, then releases and immediately reacquires the
+	 * loop lock so administrative callers can modify loop-owned state. It does
+	 * not wait for or dispatch fd sources.
+	 * Since version 3:3.
+	 *
+	 * \param[in] object the control
+	 * \return 0 on success or a negative return value on error.
+	 */
+	int (*yield) (void *object);
 };
 
 SPA_API_LOOP int spa_loop_control_get_fd(struct spa_loop_control *object)
@@ -444,6 +459,11 @@ SPA_API_LOOP int spa_loop_control_accept(struct spa_loop_control *object)
 {
 	return spa_api_method_r(int, -ENOTSUP,
 			spa_loop_control, &object->iface, accept, 2);
+}
+SPA_API_LOOP int spa_loop_control_yield(struct spa_loop_control *object)
+{
+	return spa_api_method_r(int, -ENOTSUP,
+			spa_loop_control, &object->iface, yield, 3);
 }
 
 typedef void (*spa_source_io_func_t) (void *data, int fd, uint32_t mask);

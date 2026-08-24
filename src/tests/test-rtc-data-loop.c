@@ -6,6 +6,9 @@
 #include <pthread.h>
 #include <sched.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/eventfd.h>
 #include <time.h>
 #include <unistd.h>
@@ -125,6 +128,21 @@ static void fixture_init(struct fixture *fixture, bool install_thread_utils)
 	} else
 		spa_assert_se(pw_context_set_object(fixture->context,
 				SPA_TYPE_INTERFACE_ThreadUtils, NULL) == 0);
+}
+
+static void fixture_init_data_loops(struct fixture *fixture,
+		const char *data_loops)
+{
+	struct pw_properties *properties;
+
+	spa_zero(*fixture);
+	fixture->main_loop = pw_main_loop_new(NULL);
+	spa_assert_se(fixture->main_loop != NULL);
+	properties = pw_properties_new("context.data-loops", data_loops, NULL);
+	spa_assert_se(properties != NULL);
+	fixture->context = pw_context_new(
+			pw_main_loop_get_loop(fixture->main_loop), properties, 0);
+	spa_assert_se(fixture->context != NULL);
 }
 
 static void fixture_clear(struct fixture *fixture)
@@ -380,6 +398,11 @@ struct synthetic_rtc_node {
 	uint32_t processing;
 	uint32_t lifecycle_overlap;
 	uint32_t process_delay_us;
+	uintptr_t process_thread;
+	uint64_t benchmark_start;
+	uint64_t *benchmark_latency;
+	uint32_t benchmark_index;
+	struct spa_system *benchmark_system;
 	int process_result;
 };
 
@@ -441,6 +464,11 @@ static int synthetic_process(void *object)
 	uint32_t delay;
 
 	SPA_ATOMIC_INC(node->processing);
+	SPA_ATOMIC_STORE(node->process_thread, (uintptr_t)pthread_self());
+	if (node->benchmark_latency != NULL)
+		node->benchmark_latency[node->benchmark_index] =
+				get_time_ns(node->benchmark_system) -
+				node->benchmark_start;
 	SPA_ATOMIC_INC(node->process_calls);
 	delay = SPA_ATOMIC_LOAD(node->process_delay_us);
 	if (delay != 0)
@@ -467,6 +495,12 @@ static void synthetic_init(struct synthetic_rtc_node *node)
 	node->info = SPA_NODE_INFO_INIT();
 	node->info.change_mask = SPA_NODE_CHANGE_MASK_FLAGS;
 	node->info.flags = SPA_NODE_FLAG_RT | SPA_NODE_FLAG_RTC_PROCESS;
+}
+
+static void synthetic_init_regular(struct synthetic_rtc_node *node)
+{
+	synthetic_init(node);
+	node->info.flags = SPA_NODE_FLAG_RT;
 }
 
 static void wait_for_node_state(struct fixture *fixture,
@@ -511,18 +545,34 @@ static void wait_for_link_prepared(struct fixture *fixture,
 	}
 }
 
+static struct pw_impl_node *create_synthetic_node_on_loop(struct fixture *fixture,
+		struct synthetic_rtc_node *synthetic, int process_result,
+		const char *loop_name);
+
 static struct pw_impl_node *create_synthetic_node(struct fixture *fixture,
 		struct synthetic_rtc_node *synthetic, int process_result)
 {
+	return create_synthetic_node_on_loop(fixture, synthetic, process_result, NULL);
+}
+
+static struct pw_impl_node *create_synthetic_node_on_loop(struct fixture *fixture,
+		struct synthetic_rtc_node *synthetic, int process_result,
+		const char *loop_name)
+{
 	struct pw_impl_node *node;
+	struct pw_properties *properties;
 
 	synthetic_init(synthetic);
 	synthetic->process_result = process_result;
-	node = pw_context_create_node(fixture->context,
-			pw_properties_new(
+	properties = pw_properties_new(
 				PW_KEY_NODE_NAME, "synthetic-rtc",
 				PW_KEY_NODE_PAUSE_ON_IDLE, "false",
-				NULL), 0);
+				NULL);
+	spa_assert_se(properties != NULL);
+	if (loop_name != NULL)
+		spa_assert_se(pw_properties_set(properties,
+				PW_KEY_NODE_LOOP_NAME, loop_name) >= 0);
+	node = pw_context_create_node(fixture->context, properties, 0);
 	spa_assert_se(node != NULL);
 	spa_assert_se(pw_impl_node_set_implementation(node, &synthetic->node) == 0);
 	spa_assert_se(SPA_FLAG_IS_SET(node->spa_flags, SPA_NODE_FLAG_RTC_PROCESS));
@@ -530,6 +580,314 @@ static struct pw_impl_node *create_synthetic_node(struct fixture *fixture,
 	spa_assert_se(pw_impl_node_register(node, NULL) == 0);
 	spa_assert_se(pw_impl_node_set_active(node, true) == 0);
 	return node;
+}
+
+static int count_poll_source(void *data)
+{
+	uint32_t *count = data;
+
+	SPA_ATOMIC_INC(*count);
+	return 0;
+}
+
+static int set_invoked(struct spa_loop *loop, bool async, uint32_t seq,
+		const void *data, size_t size, void *user_data)
+{
+	uint32_t *invoked = user_data;
+
+	SPA_ATOMIC_STORE(*invoked, true);
+	return 17;
+}
+
+static void test_polling_data_loop_lifecycle(void)
+{
+	struct pw_properties *properties;
+	struct pw_data_loop_source source = { 0 };
+	struct spa_source fd_source = { 0 };
+	struct pw_data_loop *loop;
+	uint32_t count = 0, invoked = 0;
+	int fd;
+
+	properties = pw_properties_new(PW_KEY_LOOP_IDLE, "invalid", NULL);
+	spa_assert_se(properties != NULL);
+	errno = 0;
+	spa_assert_se(pw_data_loop_new(&properties->dict) == NULL);
+	spa_assert_se(errno == EINVAL);
+	pw_properties_free(properties);
+
+	properties = pw_properties_new(PW_KEY_LOOP_IDLE, "busy-spin",
+			SPA_KEY_THREAD_NAME, "test-polling-loop", NULL);
+	spa_assert_se(properties != NULL);
+	loop = pw_data_loop_new(&properties->dict);
+	pw_properties_free(properties);
+	spa_assert_se(loop != NULL);
+	spa_assert_se(loop->polling);
+	fd = spa_system_eventfd_create(loop->loop->system,
+			SPA_FD_CLOEXEC | SPA_FD_NONBLOCK);
+	spa_assert_se(fd >= 0);
+	fd_source.fd = fd;
+	fd_source.mask = SPA_IO_IN;
+	spa_assert_se(pw_loop_add_source(loop->loop, &fd_source) == -ENOTSUP);
+	spa_assert_se(spa_system_close(loop->loop->system, fd) == 0);
+	spa_list_init(&source.link);
+	source.process = count_poll_source;
+	source.data = &count;
+	spa_list_append(&loop->poll_source_list, &source.link);
+	source.added = true;
+	source.enabled = true;
+	spa_assert_se(pw_data_loop_start(loop) == 0);
+	wait_until_at_least(&count, 1);
+	spa_assert_se(pw_data_loop_invoke(loop, set_invoked, 1,
+			NULL, 0, true, &invoked) == 17);
+	spa_assert_se(SPA_ATOMIC_LOAD(invoked) == 1);
+	spa_assert_se(pw_data_loop_stop(loop) == 0);
+	spa_list_remove(&source.link);
+	source.added = false;
+	pw_data_loop_destroy(loop);
+}
+
+static int prepare_regular_node(struct spa_loop *loop, bool async,
+		uint32_t seq, const void *data, size_t size, void *user_data)
+{
+	struct pw_impl_node *node = user_data;
+	struct pw_node_activation_state *state =
+			&node->rt.target.activation->state[0];
+	uint64_t event_count;
+	int res;
+
+	if (node->data_loop_impl->polling) {
+		spa_list_append(&node->data_loop_impl->poll_source_list,
+				&node->poll_source.link);
+		node->poll_source.added = true;
+		node->poll_source.enabled = true;
+	} else {
+		res = spa_system_eventfd_read(node->rt.target.system,
+				node->source.fd, &event_count);
+		spa_assert_se(res == 0 || res == -EAGAIN);
+		spa_assert_se(spa_loop_add_source(loop, &node->source) == 0);
+	}
+	node->rt.prepared = true;
+	SPA_ATOMIC_STORE(state->required, 1);
+	SPA_ATOMIC_STORE(state->pending, 1);
+	SPA_ATOMIC_STORE(node->rt.target.activation->status,
+			PW_NODE_ACTIVATION_NOT_TRIGGERED);
+	return 0;
+}
+
+static int unprepare_regular_node(struct spa_loop *loop, bool async,
+		uint32_t seq, const void *data, size_t size, void *user_data)
+{
+	struct pw_impl_node *node = user_data;
+
+	SPA_ATOMIC_STORE(node->rt.target.activation->status,
+			PW_NODE_ACTIVATION_INACTIVE);
+	node->rt.prepared = false;
+	if (node->poll_source.added) {
+		node->poll_source.enabled = false;
+		spa_list_remove(&node->poll_source.link);
+		spa_list_init(&node->poll_source.link);
+		node->poll_source.added = false;
+	} else {
+		spa_assert_se(spa_loop_remove_source(loop, &node->source) == 0);
+	}
+	return 0;
+}
+
+static void wait_for_activation_finished(struct pw_impl_node *node);
+
+static void test_regular_node_polling_activation(void)
+{
+	static const char data_loops[] =
+		"[ { loop.name = graph-poll thread.name = graph-poll "
+		"loop.class = data.rt loop.idle = busy-spin } ]";
+	struct fixture fixture;
+	struct synthetic_rtc_node synthetic;
+	struct pw_impl_node *node;
+	struct pw_properties *properties;
+	uint64_t event_count;
+
+	fixture_init_data_loops(&fixture, data_loops);
+	synthetic_init_regular(&synthetic);
+	synthetic.process_result = SPA_STATUS_OK;
+	properties = pw_properties_new(PW_KEY_NODE_NAME, "synthetic-regular",
+			PW_KEY_NODE_LOOP_NAME, "graph-poll", NULL);
+	spa_assert_se(properties != NULL);
+	node = pw_context_create_node(fixture.context, properties, 0);
+	spa_assert_se(node != NULL);
+	spa_assert_se(node->data_loop_impl != NULL);
+	spa_assert_se(node->data_loop_impl->polling);
+	spa_assert_se(pw_impl_node_set_implementation(node, &synthetic.node) == 0);
+	spa_assert_se(pw_loop_locked(node->data_loop, prepare_regular_node,
+			1, NULL, 0, node) == 0);
+	spa_assert_se(node->rt.target.trigger(&node->rt.target,
+			get_time_ns(node->rt.target.system)) == 1);
+	wait_until_at_least(&synthetic.process_calls, 1);
+	wait_for_activation_finished(node);
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.process_calls) == 1);
+	spa_assert_se(SPA_ATOMIC_LOAD(node->rt.target.activation->status) ==
+			PW_NODE_ACTIVATION_FINISHED);
+	spa_assert_se(spa_system_eventfd_read(node->rt.target.system,
+			node->source.fd, &event_count) == -EAGAIN);
+	spa_assert_se(pw_loop_locked(node->data_loop, unprepare_regular_node,
+			1, NULL, 0, node) == 0);
+	pw_impl_node_destroy(node);
+	fixture_clear(&fixture);
+}
+
+static int compare_u64(const void *a, const void *b)
+{
+	const uint64_t av = *(const uint64_t *)a;
+	const uint64_t bv = *(const uint64_t *)b;
+
+	return av < bv ? -1 : av > bv;
+}
+
+static uint64_t percentile_u64(const uint64_t *values, uint32_t n,
+		uint32_t numerator, uint32_t denominator)
+{
+	uint64_t rank = ((uint64_t)n * numerator + denominator - 1) / denominator;
+
+	if (rank == 0)
+		rank = 1;
+	return values[rank - 1];
+}
+
+static void wait_for_activation_finished(struct pw_impl_node *node)
+{
+	while (SPA_ATOMIC_LOAD(node->rt.target.activation->status) !=
+			PW_NODE_ACTIVATION_FINISHED)
+		pw_data_loop_relax();
+}
+
+static void prepare_activation_cycle(struct pw_impl_node *node)
+{
+	struct pw_node_activation_state *state =
+			&node->rt.target.activation->state[0];
+
+	SPA_ATOMIC_STORE(state->required, 1);
+	SPA_ATOMIC_STORE(state->pending, 1);
+	SPA_ATOMIC_STORE(node->rt.target.activation->status,
+			PW_NODE_ACTIVATION_NOT_TRIGGERED);
+}
+
+static void benchmark_regular_activation(const char *idle, uint32_t samples)
+{
+	char data_loops[256];
+	struct fixture fixture;
+	struct synthetic_rtc_node synthetic;
+	struct pw_impl_node *node;
+	struct pw_properties *properties;
+	uint64_t *latency, start, end;
+	uint32_t i;
+	const uint32_t warmup = 1000;
+
+	spa_assert_se(spa_streq(idle, "eventfd") || spa_streq(idle, "busy-spin"));
+	spa_assert_se(samples > 0);
+	snprintf(data_loops, sizeof(data_loops),
+			"[ { loop.name = benchmark-loop thread.name = benchmark-loop "
+			"loop.class = data.rt loop.idle = %s } ]", idle);
+	fixture_init_data_loops(&fixture, data_loops);
+	synthetic_init_regular(&synthetic);
+	synthetic.process_result = SPA_STATUS_OK;
+	properties = pw_properties_new(PW_KEY_NODE_NAME, "benchmark-regular",
+			PW_KEY_NODE_LOOP_NAME, "benchmark-loop", NULL);
+	spa_assert_se(properties != NULL);
+	node = pw_context_create_node(fixture.context, properties, 0);
+	spa_assert_se(node != NULL);
+	spa_assert_se(pw_impl_node_set_implementation(node, &synthetic.node) == 0);
+	spa_assert_se(pw_loop_locked(node->data_loop, prepare_regular_node,
+			1, NULL, 0, node) == 0);
+
+	for (i = 0; i < warmup; i++) {
+		prepare_activation_cycle(node);
+		spa_assert_se(node->rt.target.trigger(&node->rt.target,
+				get_time_ns(node->rt.target.system)) == 1);
+		wait_for_activation_finished(node);
+	}
+
+	latency = calloc(samples, sizeof(*latency));
+	spa_assert_se(latency != NULL);
+	synthetic.benchmark_latency = latency;
+	synthetic.benchmark_system = node->rt.target.system;
+	start = get_time_ns(node->rt.target.system);
+	for (i = 0; i < samples; i++) {
+		prepare_activation_cycle(node);
+		synthetic.benchmark_index = i;
+		synthetic.benchmark_start = get_time_ns(node->rt.target.system);
+		spa_assert_se(node->rt.target.trigger(&node->rt.target,
+				synthetic.benchmark_start) == 1);
+		wait_for_activation_finished(node);
+	}
+	end = get_time_ns(node->rt.target.system);
+	synthetic.benchmark_latency = NULL;
+
+	qsort(latency, samples, sizeof(*latency), compare_u64);
+	printf("activation idle=%s samples=%u rate=%.1f/s "
+			"p50=%.3fus p99=%.3fus p99.9=%.3fus max=%.3fus\n",
+			idle, samples,
+			(double)samples * SPA_NSEC_PER_SEC / (double)(end - start),
+			(double)percentile_u64(latency, samples, 50, 100) / 1000.0,
+			(double)percentile_u64(latency, samples, 99, 100) / 1000.0,
+			(double)percentile_u64(latency, samples, 999, 1000) / 1000.0,
+			(double)latency[samples - 1] / 1000.0);
+
+	free(latency);
+	spa_assert_se(pw_loop_locked(node->data_loop, unprepare_regular_node,
+			1, NULL, 0, node) == 0);
+	pw_impl_node_destroy(node);
+	fixture_clear(&fixture);
+}
+
+static void test_rtc_nodes_share_configured_polling_loops(void)
+{
+	static const char data_loops[] =
+		"[ { loop.name = poll-a thread.name = poll-a "
+		"loop.class = data.rt loop.idle = busy-spin } "
+		"{ loop.name = poll-b thread.name = poll-b "
+		"loop.class = data.rt loop.idle = busy-spin } ]";
+	struct fixture fixture;
+	struct synthetic_rtc_node first, second;
+	struct pw_impl_module *scheduler;
+	struct pw_impl_node *first_node, *second_node;
+
+	fixture_init_data_loops(&fixture, data_loops);
+	scheduler = pw_context_load_module(fixture.context,
+			"libpipewire-module-scheduler-v1", NULL, NULL);
+	spa_assert_se(scheduler != NULL);
+	first_node = create_synthetic_node_on_loop(&fixture, &first,
+			SPA_STATUS_OK, "poll-a");
+	second_node = create_synthetic_node_on_loop(&fixture, &second,
+			SPA_STATUS_OK, "poll-b");
+	wait_for_node_state(&fixture, first_node, PW_NODE_STATE_RUNNING);
+	wait_for_node_state(&fixture, second_node, PW_NODE_STATE_RUNNING);
+	wait_until_at_least(&first.process_calls, 1);
+	wait_until_at_least(&second.process_calls, 1);
+
+	spa_assert_se(first_node->rtc_loop == NULL);
+	spa_assert_se(second_node->rtc_loop == NULL);
+	spa_assert_se(first_node->poll_source.added);
+	spa_assert_se(second_node->poll_source.added);
+	spa_assert_se(first_node->data_loop_impl->polling);
+	spa_assert_se(second_node->data_loop_impl->polling);
+	spa_assert_se(first_node->data_loop_impl != second_node->data_loop_impl);
+	spa_assert_se(SPA_ATOMIC_LOAD(first.process_thread) != 0);
+	spa_assert_se(SPA_ATOMIC_LOAD(second.process_thread) != 0);
+	spa_assert_se(SPA_ATOMIC_LOAD(first.process_thread) !=
+			SPA_ATOMIC_LOAD(second.process_thread));
+
+	SPA_ATOMIC_STORE(first.process_delay_us, 20000);
+	wait_until_at_least(&first.processing, 1);
+	spa_assert_se(pw_impl_node_set_active(first_node, false) == 0);
+	wait_for_node_state(&fixture, first_node, PW_NODE_STATE_IDLE);
+	spa_assert_se(!first_node->poll_source.added);
+	spa_assert_se(SPA_ATOMIC_LOAD(first.processing) == 0);
+	spa_assert_se(SPA_ATOMIC_LOAD(first.lifecycle_overlap) == 0);
+
+	spa_assert_se(pw_impl_node_set_active(second_node, false) == 0);
+	wait_for_node_state(&fixture, second_node, PW_NODE_STATE_IDLE);
+	pw_impl_node_destroy(first_node);
+	pw_impl_node_destroy(second_node);
+	fixture_clear(&fixture);
 }
 
 static void test_rtc_node_lifecycle(void)
@@ -1100,6 +1458,20 @@ static void test_rtc_island_progressive_poc(void)
 int main(int argc, char *argv[])
 {
 	pw_init(&argc, &argv);
+	if (argc >= 2 && spa_streq(argv[1], "--test-polling")) {
+		test_polling_data_loop_lifecycle();
+		test_regular_node_polling_activation();
+		test_rtc_nodes_share_configured_polling_loops();
+		pw_deinit();
+		return 0;
+	}
+	if (argc >= 3 && spa_streq(argv[1], "--benchmark-activation")) {
+		uint32_t samples = argc >= 4 ? (uint32_t)strtoul(argv[3], NULL, 10) : 10000;
+
+		benchmark_regular_activation(argv[2], samples);
+		pw_deinit();
+		return 0;
+	}
 
 	test_busy_spin_lifecycle();
 	test_event_idle(PW_RTC_DATA_LOOP_IDLE_EVENTFD);
@@ -1107,6 +1479,9 @@ int main(int argc, char *argv[])
 	test_process_error();
 	test_config_validation();
 	test_start_failures();
+	test_polling_data_loop_lifecycle();
+	test_regular_node_polling_activation();
+	test_rtc_nodes_share_configured_polling_loops();
 	test_rtc_node_lifecycle();
 	test_rtc_node_requires_thread_utils();
 	test_rtc_node_terminal_process_error();
