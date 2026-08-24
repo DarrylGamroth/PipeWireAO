@@ -16,6 +16,7 @@
 #include <pipewire/private.h>
 #include <pipewire/thread.h>
 
+#include <spa/buffer/meta.h>
 #include <spa/node/utils.h>
 #include <spa/param/video/format-utils.h>
 #include <spa/utils/atomic.h>
@@ -823,6 +824,279 @@ static void test_rtc_final_link_quiesce(void)
 	fixture_clear(&fixture);
 }
 
+#define POC_UNITS 4u
+#define POC_OUTPUTS 2u
+#define POC_MAX_UNITS_PER_CALL 2u
+
+struct poc_calibration_node {
+	struct spa_node node;
+	struct spa_meta_progressive *input_progress;
+	struct spa_meta_progressive *output_progress;
+	const int32_t *input;
+	int32_t *output;
+	uint32_t processed;
+	bool terminal_published;
+};
+
+struct poc_controller_node {
+	struct spa_node node;
+	struct spa_meta_progressive *input_progress;
+	const int32_t *input;
+	int32_t published[POC_OUTPUTS];
+	int64_t working[POC_OUTPUTS];
+	uint32_t consumed;
+	uint32_t commits;
+	uint32_t aborts;
+	bool started;
+	bool terminal_handled;
+};
+
+struct poc_island {
+	struct poc_calibration_node calibration;
+	struct poc_controller_node controller;
+	uint32_t duty_cycles;
+};
+
+static const int32_t poc_matrix[POC_OUTPUTS][POC_UNITS] = {
+	{ 1, 2, 3, 4 },
+	{ -1, 1, -1, 1 },
+};
+
+static int poc_calibration_process(void *object)
+{
+	struct poc_calibration_node *node = object;
+	enum spa_meta_progressive_state state, output_state;
+	uint32_t committed, output_committed, target, end, i;
+	uint64_t snapshot;
+	bool did_work = false;
+
+	snapshot = spa_meta_progressive_load_acquire(node->input_progress);
+	spa_assert_se(spa_meta_progressive_snapshot_decode(snapshot,
+			&committed, &state));
+	if (state == SPA_META_PROGRESSIVE_STATE_PREPARED ||
+			node->terminal_published)
+		return SPA_STATUS_OK;
+
+	snapshot = spa_meta_progressive_load_acquire(node->output_progress);
+	spa_assert_se(spa_meta_progressive_snapshot_decode(snapshot,
+			&output_committed, &output_state));
+	if (output_state == SPA_META_PROGRESSIVE_STATE_PREPARED) {
+		spa_meta_progressive_store_release(node->output_progress,
+				spa_meta_progressive_snapshot_encode(0,
+					SPA_META_PROGRESSIVE_STATE_ACTIVE));
+		did_work = true;
+	}
+
+	target = committed / sizeof(node->input[0]);
+	spa_assert_se(target <= POC_UNITS);
+	end = SPA_MIN(target, node->processed + POC_MAX_UNITS_PER_CALL);
+	for (i = node->processed; i < end; i++)
+		node->output[i] = 2 * node->input[i] + 1;
+	if (end != node->processed) {
+		node->processed = end;
+		did_work = true;
+	}
+
+	if (state == SPA_META_PROGRESSIVE_STATE_COMPLETE &&
+			node->processed == POC_UNITS) {
+		spa_meta_progressive_store_release(node->output_progress,
+				spa_meta_progressive_snapshot_encode(
+					POC_UNITS * sizeof(node->output[0]),
+					SPA_META_PROGRESSIVE_STATE_COMPLETE));
+		node->terminal_published = true;
+		did_work = true;
+	} else if (state == SPA_META_PROGRESSIVE_STATE_ABORTED &&
+			node->processed == target) {
+		node->output_progress->terminal_flags =
+			node->input_progress->terminal_flags;
+		spa_meta_progressive_store_release(node->output_progress,
+				spa_meta_progressive_snapshot_encode(
+					node->processed * sizeof(node->output[0]),
+					SPA_META_PROGRESSIVE_STATE_ABORTED));
+		node->terminal_published = true;
+		did_work = true;
+	} else if (node->processed * sizeof(node->output[0]) != output_committed) {
+		spa_meta_progressive_store_release(node->output_progress,
+				spa_meta_progressive_snapshot_encode(
+					node->processed * sizeof(node->output[0]),
+					SPA_META_PROGRESSIVE_STATE_ACTIVE));
+	}
+	return did_work ? SPA_STATUS_HAVE_DATA : SPA_STATUS_OK;
+}
+
+static int poc_controller_process(void *object)
+{
+	struct poc_controller_node *node = object;
+	enum spa_meta_progressive_state state;
+	uint32_t committed, target, end, i, row;
+	uint64_t snapshot;
+	bool did_work = false;
+
+	snapshot = spa_meta_progressive_load_acquire(node->input_progress);
+	spa_assert_se(spa_meta_progressive_snapshot_decode(snapshot,
+			&committed, &state));
+	if (state == SPA_META_PROGRESSIVE_STATE_PREPARED || node->terminal_handled)
+		return SPA_STATUS_OK;
+
+	if (!node->started) {
+		/* The committed controller state is never changed before finish. */
+		for (row = 0; row < POC_OUTPUTS; row++)
+			node->working[row] = node->published[row] / 2;
+		node->started = true;
+		did_work = true;
+	}
+
+	target = committed / sizeof(node->input[0]);
+	spa_assert_se(target <= POC_UNITS);
+	end = SPA_MIN(target, node->consumed + POC_MAX_UNITS_PER_CALL);
+	for (i = node->consumed; i < end; i++)
+		for (row = 0; row < POC_OUTPUTS; row++)
+			node->working[row] += (int64_t)poc_matrix[row][i] * node->input[i];
+	if (end != node->consumed) {
+		SPA_ATOMIC_STORE(node->consumed, end);
+		did_work = true;
+	}
+
+	if (state == SPA_META_PROGRESSIVE_STATE_COMPLETE &&
+			node->consumed == POC_UNITS) {
+		for (row = 0; row < POC_OUTPUTS; row++)
+			node->published[row] = node->working[row];
+		SPA_ATOMIC_INC(node->commits);
+		node->terminal_handled = true;
+		did_work = true;
+	} else if (state == SPA_META_PROGRESSIVE_STATE_ABORTED &&
+			node->consumed == target) {
+		/* Discard working state; published controller state is unchanged. */
+		SPA_ATOMIC_INC(node->aborts);
+		node->terminal_handled = true;
+		did_work = true;
+	}
+	return did_work ? SPA_STATUS_HAVE_DATA : SPA_STATUS_OK;
+}
+
+static const struct spa_node_methods poc_calibration_methods = {
+	SPA_VERSION_NODE_METHODS,
+	.process = poc_calibration_process,
+};
+
+static const struct spa_node_methods poc_controller_methods = {
+	SPA_VERSION_NODE_METHODS,
+	.process = poc_controller_process,
+};
+
+static int poc_island_process(void *data)
+{
+	struct poc_island *island = data;
+	int calibration, controller, work = 0;
+
+	SPA_ATOMIC_INC(island->duty_cycles);
+	calibration = spa_node_process_fast(&island->calibration.node);
+	if (calibration < 0)
+		return calibration;
+	if (calibration != SPA_STATUS_OK)
+		work++;
+	controller = spa_node_process_fast(&island->controller.node);
+	if (controller < 0)
+		return controller;
+	if (controller != SPA_STATUS_OK)
+		work++;
+	return work;
+}
+
+static void poc_prepare_frame(struct poc_island *island,
+		struct spa_meta_progressive *input_progress,
+		struct spa_meta_progressive *calibrated_progress,
+		const int32_t input[POC_UNITS], int32_t calibrated[POC_UNITS])
+{
+	spa_assert_se(spa_meta_progressive_init(input_progress, 0, 0,
+			POC_UNITS * sizeof(input[0]), sizeof(input[0])));
+	spa_assert_se(spa_meta_progressive_init(calibrated_progress, 0, 0,
+			POC_UNITS * sizeof(calibrated[0]), sizeof(calibrated[0])));
+	island->calibration.input_progress = input_progress;
+	island->calibration.output_progress = calibrated_progress;
+	island->calibration.input = input;
+	island->calibration.output = calibrated;
+	island->calibration.processed = 0;
+	island->calibration.terminal_published = false;
+	island->controller.input_progress = calibrated_progress;
+	island->controller.input = calibrated;
+	SPA_ATOMIC_STORE(island->controller.consumed, 0);
+	island->controller.started = false;
+	island->controller.terminal_handled = false;
+}
+
+static void test_rtc_island_progressive_poc(void)
+{
+	struct fixture fixture;
+	struct poc_island island = { 0 };
+	struct spa_meta_progressive input_progress, calibrated_progress;
+	int32_t input[POC_UNITS] = { 1, 2, 0, 0 };
+	int32_t calibrated[POC_UNITS] = { 0 };
+	struct pw_rtc_data_loop_config config = {
+		PW_VERSION_RTC_DATA_LOOP_CONFIG,
+		.idle = PW_RTC_DATA_LOOP_IDLE_BUSY_SPIN,
+		.scheduler = PW_RTC_DATA_LOOP_SCHED_OTHER,
+	};
+	struct pw_rtc_data_loop *loop;
+
+	fixture_init(&fixture, true);
+	island.calibration.node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
+			SPA_VERSION_NODE, &poc_calibration_methods, &island.calibration);
+	island.controller.node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
+			SPA_VERSION_NODE, &poc_controller_methods, &island.controller);
+	island.controller.published[0] = 10;
+	island.controller.published[1] = -2;
+	poc_prepare_frame(&island, &input_progress, &calibrated_progress,
+			input, calibrated);
+
+	/* Announce two immutable camera units before the island begins polling. */
+	spa_meta_progressive_store_release(&input_progress,
+			spa_meta_progressive_snapshot_encode(2 * sizeof(input[0]),
+				SPA_META_PROGRESSIVE_STATE_ACTIVE));
+	loop = pw_rtc_data_loop_new(fixture.context, NULL, &config,
+			poc_island_process, &island);
+	spa_assert_se(loop != NULL);
+	spa_assert_se(pw_rtc_data_loop_start(loop) == 0);
+	wait_until_at_least(&island.controller.consumed, 2);
+	spa_assert_se(SPA_ATOMIC_LOAD(island.controller.commits) == 0);
+	spa_assert_se(island.controller.published[0] == 10);
+	spa_assert_se(island.controller.published[1] == -2);
+
+	input[2] = 3;
+	input[3] = 4;
+	spa_meta_progressive_store_release(&input_progress,
+			spa_meta_progressive_snapshot_encode(sizeof(input),
+				SPA_META_PROGRESSIVE_STATE_COMPLETE));
+	wait_until_at_least(&island.controller.commits, 1);
+	spa_assert_se(pw_rtc_data_loop_stop(loop) == 0);
+	spa_assert_se(island.controller.published[0] == 75);
+	spa_assert_se(island.controller.published[1] == 3);
+
+	/* A partial next frame is accumulated privately and then rolled back. */
+	input[0] = 10;
+	input[1] = 20;
+	poc_prepare_frame(&island, &input_progress, &calibrated_progress,
+			input, calibrated);
+	spa_meta_progressive_store_release(&input_progress,
+			spa_meta_progressive_snapshot_encode(2 * sizeof(input[0]),
+				SPA_META_PROGRESSIVE_STATE_ACTIVE));
+	spa_assert_se(pw_rtc_data_loop_start(loop) == 0);
+	wait_until_at_least(&island.controller.consumed, 2);
+	input_progress.terminal_flags = SPA_META_PROGRESSIVE_FLAG_CANCELLED;
+	spa_meta_progressive_store_release(&input_progress,
+			spa_meta_progressive_snapshot_encode(2 * sizeof(input[0]),
+				SPA_META_PROGRESSIVE_STATE_ABORTED));
+	wait_until_at_least(&island.controller.aborts, 1);
+	spa_assert_se(pw_rtc_data_loop_stop(loop) == 0);
+	spa_assert_se(SPA_ATOMIC_LOAD(island.controller.commits) == 1);
+	spa_assert_se(island.controller.published[0] == 75);
+	spa_assert_se(island.controller.published[1] == 3);
+	spa_assert_se(SPA_ATOMIC_LOAD(island.duty_cycles) > 0);
+
+	pw_rtc_data_loop_destroy(loop);
+	fixture_clear(&fixture);
+}
+
 int main(int argc, char *argv[])
 {
 	pw_init(&argc, &argv);
@@ -838,6 +1112,7 @@ int main(int argc, char *argv[])
 	test_rtc_node_terminal_process_error();
 	test_rtc_port_node_waits_for_prepared_link();
 	test_rtc_final_link_quiesce();
+	test_rtc_island_progressive_poc();
 
 	pw_deinit();
 	return 0;
