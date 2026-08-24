@@ -84,6 +84,8 @@ static inline bool is_rtc_process(const struct pw_impl_node *node)
 	return SPA_FLAG_IS_SET(node->spa_flags, SPA_NODE_FLAG_RTC_PROCESS);
 }
 
+static int poll_process_node(void *data);
+
 static void rtc_error_event(struct spa_source *source)
 {
 	struct pw_impl_node *node = source->data;
@@ -178,11 +180,51 @@ static int ensure_rtc_owner(struct pw_impl_node *node)
 	return node->rtc_loop != NULL ? 0 : -errno;
 }
 
+static int do_stop_rtc_polling(struct spa_loop *loop, bool async, uint32_t seq,
+		const void *data, size_t size, void *user_data)
+{
+	struct pw_impl_node *node = user_data;
+
+	return pw_data_loop_remove_poll_source(node->data_loop_impl,
+			&node->poll_source);
+}
+
 static int stop_rtc_owner(struct pw_impl_node *node)
 {
+	if (node->poll_source.added)
+		return pw_loop_locked(node->data_loop, do_stop_rtc_polling,
+				1, NULL, 0, node);
 	if (node->rtc_loop == NULL)
 		return 0;
 	return pw_rtc_data_loop_stop(node->rtc_loop);
+}
+
+static int do_start_rtc_polling(struct spa_loop *loop, bool async, uint32_t seq,
+		const void *data, size_t size, void *user_data)
+{
+	struct pw_impl_node *node = user_data;
+
+	return pw_data_loop_add_poll_source(node->data_loop_impl,
+			&node->poll_source);
+}
+
+static int start_rtc_owner(struct pw_impl_node *node)
+{
+	int res;
+
+	if (node->data_loop_impl != NULL &&
+			pw_data_loop_is_polling(node->data_loop_impl)) {
+		if (node->remote || node->exported)
+			return -ENOTSUP;
+		if ((res = ensure_rtc_error_source(node)) < 0)
+			return res;
+		return pw_loop_locked(node->data_loop, do_start_rtc_polling,
+				1, NULL, 0, node);
+	}
+
+	if ((res = ensure_rtc_owner(node)) < 0)
+		return res;
+	return pw_rtc_data_loop_start(node->rtc_loop);
 }
 
 #define pw_node_resource(r,m,v,...)	pw_resource_call(r,struct pw_node_events,m,v,__VA_ARGS__)
@@ -317,8 +359,17 @@ do_node_prepare(struct spa_loop *loop, bool async, uint32_t seq,
 
 	if (this->rt.prepared)
 		return 0;
+	if (this->data_loop_impl != NULL &&
+			pw_data_loop_is_polling(this->data_loop_impl) &&
+			(this->remote || this->exported))
+		return -ENOTSUP;
 
-	if (!this->remote) {
+	if (this->data_loop_impl != NULL &&
+			pw_data_loop_is_polling(this->data_loop_impl)) {
+		if ((res = pw_data_loop_add_poll_source(this->data_loop_impl,
+					&this->poll_source)) < 0)
+			return res;
+	} else if (!this->remote) {
 		/* clear the eventfd in case it was written to while the node was stopped */
 		res = spa_system_eventfd_read(this->rt.target.system, this->source.fd, &dummy);
 		if (SPA_UNLIKELY(res != -EAGAIN && res != 0))
@@ -337,9 +388,9 @@ do_node_prepare(struct spa_loop *loop, bool async, uint32_t seq,
 	return 0;
 }
 
-static void add_node_to_graph(struct pw_impl_node *node)
+static int add_node_to_graph(struct pw_impl_node *node)
 {
-	pw_loop_locked(node->data_loop, do_node_prepare, 1, NULL, 0, node);
+	return pw_loop_locked(node->data_loop, do_node_prepare, 1, NULL, 0, node);
 }
 
 /* called from the node data loop and undoes the changes done in do_node_prepare.  */
@@ -370,7 +421,10 @@ do_node_unprepare(struct spa_loop *loop, bool async, uint32_t seq,
 	if (PW_NODE_ACTIVATION_PENDING_TRIGGER(old_state))
 		trigger = get_time_ns(this->rt.target.system);
 
-	if (!this->remote)
+	if (this->poll_source.added)
+		pw_data_loop_remove_poll_source(this->data_loop_impl,
+				&this->poll_source);
+	else if (!this->remote)
 		spa_loop_remove_source(loop, &this->source);
 
 	spa_list_for_each(t, &this->rt.target_list, link)
@@ -579,9 +633,7 @@ static void node_update_state(struct pw_impl_node *node, enum pw_node_state stat
 
 		if (res >= 0) {
 			if (is_rtc_process(node)) {
-				res = ensure_rtc_owner(node);
-				if (res >= 0)
-					res = pw_rtc_data_loop_start(node->rtc_loop);
+				res = start_rtc_owner(node);
 				if (res < 0) {
 					spa_node_send_command(node->node,
 						&SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Pause));
@@ -590,10 +642,17 @@ static void node_update_state(struct pw_impl_node *node, enum pw_node_state stat
 							spa_strerror(res));
 				}
 			} else {
-				add_node_to_graph(node);
+				res = add_node_to_graph(node);
+				if (res < 0) {
+					spa_node_send_command(node->node,
+						&SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Pause));
+					state = PW_NODE_STATE_ERROR;
+					error = spa_aprintf("Graph process owner error: %s",
+							spa_strerror(res));
+				}
 			}
 		}
-		if (node->driving && node->driver) {
+		if (res >= 0 && node->driving && node->driver) {
 			res = spa_node_send_command(node->node,
 				&SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Start));
 			if (res < 0) {
@@ -1704,6 +1763,19 @@ static inline int process_node(void *data, uint64_t nsec)
 	return status;
 }
 
+static int poll_process_node(void *data)
+{
+	struct pw_impl_node *node = data;
+	struct pw_node_activation *activation = node->rt.target.activation;
+
+	if (is_rtc_process(node))
+		return rtc_process_node(node);
+	if (SPA_ATOMIC_LOAD(activation->status) != PW_NODE_ACTIVATION_TRIGGERED)
+		return 0;
+	process_node(node, get_time_ns(node->rt.target.system));
+	return 1;
+}
+
 int pw_impl_node_trigger(struct pw_impl_node *node)
 {
 	uint64_t nsec;
@@ -1817,6 +1889,10 @@ struct pw_impl_node *pw_context_create_node(struct pw_context *context,
 		res = -ENOENT;
 		goto error_clean;
 	}
+	this->data_loop_impl = pw_context_find_data_loop(context, this->data_loop);
+	spa_list_init(&this->poll_source.link);
+	this->poll_source.process = poll_process_node;
+	this->poll_source.data = this;
 
 	if (user_data_size > 0)
                 this->user_data = SPA_PTROFF(impl, sizeof(struct impl), void);
@@ -1874,7 +1950,9 @@ struct pw_impl_node *pw_context_create_node(struct pw_context *context,
 	this->rt.target.node = this;
 	this->rt.target.system = this->data_loop->system;
 	this->rt.target.fd = this->source.fd;
-	this->rt.target.trigger = trigger_target_v1;
+	this->rt.target.trigger = this->data_loop_impl != NULL &&
+			pw_data_loop_is_polling(this->data_loop_impl) ?
+		trigger_target_poll_v1 : trigger_target_v1;
 
 	reset_position(this, &this->rt.target.activation->position);
 	this->rt.target.activation->sync_timeout = DEFAULT_SYNC_TIMEOUT;
