@@ -448,7 +448,17 @@ struct pw_data_loop {
 	unsigned int thread_started:1;
 	unsigned int cancel:1;
 	unsigned int created:1;
+	unsigned int polling:1;
 	uint32_t running;
+	struct spa_list poll_source_list;
+};
+
+struct pw_data_loop_source {
+	struct spa_list link;
+	int (*process) (void *data);
+	void *data;
+	unsigned int added:1;
+	unsigned int enabled:1;
 };
 
 enum pw_data_loop_rt_policy {
@@ -473,6 +483,13 @@ int pw_data_loop_set_runner(struct pw_data_loop *loop,
 int pw_data_loop_set_rt_policy(struct pw_data_loop *loop,
 		enum pw_data_loop_rt_policy policy, int priority, bool strict);
 bool pw_data_loop_is_running(struct pw_data_loop *loop);
+bool pw_data_loop_is_polling(struct pw_data_loop *loop);
+int pw_data_loop_add_poll_source(struct pw_data_loop *loop,
+		struct pw_data_loop_source *source);
+int pw_data_loop_remove_poll_source(struct pw_data_loop *loop,
+		struct pw_data_loop_source *source);
+struct pw_data_loop *pw_context_find_data_loop(struct pw_context *context,
+		struct pw_loop *loop);
 
 #define pw_main_loop_emit(o,m,v,...) spa_hook_list_call(&o->listener_list, struct pw_main_loop_events, m, v, ##__VA_ARGS__)
 #define pw_main_loop_emit_destroy(o) pw_main_loop_emit(o, destroy, 0)
@@ -703,6 +720,32 @@ static inline int trigger_target_v1(struct pw_node_target *t, uint64_t nsec)
 	return res;
 }
 
+/* Polling-loop activation publication. The signal timestamp is written before
+ * the status transition so the successful CAS publishes it to the polling
+ * thread that claims TRIGGERED with its own CAS. No eventfd is touched. */
+static inline int trigger_target_poll_v1(struct pw_node_target *t, uint64_t nsec)
+{
+	struct pw_node_activation *a = t->activation;
+	struct pw_node_activation_state *state = &a->state[0];
+	int32_t pending = SPA_ATOMIC_DEC(state->pending);
+	int res = pending == 0;
+
+	pw_log_trace_fp("%p: (%s-%u) polling state:%p pending:%d/%d", t->node,
+			t->name, t->id, state, pending, state->required);
+
+	if (res) {
+		a->signal_time = nsec;
+		if (SPA_UNLIKELY(!SPA_ATOMIC_CAS(a->status,
+					PW_NODE_ACTIVATION_NOT_TRIGGERED,
+					PW_NODE_ACTIVATION_TRIGGERED))) {
+			pw_log_trace_fp("%p: (%s-%u) not ready %d", t->node,
+					t->name, t->id, a->status);
+			res = -EIO;
+		}
+	}
+	return res;
+}
+
 static inline int trigger_target_v0(struct pw_node_target *t, uint64_t nsec)
 {
 	struct pw_node_activation *a = t->activation;
@@ -848,6 +891,8 @@ struct pw_impl_node {
 	struct spa_hook_list rt_listener_list;
 
 	struct pw_loop *data_loop;		/**< the data loop for this node */
+	struct pw_data_loop *data_loop_impl;	/**< owning data-loop implementation, or NULL */
+	struct pw_data_loop_source poll_source;	/**< polling-loop process source */
 	struct pw_rtc_data_loop *rtc_loop;	/**< exclusive process owner for RTC nodes */
 	struct spa_source rtc_error_source;	/**< terminal RTC result on the main loop */
 	int rtc_error;
