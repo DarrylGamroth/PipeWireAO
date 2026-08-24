@@ -35,14 +35,6 @@ foreach a : test_apps
   endif
 endforeach
 
-if egrabber_found
-  executable('pw-test-egrabber-host-client',
-    '../../spa/plugins/egrabber/test-host-client.c',
-    dependencies : [pipewire_dep],
-  )
-endif
-
-
 if have_cpp
   test_cpp = executable('pw-test-cpp', 'test-cpp.cpp',
                           dependencies : [pipewire_dep],
