@@ -95,11 +95,13 @@ struct impl {
 	pthread_cond_t accept_cond;
 	int n_waiting;
 	int n_waiting_for_accept;
+	uint32_t lock_waiters;
 
 	int poll_fd;
 	pthread_t thread;
 	int enter_count;
 	int recurse;
+	bool polling;
 
 	struct spa_source *wakeup;
 
@@ -155,6 +157,9 @@ static inline uint64_t get_time_ns(struct spa_system *system)
 static int loop_add_source(void *object, struct spa_source *source)
 {
 	struct impl *impl = object;
+
+	if (SPA_UNLIKELY(impl->polling))
+		return -ENOTSUP;
 	source->loop = &impl->loop;
 	source->priv = NULL;
 	source->rmask = 0;
@@ -407,7 +412,7 @@ loop_queue_invoke(void *object,
 	pthread_t loop_thread, current_thread = pthread_self();
 
 again:
-	loop_thread = impl->thread;
+	loop_thread = SPA_ATOMIC_LOAD(impl->thread);
 	in_thread = (loop_thread == 0 || pthread_equal(loop_thread, current_thread));
 
 	filled = spa_ringbuffer_get_write_index(&queue->buffer, &idx);
@@ -570,7 +575,9 @@ static int loop_locked(void *object, spa_invoke_func_t func, uint32_t seq,
 	struct impl *impl = object;
 	int res;
 
+	SPA_ATOMIC_INC(impl->lock_waiters);
 	res = pthread_mutex_lock(&impl->lock);
+	SPA_ATOMIC_DEC(impl->lock_waiters);
 	if (res)
 		return -res;
 
@@ -605,15 +612,17 @@ static void loop_enter(void *object)
 
 	spa_assert_se(pthread_mutex_lock(&impl->lock) == 0);
 	if (impl->enter_count == 0) {
-		spa_goto_if_fail(impl->thread == 0, unlock_error);
-		impl->thread = thread_id;
+		spa_goto_if_fail(SPA_ATOMIC_LOAD(impl->thread) == 0, unlock_error);
+		SPA_ATOMIC_STORE(impl->thread, thread_id);
 		impl->enter_count = 1;
 	} else {
 		spa_goto_if_fail(impl->enter_count > 0, unlock_error);
-		spa_goto_if_fail(pthread_equal(impl->thread, thread_id), unlock_error);
+		spa_goto_if_fail(pthread_equal(SPA_ATOMIC_LOAD(impl->thread), thread_id),
+				unlock_error);
 		impl->enter_count++;
 	}
-	spa_log_trace_fp(impl->log, "%p: enter %p", impl, (void *) impl->thread);
+	spa_log_trace_fp(impl->log, "%p: enter %p", impl,
+			(void *) SPA_ATOMIC_LOAD(impl->thread));
 	return;
 
 unlock_error:
@@ -626,12 +635,13 @@ static void loop_leave(void *object)
 	pthread_t thread_id = pthread_self();
 
 	spa_return_if_fail(impl->enter_count > 0);
-	spa_return_if_fail(pthread_equal(impl->thread, thread_id));
+	spa_return_if_fail(pthread_equal(SPA_ATOMIC_LOAD(impl->thread), thread_id));
 
-	spa_log_trace_fp(impl->log, "%p: leave %p", impl, (void *) impl->thread);
+	spa_log_trace_fp(impl->log, "%p: leave %p", impl,
+			(void *) SPA_ATOMIC_LOAD(impl->thread));
 
 	if (--impl->enter_count == 0) {
-		impl->thread = 0;
+		SPA_ATOMIC_STORE(impl->thread, (pthread_t)0);
 		flush_all_queues(impl);
 	}
 	spa_assert_se(pthread_mutex_unlock(&impl->lock) == 0);
@@ -641,10 +651,11 @@ static int loop_check(void *object)
 {
 	struct impl *impl = object;
 	pthread_t thread_id = pthread_self();
+	pthread_t loop_thread = SPA_ATOMIC_LOAD(impl->thread);
 	int res;
 
 	/* we are in the thread running the loop */
-	if (impl->thread == 0 || pthread_equal(impl->thread, thread_id))
+	if (loop_thread == 0 || pthread_equal(loop_thread, thread_id))
 		return 1;
 
 	/* if lock taken by something else, error */
@@ -661,8 +672,10 @@ static int loop_lock(void *object)
 	struct impl *impl = object;
 	int res;
 
+	SPA_ATOMIC_INC(impl->lock_waiters);
 	if ((res = pthread_mutex_lock(&impl->lock)) == 0)
 		impl->recurse++;
+	SPA_ATOMIC_DEC(impl->lock_waiters);
 	return -res;
 }
 static int loop_unlock(void *object)
@@ -728,6 +741,32 @@ static int loop_accept(void *object)
 	struct impl *impl = object;
 	impl->n_waiting_for_accept--;
 	return -pthread_cond_signal(&impl->accept_cond);
+}
+
+static int loop_yield(void *object)
+{
+	struct impl *impl = object;
+	int res;
+
+	spa_return_val_if_fail(impl->enter_count > 0, -EPERM);
+	spa_return_val_if_fail(pthread_equal(SPA_ATOMIC_LOAD(impl->thread),
+			pthread_self()), -EPERM);
+	spa_return_val_if_fail(impl->recurse == 0, -EBUSY);
+
+	flush_all_queues(impl);
+	if ((res = pthread_mutex_unlock(&impl->lock)) != 0)
+		return -res;
+	if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(impl->lock_waiters) != 0)) {
+		const struct timespec pause = { .tv_nsec = 1 };
+
+		/* A SCHED_FIFO loop cannot hand the CPU to a SCHED_OTHER control
+		 * caller with sched_yield(). Sleep only when a caller is actually
+		 * waiting; the repeated no-contention path remains syscall-free. */
+		nanosleep(&pause, NULL);
+	}
+	if ((res = pthread_mutex_lock(&impl->lock)) != 0)
+		return -res;
+	return 0;
 }
 
 struct cancellation_handler_data {
@@ -1256,6 +1295,7 @@ static const struct spa_loop_control_methods impl_loop_control_cancel = {
 	.wait = loop_wait,
 	.signal = loop_signal,
 	.accept = loop_accept,
+	.yield = loop_yield,
 };
 
 static const struct spa_loop_control_methods impl_loop_control = {
@@ -1272,6 +1312,7 @@ static const struct spa_loop_control_methods impl_loop_control = {
 	.wait = loop_wait,
 	.signal = loop_signal,
 	.accept = loop_accept,
+	.yield = loop_yield,
 };
 
 static const struct spa_loop_utils_methods impl_loop_utils = {
@@ -1440,12 +1481,18 @@ impl_init(const struct spa_handle_factory *factory,
 	spa_list_init(&impl->free_list);
 	spa_hook_list_init(&impl->hooks_list);
 
+	/* Install the invoke wakeup before polling mode rejects external fd
+	 * sources. Polling dispatches this source's queue without reading its fd. */
 	impl->wakeup = loop_add_event(impl, wakeup_func, impl);
 	if (impl->wakeup == NULL) {
 		res = -errno;
 		spa_log_error(impl->log, "%p: can't create wakeup event: %m", impl);
 		goto error_exit_free_poll;
 	}
+	if (info != NULL &&
+			(str = spa_dict_lookup(info, "loop.idle")) != NULL &&
+			spa_streq(str, "busy-spin"))
+		impl->polling = true;
 
 	impl->head.t.idx = IDX_INVALID;
 
