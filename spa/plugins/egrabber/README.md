@@ -8,8 +8,8 @@ does not inspect or include the proprietary SDK.
 `api.egrabber.producer` accepts the Euresys `gigelink`, `grablink`, and
 `coaxlink` aliases or a CTI filesystem path passed to `EGenTL`. The loader is
 therefore not syntactically limited to Euresys CTIs, but this plugin supports
-and qualifies only the Euresys producers. A third-party GenTL producer may load
-for complete frames, but its eGrabber compatibility is not assumed. Progressive
+and qualifies only the Euresys producers. Loading a third-party GenTL producer
+does not imply that the eGrabber facade can open its devices. Progressive
 operation specifically requires the Euresys Grablink or Coaxlink producer and
 its custom `StartOfCameraReadout` event contract.
 
@@ -96,6 +96,21 @@ Gigelink camera it
 negotiates the live format, announces eight aligned
 PipeWireAO-owned buffers, captures ten frames, validates Acquisition metadata,
 returns every subscriber lease, and performs ordered teardown.
+
+The capture test also accepts an optional CTI path for explicit producer
+qualification. On 2026-08-23, eGrabber 26.06.1.23 loaded Baumer's BGAPI2 2.16.1
+GigE Vision producer at
+`/opt/baumer-gapi-sdk-c/lib/libbgapi2_gige.cti`, and enumerated its two
+interfaces, but `EGrabberDiscovery` returned zero grabbers and zero cameras.
+Constructing an index-selected `EGrabber` directly reached the producer's
+`IFOpenDevice` with standard `DEVICE_ACCESS_CONTROL` and failed with
+`GC_ERR_ACCESS_DENIED` (-1005), "Requested operation is not allowed." As a
+control, the PipeWireAO BGAPI2 source then used the same CTI and connected
+GE34GM camera to capture ten complete 640x480 Mono8 frames. This isolates the
+failure to eGrabber/Baumer facade-producer interoperability rather than CTI
+loading, network discovery, or camera availability. The eGrabber source must
+therefore use an Euresys producer for this camera; the BGAPI2 source remains the
+supported path for the Baumer producer.
 
 The opt-in host qualification runs the standard factory through an isolated
 PipeWireAO daemon:
