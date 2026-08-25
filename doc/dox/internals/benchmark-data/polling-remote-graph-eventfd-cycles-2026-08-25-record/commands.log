@@ -1,0 +1,16 @@
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/daemon/pipewire-ao -P { context.data-loops = [ { loop.name=daemon-event loop.class=data.rt loop.idle=eventfd } ] }
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1774485-eventfd-eventfd-rt88-cycles-rep1 eventfd eventfd benchmark 2000 200000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-eventfd-cycles-2026-08-25-record/latency-eventfd-eventfd-rt88-cycles-rep1.csv
+$ perf record --output /tmp/pwao-remote-benchmark.crntlrz4/perf-eventfd-eventfd-rt88-cycles-rep1.data --delay=-1 --control=fd:5,10 --event cycles:u --freq 999 --mmap-pages 8192 --call-graph dwarf,8192 --tid 1774742,1774743
+client-output:
+READY source=polling-export-source-bench-1774485-eventfd-eventfd-rt88-cycles-rep1 sink=polling-export-sink-bench-1774485-eventfd-eventfd-rt88-cycles-rep1
+RESULT produced=202000 received=202000 held=0
+BENCHMARK samples=200000 measurement-ns=20023706126 source-tid=1774742 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1774743 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+[ perf record: Woken up 29 times to write data ]
+[ perf record: Captured and wrote 4.018 MB /tmp/pwao-remote-benchmark.crntlrz4/perf-eventfd-eventfd-rt88-cycles-rep1.data (494 samples) ]
+

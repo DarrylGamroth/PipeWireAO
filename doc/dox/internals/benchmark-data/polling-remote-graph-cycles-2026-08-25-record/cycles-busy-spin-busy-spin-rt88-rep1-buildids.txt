@@ -1,0 +1,4 @@
+0d0fbf7bef2f9847682dec9446b7384526096a44 /home/dgamroth/workspaces/codex/pipewire/pipewire/build/spa/plugins/support/libspa-support.so
+1cecf8d99af6c9ec7c9511b67ec446c04faa1561 /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/pipewire/libpipewire-ao-0.3.so.0.1700.0
+c495b62edadd6c356265942ec1282d98058a7b41 /usr/lib/x86_64-linux-gnu/libc.so.6
+60858bf1da19ff4381abce9cb512d91c9a0b5e30 [vdso]

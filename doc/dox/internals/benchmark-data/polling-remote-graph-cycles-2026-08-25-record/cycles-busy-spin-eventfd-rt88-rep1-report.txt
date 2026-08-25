@@ -1,0 +1,296 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 1K of event 'cycles:u'
+# Event count (approx.): 4380998849
+#
+# Overhead  Command        Shared Object                      Symbol                        IPC   [IPC Coverage]
+# ........  .............  .................................  ............................  ....................
+#
+    56.05%  client-source  libpipewire-ao-0.3.so.0.1700.0     [.] do_poll_loop              -      -            
+            |          
+            |--44.01%--do_poll_loop
+            |          0x7fd7c67e9b7a
+            |          0x7fd7c68677f7
+            |          
+            |--10.74%--spa_loop_control_yield (inlined)
+            |          do_poll_loop
+            |          0x7fd7c67e9b7a
+            |          0x7fd7c68677f7
+            |          
+             --1.31%--pw_data_loop_relax (inlined)
+                       do_poll_loop
+                       0x7fd7c67e9b7a
+                       0x7fd7c68677f7
+
+     8.96%  client-source  libspa-support.so                  [.] flush_all_queues          -      -            
+            |          
+             --8.86%--flush_all_queues
+                       loop_yield
+                       spa_loop_control_yield (inlined)
+                       do_poll_loop
+                       0x7fd7c67e9b7a
+                       0x7fd7c68677f7
+
+     6.96%  client-source  libspa-support.so                  [.] loop_yield                -      -            
+            |
+            ---loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     5.54%  client-source  libpipewire-ao-0.3.so.0.1700.0     [.] poll_process_node         -      -            
+            |
+            ---poll_process_node
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     3.95%  client-source  libc.so.6                          [.] 0x0000000000097508        -      -            
+            |
+            ---0x7fd7c67ee508
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     3.55%  client-source  libc.so.6                          [.] 0x00000000000959d8        -      -            
+            |
+            ---0x7fd7c67ec9d8
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     1.28%  client-source  libc.so.6                          [.] 0x00000000000959c8        -      -            
+            |
+            ---0x7fd7c67ec9c8
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     1.04%  client-source  libc.so.6                          [.] 0x00000000000973ac        -      -            
+            |
+            ---0x7fd7c67ee3ac
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.99%  client-source  libc.so.6                          [.] 0x00000000000974fa        -      -            
+            |
+            ---0x7fd7c67ee4fa
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.99%  client-source  libc.so.6                          [.] 0x0000000000095788        -      -            
+            |
+            ---0x7fd7c67ec788
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.89%  client-source  libc.so.6                          [.] 0x00000000000957cc        -      -            
+            |
+            ---0x7fd7c67ec7cc
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.89%  client-source  libc.so.6                          [.] pthread_mutex_lock        -      -            
+            |
+            ---pthread_mutex_lock
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.89%  client-source  libc.so.6                          [.] 0x00000000000974db        -      -            
+            |
+            ---0x7fd7c67ee4db
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.69%  client-source  libc.so.6                          [.] 0x0000000000095865        -      -            
+            |
+            ---0x7fd7c67ec865
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.59%  client-source  libc.so.6                          [.] 0x0000000000097723        -      -            
+            |
+            ---0x7fd7c67ee723
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.59%  client-source  libc.so.6                          [.] 0x000000000009730b        -      -            
+            |
+            ---0x7fd7c67ee30b
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.59%  client-source  libc.so.6                          [.] 0x00000000000957a7        -      -            
+            |
+            ---0x7fd7c67ec7a7
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.59%  client-source  libc.so.6                          [.] 0x000000000009588b        -      -            
+            |
+            ---0x7fd7c67ec88b
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.43%  client-source  libc.so.6                          [.] 0x00000000000974bb        -      -            
+            |
+            ---0x7fd7c67ee4bb
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.40%  client-source  libc.so.6                          [.] 0x00000000000957ae        -      -            
+            |
+            ---0x7fd7c67ec7ae
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.39%  client-source  libpipewire-ao-0.3.so.0.1700.0     [.] pw_stream_dequeue_buffer  -      -            
+            |
+            ---pw_stream_dequeue_buffer
+               source_process
+               call_process (inlined)
+               call_process (inlined)
+               do_trigger_driver
+               flush_all_queues
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.30%  client-source  libc.so.6                          [.] 0x00000000000959bd        -      -            
+            |
+            ---0x7fd7c67ec9bd
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.30%  client-source  libc.so.6                          [.] 0x0000000000095a51        -      -            
+            |
+            ---0x7fd7c67eca51
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.20%  client-source  libspa-support.so                  [.] loop_invoke               -      -            
+            |
+            ---get_queue (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               poll_process_node
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.20%  client-source  libc.so.6                          [.] 0x00000000000957b7        -      -            
+            |
+            ---0x7fd7c67ec7b7
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.20%  client-source  libc.so.6                          [.] 0x00000000000957ba        -      -            
+            |
+            ---0x7fd7c67ec7ba
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.20%  client-source  libc.so.6                          [.] 0x00000000000973ae        -      -            
+            |
+            ---0x7fd7c67ee3ae
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.20%  client-source  libpipewire-ao-0.3.so.0.1700.0     [.] do_trigger_driver         -      -            
+            |
+            ---call_process (inlined)
+               call_process (inlined)
+               do_trigger_driver
+               flush_all_queues
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+     0.19%  client-source  libc.so.6                          [.] 0x0000000000095782        -      -            
+            |
+            ---0x7fd7c67ec782
+               loop_yield
+               spa_loop_control_yield (inlined)
+               do_poll_loop
+               0x7fd7c67e9b7a
+               0x7fd7c68677f7
+
+
+
+#
+# (Tip: Skip collecting build-id when recording: perf record -B)
+#

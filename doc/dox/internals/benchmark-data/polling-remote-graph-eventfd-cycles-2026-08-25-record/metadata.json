@@ -1,0 +1,23 @@
+{
+  "started_utc": "2026-08-25T16:42:50.757544+00:00",
+  "ended_utc": "2026-08-25T16:43:12.008988+00:00",
+  "duration_seconds": 21.251444,
+  "random_seed": 20260825,
+  "repetitions": 1,
+  "samples": 200000,
+  "warmup": 2000,
+  "interval_ns": 100000,
+  "source_cpu": 12,
+  "sink_cpu": 14,
+  "rt_priorities": [
+    88
+  ],
+  "modes": [
+    "eventfd-eventfd"
+  ],
+  "event_groups": {
+    "cycles": "cycles:u at 999 Hz with 8 KiB DWARF stacks"
+  },
+  "measurement_scope": "trigger call through source and sink process callbacks in two exported-node data loops linked by an isolated daemon",
+  "latency_model": "closed-loop, one frame in flight"
+}
