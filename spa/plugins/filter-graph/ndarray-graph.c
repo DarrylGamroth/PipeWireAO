@@ -89,6 +89,9 @@ struct fgn_transaction {
 	void *prepared;
 };
 
+static int validate_buffer(struct spa_buffer *buffer,
+		const struct spa_fgn_format *format, bool output);
+
 static bool string_equal(const char *a, const char *b)
 {
 	return a == b || (a != NULL && b != NULL && spa_streq(a, b));
@@ -693,6 +696,12 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 	     (node->descriptor->prepare_props == NULL ||
 	      node->descriptor->commit_props == NULL ||
 	      node->descriptor->discard_props == NULL)) ||
+	    ((node->descriptor->prepare_parameter != NULL ||
+	      node->descriptor->commit_parameter != NULL ||
+	      node->descriptor->discard_parameter != NULL) &&
+	     (node->descriptor->prepare_parameter == NULL ||
+	      node->descriptor->commit_parameter == NULL ||
+	      node->descriptor->discard_parameter == NULL)) ||
 	    node->descriptor->process == NULL) {
 		res = -ENOTSUP;
 		goto error;
@@ -713,7 +722,12 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 
 		if (info->struct_size < sizeof(*info) || info->name == NULL ||
 		    info->name[0] == '\0' ||
-		    (info->flags & ~SPA_FGN_PORT_FLAG_OPTIONAL) != 0 ||
+		    (info->flags & ~(SPA_FGN_PORT_FLAG_OPTIONAL |
+				SPA_FGN_PORT_FLAG_PARAMETER)) != 0 ||
+		    ((info->flags & SPA_FGN_PORT_FLAG_PARAMETER) &&
+		     (info->direction != SPA_FGN_PORT_INPUT ||
+		      !(info->flags & SPA_FGN_PORT_FLAG_OPTIONAL) ||
+		      node->descriptor->prepare_parameter == NULL)) ||
 		    (info->direction != SPA_FGN_PORT_INPUT &&
 		     info->direction != SPA_FGN_PORT_OUTPUT)) {
 			res = -EINVAL;
@@ -831,6 +845,8 @@ static int load_link(struct spa_fgn_graph *graph, struct spa_json *json)
 	if ((out_port = resolve_port(graph, output, SPA_FGN_PORT_OUTPUT)) == NULL ||
 	    (in_port = resolve_port(graph, input, SPA_FGN_PORT_INPUT)) == NULL)
 		return -ENOENT;
+	if (in_port->info->flags & SPA_FGN_PORT_FLAG_PARAMETER)
+		return -ENOTSUP;
 	if (in_port->source != NULL || in_port->external != SPA_ID_INVALID)
 		return -EBUSY;
 	if (!format_equal(out_port->format, in_port->format))
@@ -1089,6 +1105,30 @@ int spa_fgn_graph_get_port_format(const struct spa_fgn_graph *graph,
 	return 0;
 }
 
+int spa_fgn_graph_get_port_info(const struct spa_fgn_graph *graph,
+		uint32_t direction, uint32_t port, const char **node_name,
+		const struct spa_fgn_port_info **info)
+{
+	struct fgn_port *graph_port;
+
+	if (graph == NULL || node_name == NULL || info == NULL)
+		return -EINVAL;
+	if (direction == SPA_FGN_PORT_INPUT) {
+		if (port >= graph->n_inputs)
+			return -ENOENT;
+		graph_port = graph->inputs[port];
+	} else if (direction == SPA_FGN_PORT_OUTPUT) {
+		if (port >= graph->n_outputs)
+			return -ENOENT;
+		graph_port = graph->outputs[port];
+	} else {
+		return -EINVAL;
+	}
+	*node_name = graph_port->node->name;
+	*info = graph_port->info;
+	return 0;
+}
+
 static int property_at(struct spa_fgn_graph *graph, uint32_t index,
 		struct fgn_node **node, const struct spa_fgn_property_info **info)
 {
@@ -1314,6 +1354,37 @@ done:
 	return res;
 }
 
+int spa_fgn_graph_update_parameter(struct spa_fgn_graph *graph,
+		uint32_t input_port, struct spa_buffer *buffer)
+{
+	struct spa_fgn_buffer update;
+	struct fgn_port *port;
+	void *prepared = NULL;
+	int res;
+
+	if (graph == NULL || input_port >= graph->n_inputs || buffer == NULL)
+		return -EINVAL;
+	port = graph->inputs[input_port];
+	if (!(port->info->flags & SPA_FGN_PORT_FLAG_PARAMETER))
+		return -EINVAL;
+	if ((res = validate_buffer(buffer, port->format, false)) < 0)
+		return res;
+	update = (struct spa_fgn_buffer) {
+		.buffer = buffer,
+		.format = port->format,
+	};
+	res = port->node->descriptor->prepare_parameter(port->node->instance,
+			port->info->index, &update, &prepared);
+	if (res < 0) {
+		if (prepared != NULL)
+			port->node->descriptor->discard_parameter(
+					port->node->instance, prepared);
+		return res;
+	}
+	port->node->descriptor->commit_parameter(port->node->instance, prepared);
+	return 0;
+}
+
 int spa_fgn_graph_activate(struct spa_fgn_graph *graph)
 {
 	uint32_t i;
@@ -1422,9 +1493,18 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 			node->outputs[j]->cycle_buffer = &node->outputs[j]->storage.buffer;
 	}
 	for (i = 0; i < n_inputs; i++) {
-		if ((res = validate_buffer(inputs[i], graph->inputs[i]->format, false)) < 0)
+		struct fgn_port *port = graph->inputs[i];
+		if (port->info->flags & SPA_FGN_PORT_FLAG_PARAMETER) {
+			if (inputs[i] != NULL)
+				return -EINVAL;
+			continue;
+		}
+		if (inputs[i] == NULL &&
+		    (port->info->flags & SPA_FGN_PORT_FLAG_OPTIONAL))
+			continue;
+		if ((res = validate_buffer(inputs[i], port->format, false)) < 0)
 			return res;
-		graph->inputs[i]->cycle_buffer = inputs[i];
+		port->cycle_buffer = inputs[i];
 	}
 	for (i = 0; i < n_outputs; i++) {
 		if ((res = validate_buffer(outputs[i], graph->outputs[i]->format, true)) < 0)

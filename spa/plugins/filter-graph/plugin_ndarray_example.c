@@ -20,6 +20,15 @@ enum property_id {
 	PROPERTY_ACTIVE_GAIN,
 	PROPERTY_REQUESTED_GENERATION,
 	PROPERTY_ACTIVE_GENERATION,
+	PROPERTY_REQUESTED_PARAMETER_SEQUENCE,
+	PROPERTY_ACTIVE_PARAMETER_SEQUENCE,
+};
+
+#define PARAMETER_SLOT_NONE UINT32_MAX
+
+struct parameter_slot {
+	float *values;
+	uint64_t sequence;
 };
 
 struct instance {
@@ -27,12 +36,20 @@ struct instance {
 	char schema[256];
 	char profile[256];
 	struct spa_fgn_format format;
+	uint32_t n_values;
 	_Atomic uint64_t requested_state;
 	_Atomic uint64_t active_state;
+	struct parameter_slot parameter_slots[2];
+	_Atomic uint32_t requested_parameter_slot;
+	_Atomic uint32_t active_parameter_slot;
 };
 
 struct prepared_props {
 	float gain;
+};
+
+struct prepared_parameter {
+	uint32_t slot;
 };
 
 static uint64_t pack_state(uint32_t generation, float gain)
@@ -70,6 +87,13 @@ static const struct spa_fgn_port_info ports[] = {
 		.direction = SPA_FGN_PORT_OUTPUT,
 		.name = "out",
 	},
+	{
+		.struct_size = sizeof(struct spa_fgn_port_info),
+		.index = 2,
+		.direction = SPA_FGN_PORT_INPUT,
+		.flags = SPA_FGN_PORT_FLAG_OPTIONAL | SPA_FGN_PORT_FLAG_PARAMETER,
+		.name = "coefficients",
+	},
 };
 
 static int parse_shape(struct spa_json *parent, const char *token, int len,
@@ -97,6 +121,8 @@ static int instantiate(const struct spa_fgn_descriptor *descriptor SPA_UNUSED,
 	struct spa_json object;
 	char key[256];
 	const char *token;
+	size_t n_values = 1;
+	uint32_t i, slot;
 	int len, res;
 
 	if (result == NULL || config == NULL)
@@ -138,6 +164,29 @@ static int instantiate(const struct spa_fgn_descriptor *descriptor SPA_UNUSED,
 		instance->format.n_dimensions = 1;
 		instance->shape[0] = 4;
 	}
+	for (i = 0; i < instance->format.n_dimensions; i++) {
+		if (n_values > UINT32_MAX / instance->shape[i]) {
+			res = -EOVERFLOW;
+			goto error;
+		}
+		n_values *= instance->shape[i];
+	}
+	if (n_values > UINT32_MAX / sizeof(float)) {
+		res = -EOVERFLOW;
+		goto error;
+	}
+	instance->n_values = (uint32_t)n_values;
+	for (slot = 0; slot < SPA_N_ELEMENTS(instance->parameter_slots); slot++) {
+		if ((instance->parameter_slots[slot].values =
+				calloc(n_values, sizeof(float))) == NULL) {
+			res = -ENOMEM;
+			goto error;
+		}
+		for (i = 0; i < n_values; i++)
+			instance->parameter_slots[slot].values[i] = 1.0f;
+	}
+	atomic_init(&instance->requested_parameter_slot, PARAMETER_SLOT_NONE);
+	atomic_init(&instance->active_parameter_slot, 0);
 	instance->format.schema = instance->schema[0] != '\0'
 		? instance->schema : NULL;
 	instance->format.profile = instance->profile[0] != '\0'
@@ -145,13 +194,22 @@ static int instantiate(const struct spa_fgn_descriptor *descriptor SPA_UNUSED,
 	*result = instance;
 	return 0;
 error:
+	for (slot = 0; slot < SPA_N_ELEMENTS(instance->parameter_slots); slot++)
+		free(instance->parameter_slots[slot].values);
 	free(instance);
 	return res;
 }
 
 static void cleanup(void *data)
 {
-	free(data);
+	struct instance *instance = data;
+	uint32_t slot;
+
+	if (instance == NULL)
+		return;
+	for (slot = 0; slot < SPA_N_ELEMENTS(instance->parameter_slots); slot++)
+		free(instance->parameter_slots[slot].values);
+	free(instance);
 }
 
 static int get_port_format(void *data, uint32_t port,
@@ -188,12 +246,15 @@ static int enum_prop_info(void *data, uint32_t index,
 	uint64_t state;
 	static const char *const names[] = {
 		"gain", "active-gain", "requested-generation", "active-generation",
+		"requested-parameter-sequence", "active-parameter-sequence",
 	};
 	static const char *const descriptions[] = {
 		"Requested scalar gain",
 		"Scalar gain adopted by process()",
 		"Generation published by the control thread",
 		"Generation adopted by process()",
+		"Sequence of the latest accepted coefficient update",
+		"Coefficient sequence adopted by process()",
 	};
 
 	if (instance == NULL || info == NULL)
@@ -252,6 +313,21 @@ static int get_prop(void *data, uint32_t id, struct spa_fgn_value *value)
 				memory_order_acquire);
 		*value = long_value(state_generation(state));
 		break;
+	case PROPERTY_REQUESTED_PARAMETER_SEQUENCE: {
+		uint32_t slot = atomic_load_explicit(
+				&instance->requested_parameter_slot, memory_order_acquire);
+		if (slot == PARAMETER_SLOT_NONE)
+			slot = atomic_load_explicit(&instance->active_parameter_slot,
+					memory_order_acquire);
+		*value = long_value(instance->parameter_slots[slot].sequence);
+		break;
+	}
+	case PROPERTY_ACTIVE_PARAMETER_SEQUENCE: {
+		uint32_t slot = atomic_load_explicit(&instance->active_parameter_slot,
+				memory_order_acquire);
+		*value = long_value(instance->parameter_slots[slot].sequence);
+		break;
+	}
 	default:
 		return -ENOENT;
 	}
@@ -306,6 +382,58 @@ static void discard_props(void *data SPA_UNUSED, void *prepared)
 	free(prepared);
 }
 
+static int prepare_parameter(void *data, uint32_t port,
+		const struct spa_fgn_buffer *buffer, void **result)
+{
+	struct instance *instance = data;
+	struct prepared_parameter *prepared;
+	const struct spa_meta_header *header;
+	const struct spa_data *spa_data;
+	const float *values;
+	uint32_t active, slot, i;
+
+	if (instance == NULL || port != 2 || buffer == NULL ||
+	    buffer->buffer == NULL || result == NULL)
+		return -EINVAL;
+	if (atomic_load_explicit(&instance->requested_parameter_slot,
+			memory_order_acquire) != PARAMETER_SLOT_NONE)
+		return -EBUSY;
+	spa_data = &buffer->buffer->datas[0];
+	values = SPA_PTROFF(spa_data->data, spa_data->chunk->offset, const float);
+	for (i = 0; i < instance->n_values; i++)
+		if (!isfinite(values[i]))
+			return -EINVAL;
+	if ((prepared = malloc(sizeof(*prepared))) == NULL)
+		return -ENOMEM;
+	active = atomic_load_explicit(&instance->active_parameter_slot,
+			memory_order_acquire);
+	slot = active ^ 1u;
+	memcpy(instance->parameter_slots[slot].values, values,
+			instance->n_values * sizeof(float));
+	header = spa_buffer_find_meta_data(buffer->buffer, SPA_META_Header,
+			sizeof(*header));
+	instance->parameter_slots[slot].sequence = header != NULL
+		? header->seq : instance->parameter_slots[active].sequence + 1;
+	prepared->slot = slot;
+	*result = prepared;
+	return 0;
+}
+
+static void commit_parameter(void *data, void *prepared_data)
+{
+	struct instance *instance = data;
+	struct prepared_parameter *prepared = prepared_data;
+
+	atomic_store_explicit(&instance->requested_parameter_slot, prepared->slot,
+			memory_order_release);
+	free(prepared);
+}
+
+static void discard_parameter(void *data SPA_UNUSED, void *prepared)
+{
+	free(prepared);
+}
+
 static void copy_metadata(struct spa_buffer *output, const struct spa_buffer *input)
 {
 	uint32_t i;
@@ -331,25 +459,36 @@ static int process(void *data, const struct spa_fgn_buffer *inputs,
 	float *output;
 	uint64_t state;
 	float gain;
-	uint32_t i, n_values = 1;
+	uint32_t parameter_slot, requested_parameter_slot;
+	uint32_t i;
 
 	if (instance == NULL || inputs == NULL || outputs == NULL ||
-	    n_inputs != 1 || n_outputs != 1 || inputs[0].buffer == NULL ||
+	    n_inputs != 2 || n_outputs != 1 || inputs[0].buffer == NULL ||
+	    inputs[1].buffer != NULL ||
 	    outputs[0].buffer == NULL)
 		return -EINVAL;
 	state = atomic_load_explicit(&instance->requested_state,
 			memory_order_acquire);
 	atomic_store_explicit(&instance->active_state, state, memory_order_release);
 	gain = state_gain(state);
-	for (i = 0; i < instance->format.n_dimensions; i++)
-		n_values *= instance->shape[i];
+	requested_parameter_slot = atomic_load_explicit(
+			&instance->requested_parameter_slot, memory_order_acquire);
+	if (requested_parameter_slot != PARAMETER_SLOT_NONE) {
+		atomic_store_explicit(&instance->active_parameter_slot,
+				requested_parameter_slot, memory_order_release);
+		atomic_store_explicit(&instance->requested_parameter_slot,
+				PARAMETER_SLOT_NONE, memory_order_release);
+	}
+	parameter_slot = atomic_load_explicit(&instance->active_parameter_slot,
+			memory_order_acquire);
 	input_data = &inputs[0].buffer->datas[0];
 	output_data = &outputs[0].buffer->datas[0];
 	input = SPA_PTROFF(input_data->data, input_data->chunk->offset, const float);
 	output = SPA_PTROFF(output_data->data, output_data->chunk->offset, float);
-	for (i = 0; i < n_values; i++)
-		output[i] = input[i] * gain;
-	output_data->chunk->size = n_values * sizeof(float);
+	for (i = 0; i < instance->n_values; i++)
+		output[i] = input[i] * gain *
+			instance->parameter_slots[parameter_slot].values[i];
+	output_data->chunk->size = instance->n_values * sizeof(float);
 	copy_metadata(outputs[0].buffer, inputs[0].buffer);
 	return 0;
 }
@@ -368,6 +507,9 @@ static const struct spa_fgn_descriptor descriptor = {
 	.prepare_props = prepare_props,
 	.commit_props = commit_props,
 	.discard_props = discard_props,
+	.prepare_parameter = prepare_parameter,
+	.commit_parameter = commit_parameter,
+	.discard_parameter = discard_parameter,
 	.process = process,
 };
 
