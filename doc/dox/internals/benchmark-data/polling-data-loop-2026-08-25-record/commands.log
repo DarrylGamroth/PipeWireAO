@@ -1,0 +1,1189 @@
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-burst-rt88-rep1.csv
+exit=0 duration=0.110133s
+stdout:
+scan work-sources=1 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23155227.1/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.120us max=23.624us control-submitted=784 control-completed=784 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-periodic-rt88-rep1.csv
+exit=0 duration=0.105738s
+stdout:
+scan work-sources=1 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23124573.4/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.121us max=6.702us control-submitted=965 control-completed=965 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-burst-rt88-rep1.csv
+exit=0 duration=0.106942s
+stdout:
+scan work-sources=4 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=22110770.2/s p50=0.041us p90=0.050us p99=0.051us p99.9=0.120us max=4.909us control-submitted=800 control-completed=800 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-none-rt88-rep1.csv
+exit=0 duration=0.101107s
+stdout:
+scan work-sources=0 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=24443373.1/s p50=0.040us p90=0.041us p99=0.050us p99.9=0.060us max=4.078us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-none-rt88-rep1.csv
+exit=0 duration=0.109920s
+stdout:
+scan work-sources=1 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23749468.2/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.070us max=3.437us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-periodic-rt0-rep1.csv
+exit=0 duration=0.124970s
+stdout:
+scan work-sources=16 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=16261050.7/s p50=0.060us p90=0.061us p99=0.071us p99.9=0.190us max=6.743us control-submitted=1362 control-completed=1362 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-periodic-rt0-rep1.csv
+exit=0 duration=0.230603s
+stdout:
+scan work-sources=64 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=6491418.4/s p50=0.150us p90=0.160us p99=0.220us p99.9=0.341us max=8.716us control-submitted=3400 control-completed=3400 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-periodic-rt0-rep1.csv
+exit=0 duration=0.109010s
+stdout:
+scan work-sources=4 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=21870035.9/s p50=0.050us p90=0.050us p99=0.051us p99.9=0.150us max=6.171us control-submitted=1028 control-completed=1028 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-periodic-rt88-rep1.csv
+exit=0 duration=0.225142s
+stdout:
+scan work-sources=64 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6619354.1/s p50=0.150us p90=0.151us p99=0.200us p99.9=0.321us max=7.925us control-submitted=3335 control-completed=3335 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-none-rt0-rep1.csv
+exit=0 duration=0.248158s
+stdout:
+scan work-sources=64 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=5982945.3/s p50=0.151us p90=0.210us p99=0.231us p99.9=0.241us max=8.426us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 10000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-busy-spin-rt88-rep1.csv
+exit=0 duration=0.046056s
+stdout:
+activation idle=busy-spin samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=3107590.6/s p50=0.211us p90=0.270us p99=0.330us p99.9=1.082us max=29.946us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-periodic-rt88-rep1.csv
+exit=0 duration=0.108694s
+stdout:
+scan work-sources=0 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23478324.0/s p50=0.040us p90=0.050us p99=0.060us p99.9=0.111us max=5.621us control-submitted=964 control-completed=964 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-burst-rt88-rep1.csv
+exit=0 duration=0.129891s
+stdout:
+scan work-sources=16 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=16164073.6/s p50=0.060us p90=0.070us p99=0.071us p99.9=0.150us max=6.512us control-submitted=1120 control-completed=1120 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-burst-rt88-rep1.csv
+exit=0 duration=0.226343s
+stdout:
+scan work-sources=64 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6581232.5/s p50=0.150us p90=0.151us p99=0.161us p99.9=0.381us max=7.784us control-submitted=2688 control-completed=2688 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-burst-rt0-rep1.csv
+exit=0 duration=0.225465s
+stdout:
+scan work-sources=64 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=6631694.4/s p50=0.150us p90=0.151us p99=0.161us p99.9=0.391us max=5.490us control-submitted=2688 control-completed=2688 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-none-rt0-rep1.csv
+exit=0 duration=0.104376s
+stdout:
+scan work-sources=1 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23827133.8/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.070us max=4.598us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-burst-rt0-rep1.csv
+exit=0 duration=0.106200s
+stdout:
+scan work-sources=1 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23049922.9/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.110us max=4.088us control-submitted=784 control-completed=784 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-none-rt88-rep1.csv
+exit=0 duration=0.224018s
+stdout:
+scan work-sources=64 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6699048.5/s p50=0.150us p90=0.151us p99=0.151us p99.9=0.191us max=7.203us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 10000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-busy-spin-rt0-rep1.csv
+exit=0 duration=0.048864s
+stdout:
+activation idle=busy-spin samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2992011.3/s p50=0.230us p90=0.271us p99=0.320us p99.9=1.002us max=7.283us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-periodic-rt0-rep1.csv
+exit=0 duration=0.104663s
+stdout:
+scan work-sources=0 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23780204.0/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.110us max=7.444us control-submitted=943 control-completed=943 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-periodic-rt88-rep1.csv
+exit=0 duration=0.127023s
+stdout:
+scan work-sources=16 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=16099264.2/s p50=0.060us p90=0.070us p99=0.071us p99.9=0.220us max=15.980us control-submitted=1385 control-completed=1385 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-burst-rt88-rep1.csv
+exit=0 duration=0.103271s
+stdout:
+scan work-sources=0 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=24087750.5/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.101us max=4.528us control-submitted=752 control-completed=752 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-none-rt0-rep1.csv
+exit=0 duration=0.108824s
+stdout:
+scan work-sources=4 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=22112146.5/s p50=0.041us p90=0.050us p99=0.070us p99.9=0.080us max=5.180us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-periodic-rt0-rep1.csv
+exit=0 duration=0.116417s
+stdout:
+scan work-sources=1 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=20556971.0/s p50=0.041us p90=0.070us p99=0.080us p99.9=0.161us max=43.952us control-submitted=1069 control-completed=1069 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 10000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-eventfd-rt0-rep1.csv
+exit=0 duration=0.496967s
+stdout:
+activation idle=eventfd samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=225727.0/s p50=4.288us p90=4.348us p99=5.891us p99.9=8.375us max=315.570us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-none-rt0-rep1.csv
+exit=0 duration=0.101304s
+stdout:
+scan work-sources=0 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=24191646.4/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.060us max=7.855us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-none-rt88-rep1.csv
+exit=0 duration=0.130939s
+stdout:
+scan work-sources=16 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=16504504.4/s p50=0.060us p90=0.061us p99=0.071us p99.9=0.091us max=4.568us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-burst-rt0-rep1.csv
+exit=0 duration=0.127034s
+stdout:
+scan work-sources=16 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=16116488.4/s p50=0.060us p90=0.070us p99=0.071us p99.9=0.211us max=17.052us control-submitted=1104 control-completed=1104 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-periodic-rt88-rep1.csv
+exit=0 duration=0.111424s
+stdout:
+scan work-sources=4 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=21787804.4/s p50=0.050us p90=0.050us p99=0.051us p99.9=0.151us max=4.970us control-submitted=1028 control-completed=1028 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-burst-rt0-rep1.csv
+exit=0 duration=0.106669s
+stdout:
+scan work-sources=4 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=22126778.6/s p50=0.041us p90=0.050us p99=0.051us p99.9=0.130us max=4.950us control-submitted=800 control-completed=800 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-none-rt88-rep1.csv
+exit=0 duration=0.108360s
+stdout:
+scan work-sources=4 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=22255651.7/s p50=0.041us p90=0.050us p99=0.051us p99.9=0.070us max=3.807us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-none-rt0-rep1.csv
+exit=0 duration=0.130013s
+stdout:
+scan work-sources=16 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=16157191.9/s p50=0.060us p90=0.070us p99=0.090us p99.9=0.110us max=7.804us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 10000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-eventfd-rt88-rep1.csv
+exit=0 duration=0.343652s
+stdout:
+activation idle=eventfd samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=329926.7/s p50=2.896us p90=2.955us p99=4.378us p99.9=6.913us max=16.832us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-burst-rt0-rep1.csv
+exit=0 duration=0.104898s
+stdout:
+scan work-sources=0 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23883881.2/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.110us max=4.208us control-submitted=768 control-completed=768 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-none-rt0-rep2.csv
+exit=0 duration=0.111939s
+stdout:
+scan work-sources=4 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=20646591.8/s p50=0.050us p90=0.070us p99=0.080us p99.9=0.090us max=7.815us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-none-rt88-rep2.csv
+exit=0 duration=0.110553s
+stdout:
+scan work-sources=4 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=22328070.7/s p50=0.041us p90=0.050us p99=0.051us p99.9=0.070us max=16.982us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-none-rt0-rep2.csv
+exit=0 duration=0.126259s
+stdout:
+scan work-sources=16 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=16338255.2/s p50=0.060us p90=0.061us p99=0.071us p99.9=0.091us max=7.744us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-none-rt0-rep2.csv
+exit=0 duration=0.247030s
+stdout:
+scan work-sources=64 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=6246142.2/s p50=0.160us p90=0.171us p99=0.191us p99.9=0.220us max=25.077us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-burst-rt0-rep2.csv
+exit=0 duration=0.125097s
+stdout:
+scan work-sources=16 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=16176915.7/s p50=0.060us p90=0.070us p99=0.071us p99.9=0.200us max=7.464us control-submitted=1088 control-completed=1088 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-burst-rt88-rep2.csv
+exit=0 duration=0.103990s
+stdout:
+scan work-sources=0 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23909970.7/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.101us max=4.088us control-submitted=752 control-completed=752 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-periodic-rt88-rep2.csv
+exit=0 duration=0.107702s
+stdout:
+scan work-sources=1 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=22559307.4/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.121us max=5.089us control-submitted=1006 control-completed=1006 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-burst-rt0-rep2.csv
+exit=0 duration=0.107303s
+stdout:
+scan work-sources=4 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=22111279.1/s p50=0.041us p90=0.050us p99=0.051us p99.9=0.121us max=4.238us control-submitted=816 control-completed=816 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 10000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-busy-spin-rt88-rep2.csv
+exit=0 duration=0.046192s
+stdout:
+activation idle=busy-spin samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=3040082.3/s p50=0.221us p90=0.271us p99=0.311us p99.9=0.832us max=24.606us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-burst-rt88-rep2.csv
+exit=0 duration=0.109259s
+stdout:
+scan work-sources=4 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=21921907.2/s p50=0.050us p90=0.050us p99=0.051us p99.9=0.120us max=18.064us control-submitted=832 control-completed=832 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-burst-rt0-rep2.csv
+exit=0 duration=0.106994s
+stdout:
+scan work-sources=1 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23081173.7/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.111us max=8.756us control-submitted=784 control-completed=784 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 10000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-eventfd-rt88-rep2.csv
+exit=0 duration=0.346141s
+stdout:
+activation idle=eventfd samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=326817.7/s p50=2.926us p90=2.996us p99=4.168us p99.9=6.773us max=22.522us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-periodic-rt88-rep2.csv
+exit=0 duration=0.126158s
+stdout:
+scan work-sources=16 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=16175560.2/s p50=0.060us p90=0.070us p99=0.071us p99.9=0.170us max=13.586us control-submitted=1384 control-completed=1384 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 10000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-eventfd-rt0-rep2.csv
+exit=0 duration=0.503105s
+stdout:
+activation idle=eventfd samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=222800.7/s p50=4.348us p90=4.408us p99=5.961us p99.9=8.907us max=302.836us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-periodic-rt0-rep2.csv
+exit=0 duration=0.228896s
+stdout:
+scan work-sources=64 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=6566329.2/s p50=0.150us p90=0.151us p99=0.161us p99.9=0.341us max=19.647us control-submitted=3358 control-completed=3358 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-none-rt88-rep2.csv
+exit=0 duration=0.109642s
+stdout:
+scan work-sources=1 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23601431.1/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.061us max=3.086us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-burst-rt88-rep2.csv
+exit=0 duration=0.230275s
+stdout:
+scan work-sources=64 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6610164.1/s p50=0.150us p90=0.151us p99=0.170us p99.9=0.381us max=6.493us control-submitted=2688 control-completed=2688 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-periodic-rt88-rep2.csv
+exit=0 duration=0.109204s
+stdout:
+scan work-sources=4 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=21807655.3/s p50=0.050us p90=0.050us p99=0.051us p99.9=0.160us max=6.322us control-submitted=1027 control-completed=1027 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 10000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-busy-spin-rt0-rep2.csv
+exit=0 duration=0.047084s
+stdout:
+activation idle=busy-spin samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2975889.1/s p50=0.221us p90=0.271us p99=0.321us p99.9=1.162us max=17.562us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-none-rt88-rep2.csv
+exit=0 duration=0.100362s
+stdout:
+scan work-sources=0 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=24759372.9/s p50=0.040us p90=0.041us p99=0.050us p99.9=0.060us max=5.280us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-burst-rt88-rep2.csv
+exit=0 duration=0.112379s
+stdout:
+scan work-sources=1 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=22826877.3/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.110us max=5.691us control-submitted=784 control-completed=784 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-none-rt0-rep2.csv
+exit=0 duration=0.113540s
+stdout:
+scan work-sources=1 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23331488.8/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.070us max=38.502us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-periodic-rt88-rep2.csv
+exit=0 duration=0.230215s
+stdout:
+scan work-sources=64 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6565772.9/s p50=0.150us p90=0.160us p99=0.190us p99.9=0.320us max=14.688us control-submitted=3374 control-completed=3374 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-periodic-rt0-rep2.csv
+exit=0 duration=0.130284s
+stdout:
+scan work-sources=16 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=16127881.7/s p50=0.060us p90=0.070us p99=0.080us p99.9=0.180us max=6.913us control-submitted=1384 control-completed=1384 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-periodic-rt0-rep2.csv
+exit=0 duration=0.106973s
+stdout:
+scan work-sources=0 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23865932.1/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.110us max=5.871us control-submitted=944 control-completed=944 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-none-rt88-rep2.csv
+exit=0 duration=0.130544s
+stdout:
+scan work-sources=16 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=16247188.9/s p50=0.060us p90=0.070us p99=0.071us p99.9=0.100us max=8.175us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-periodic-rt0-rep2.csv
+exit=0 duration=0.108759s
+stdout:
+scan work-sources=1 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23288706.3/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.120us max=16.841us control-submitted=964 control-completed=964 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-burst-rt0-rep2.csv
+exit=0 duration=0.229622s
+stdout:
+scan work-sources=64 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=6577372.7/s p50=0.150us p90=0.151us p99=0.161us p99.9=0.391us max=22.181us control-submitted=2688 control-completed=2688 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-none-rt88-rep2.csv
+exit=0 duration=0.222777s
+stdout:
+scan work-sources=64 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6682225.7/s p50=0.150us p90=0.151us p99=0.160us p99.9=0.210us max=6.101us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-periodic-rt0-rep2.csv
+exit=0 duration=0.111870s
+stdout:
+scan work-sources=4 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=21937764.0/s p50=0.050us p90=0.050us p99=0.051us p99.9=0.131us max=3.617us control-submitted=1027 control-completed=1027 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-periodic-rt88-rep2.csv
+exit=0 duration=0.108601s
+stdout:
+scan work-sources=0 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23879750.2/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.100us max=16.431us control-submitted=944 control-completed=944 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-burst-rt0-rep2.csv
+exit=0 duration=0.109515s
+stdout:
+scan work-sources=0 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23633670.7/s p50=0.040us p90=0.050us p99=0.060us p99.9=0.120us max=16.140us control-submitted=768 control-completed=768 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-none-rt0-rep2.csv
+exit=0 duration=0.108435s
+stdout:
+scan work-sources=0 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=24446946.5/s p50=0.040us p90=0.041us p99=0.051us p99.9=0.061us max=9.929us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-burst-rt88-rep2.csv
+exit=0 duration=0.127103s
+stdout:
+scan work-sources=16 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=16120268.0/s p50=0.060us p90=0.070us p99=0.071us p99.9=0.180us max=7.685us control-submitted=1104 control-completed=1104 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-none-rt88-rep3.csv
+exit=0 duration=0.228030s
+stdout:
+scan work-sources=64 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6632171.2/s p50=0.150us p90=0.151us p99=0.161us p99.9=0.200us max=9.809us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-burst-rt0-rep3.csv
+exit=0 duration=0.107922s
+stdout:
+scan work-sources=0 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23991003.8/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.100us max=7.604us control-submitted=752 control-completed=752 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-burst-rt88-rep3.csv
+exit=0 duration=0.114877s
+stdout:
+scan work-sources=1 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23232223.0/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.110us max=2.876us control-submitted=784 control-completed=784 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 10000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-busy-spin-rt88-rep3.csv
+exit=0 duration=0.047655s
+stdout:
+activation idle=busy-spin samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=3021591.4/s p50=0.230us p90=0.261us p99=0.321us p99.9=0.882us max=12.964us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-none-rt0-rep3.csv
+exit=0 duration=0.130029s
+stdout:
+scan work-sources=16 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=16518325.5/s p50=0.060us p90=0.061us p99=0.070us p99.9=0.100us max=6.022us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-none-rt0-rep3.csv
+exit=0 duration=0.108388s
+stdout:
+scan work-sources=0 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=24122883.5/s p50=0.040us p90=0.050us p99=0.060us p99.9=0.070us max=20.328us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-burst-rt88-rep3.csv
+exit=0 duration=0.126029s
+stdout:
+scan work-sources=16 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=16168883.6/s p50=0.060us p90=0.070us p99=0.071us p99.9=0.150us max=8.075us control-submitted=1104 control-completed=1104 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-burst-rt0-rep3.csv
+exit=0 duration=0.110019s
+stdout:
+scan work-sources=4 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=21826577.7/s p50=0.050us p90=0.050us p99=0.051us p99.9=0.120us max=17.252us control-submitted=832 control-completed=832 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-none-rt0-rep3.csv
+exit=0 duration=0.222736s
+stdout:
+scan work-sources=64 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=6666887.0/s p50=0.150us p90=0.151us p99=0.160us p99.9=0.181us max=6.923us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-burst-rt88-rep3.csv
+exit=0 duration=0.112799s
+stdout:
+scan work-sources=4 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=21892989.1/s p50=0.050us p90=0.050us p99=0.051us p99.9=0.121us max=3.517us control-submitted=816 control-completed=816 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-periodic-rt0-rep3.csv
+exit=0 duration=0.107357s
+stdout:
+scan work-sources=1 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=22795097.5/s p50=0.040us p90=0.050us p99=0.060us p99.9=0.130us max=18.495us control-submitted=986 control-completed=986 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-periodic-rt0-rep3.csv
+exit=0 duration=0.102518s
+stdout:
+scan work-sources=0 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=24120551.4/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.110us max=14.376us control-submitted=922 control-completed=922 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-periodic-rt88-rep3.csv
+exit=0 duration=0.106969s
+stdout:
+scan work-sources=1 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23015364.9/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.121us max=3.446us control-submitted=986 control-completed=986 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-periodic-rt88-rep3.csv
+exit=0 duration=0.131564s
+stdout:
+scan work-sources=16 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=16100962.6/s p50=0.060us p90=0.070us p99=0.071us p99.9=0.190us max=6.332us control-submitted=1384 control-completed=1384 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-periodic-rt88-rep3.csv
+exit=0 duration=0.231406s
+stdout:
+scan work-sources=64 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6570811.5/s p50=0.150us p90=0.151us p99=0.200us p99.9=0.310us max=16.401us control-submitted=3379 control-completed=3379 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 10000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-eventfd-rt88-rep3.csv
+exit=0 duration=0.348775s
+stdout:
+activation idle=eventfd samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=324567.3/s p50=2.936us p90=2.986us p99=4.519us p99.9=7.064us max=18.504us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-none-rt88-rep3.csv
+exit=0 duration=0.107094s
+stdout:
+scan work-sources=0 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=24314932.8/s p50=0.040us p90=0.041us p99=0.051us p99.9=0.060us max=3.286us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-none-rt88-rep3.csv
+exit=0 duration=0.112801s
+stdout:
+scan work-sources=4 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=21516684.9/s p50=0.050us p90=0.050us p99=0.070us p99.9=0.090us max=6.893us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-none-rt88-rep3.csv
+exit=0 duration=0.108389s
+stdout:
+scan work-sources=1 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23808372.5/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.070us max=16.802us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-burst-rt0-rep3.csv
+exit=0 duration=0.112116s
+stdout:
+scan work-sources=1 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23304953.8/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.110us max=5.381us control-submitted=784 control-completed=784 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-none-rt0-rep3.csv
+exit=0 duration=0.105889s
+stdout:
+scan work-sources=1 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=24168058.1/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.060us max=5.249us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-none-rt0-rep3.csv
+exit=0 duration=0.112210s
+stdout:
+scan work-sources=4 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=22116027.0/s p50=0.041us p90=0.050us p99=0.070us p99.9=0.080us max=13.525us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-periodic-rt88-rep3.csv
+exit=0 duration=0.107982s
+stdout:
+scan work-sources=0 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23806090.1/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.130us max=5.480us control-submitted=943 control-completed=943 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-none-rt88-rep3.csv
+exit=0 duration=0.129023s
+stdout:
+scan work-sources=16 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=16385258.9/s p50=0.060us p90=0.061us p99=0.071us p99.9=0.090us max=7.824us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-periodic-rt88-rep3.csv
+exit=0 duration=0.107193s
+stdout:
+scan work-sources=4 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=22111166.7/s p50=0.041us p90=0.050us p99=0.051us p99.9=0.150us max=5.470us control-submitted=1005 control-completed=1005 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 10000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-busy-spin-rt0-rep3.csv
+exit=0 duration=0.046741s
+stdout:
+activation idle=busy-spin samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=3033449.4/s p50=0.230us p90=0.271us p99=0.320us p99.9=0.892us max=12.513us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-periodic-rt0-rep3.csv
+exit=0 duration=0.144677s
+stdout:
+scan work-sources=16 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=16297393.8/s p50=0.060us p90=0.061us p99=0.071us p99.9=0.170us max=6.092us control-submitted=1362 control-completed=1362 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-burst-rt88-rep3.csv
+exit=0 duration=0.105466s
+stdout:
+scan work-sources=0 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23650952.1/s p50=0.040us p90=0.050us p99=0.060us p99.9=0.101us max=18.234us control-submitted=768 control-completed=768 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-burst-rt0-rep3.csv
+exit=0 duration=0.226042s
+stdout:
+scan work-sources=64 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=6615478.9/s p50=0.150us p90=0.151us p99=0.161us p99.9=0.401us max=7.223us control-submitted=2688 control-completed=2688 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 10000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-eventfd-rt0-rep3.csv
+exit=0 duration=0.500664s
+stdout:
+activation idle=eventfd samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=224075.3/s p50=4.319us p90=4.378us p99=6.131us p99.9=8.596us max=48.621us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-burst-rt0-rep3.csv
+exit=0 duration=0.127514s
+stdout:
+scan work-sources=16 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=16008757.9/s p50=0.060us p90=0.070us p99=0.080us p99.9=0.160us max=10.710us control-submitted=1120 control-completed=1120 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-periodic-rt0-rep3.csv
+exit=0 duration=0.230740s
+stdout:
+scan work-sources=64 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=6510273.9/s p50=0.150us p90=0.160us p99=0.201us p99.9=0.331us max=8.566us control-submitted=3397 control-completed=3397 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-periodic-rt0-rep3.csv
+exit=0 duration=0.108966s
+stdout:
+scan work-sources=4 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=21770905.5/s p50=0.050us p90=0.050us p99=0.060us p99.9=0.140us max=6.902us control-submitted=1027 control-completed=1027 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-burst-rt88-rep3.csv
+exit=0 duration=0.226649s
+stdout:
+scan work-sources=64 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6581552.3/s p50=0.150us p90=0.151us p99=0.161us p99.9=0.381us max=6.121us control-submitted=2688 control-completed=2688 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-burst-rt88-rep4.csv
+exit=0 duration=0.225138s
+stdout:
+scan work-sources=64 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6601436.6/s p50=0.150us p90=0.151us p99=0.161us p99.9=0.381us max=11.802us control-submitted=2672 control-completed=2672 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-none-rt88-rep4.csv
+exit=0 duration=0.105546s
+stdout:
+scan work-sources=1 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23703495.8/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.070us max=16.350us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-burst-rt0-rep4.csv
+exit=0 duration=0.103138s
+stdout:
+scan work-sources=0 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=24043234.9/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.101us max=4.609us control-submitted=752 control-completed=752 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-none-rt88-rep4.csv
+exit=0 duration=0.112562s
+stdout:
+scan work-sources=4 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=21953754.6/s p50=0.050us p90=0.050us p99=0.070us p99.9=0.080us max=8.536us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-none-rt88-rep4.csv
+exit=0 duration=0.103979s
+stdout:
+scan work-sources=0 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=24203103.1/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.060us max=3.387us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-burst-rt0-rep4.csv
+exit=0 duration=0.227100s
+stdout:
+scan work-sources=64 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=6574646.7/s p50=0.150us p90=0.160us p99=0.161us p99.9=0.381us max=25.337us control-submitted=2704 control-completed=2704 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-periodic-rt88-rep4.csv
+exit=0 duration=0.108451s
+stdout:
+scan work-sources=4 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=21979008.9/s p50=0.050us p90=0.050us p99=0.051us p99.9=0.140us max=16.591us control-submitted=1026 control-completed=1026 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 10000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-eventfd-rt88-rep4.csv
+exit=0 duration=0.359826s
+stdout:
+activation idle=eventfd samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=313362.6/s p50=2.966us p90=3.146us p99=5.631us p99.9=8.235us max=23.013us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-none-rt0-rep4.csv
+exit=0 duration=0.104826s
+stdout:
+scan work-sources=1 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23485439.3/s p50=0.040us p90=0.050us p99=0.060us p99.9=0.071us max=4.298us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-burst-rt88-rep4.csv
+exit=0 duration=0.112331s
+stdout:
+scan work-sources=4 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=21861480.6/s p50=0.050us p90=0.050us p99=0.051us p99.9=0.121us max=6.592us control-submitted=816 control-completed=816 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-none-rt88-rep4.csv
+exit=0 duration=0.125635s
+stdout:
+scan work-sources=16 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=16337495.8/s p50=0.060us p90=0.061us p99=0.071us p99.9=0.100us max=8.115us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 10000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-busy-spin-rt0-rep4.csv
+exit=0 duration=0.047746s
+stdout:
+activation idle=busy-spin samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2982681.4/s p50=0.230us p90=0.271us p99=0.321us p99.9=1.052us max=11.431us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-burst-rt0-rep4.csv
+exit=0 duration=0.108522s
+stdout:
+scan work-sources=4 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=21839520.1/s p50=0.050us p90=0.050us p99=0.051us p99.9=0.120us max=8.966us control-submitted=816 control-completed=816 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-periodic-rt0-rep4.csv
+exit=0 duration=0.108531s
+stdout:
+scan work-sources=4 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=21862812.2/s p50=0.050us p90=0.050us p99=0.051us p99.9=0.160us max=3.937us control-submitted=1028 control-completed=1028 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-none-rt88-rep4.csv
+exit=0 duration=0.222105s
+stdout:
+scan work-sources=64 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6682891.5/s p50=0.150us p90=0.151us p99=0.160us p99.9=0.210us max=5.340us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-periodic-rt0-rep4.csv
+exit=0 duration=0.107194s
+stdout:
+scan work-sources=1 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23078409.7/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.120us max=4.709us control-submitted=984 control-completed=984 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-none-rt0-rep4.csv
+exit=0 duration=0.107456s
+stdout:
+scan work-sources=0 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23171003.8/s p50=0.040us p90=0.050us p99=0.070us p99.9=0.081us max=6.112us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-periodic-rt0-rep4.csv
+exit=0 duration=0.104396s
+stdout:
+scan work-sources=0 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23883161.3/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.120us max=4.469us control-submitted=943 control-completed=943 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-none-rt0-rep4.csv
+exit=0 duration=0.124419s
+stdout:
+scan work-sources=16 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=16572842.0/s p50=0.060us p90=0.061us p99=0.070us p99.9=0.090us max=4.599us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-periodic-rt0-rep4.csv
+exit=0 duration=0.127181s
+stdout:
+scan work-sources=16 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=16160032.9/s p50=0.060us p90=0.070us p99=0.071us p99.9=0.190us max=6.142us control-submitted=1384 control-completed=1384 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-burst-rt88-rep4.csv
+exit=0 duration=0.129910s
+stdout:
+scan work-sources=16 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=15722399.5/s p50=0.060us p90=0.070us p99=0.101us p99.9=0.190us max=8.646us control-submitted=1136 control-completed=1136 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-periodic-rt0-rep4.csv
+exit=0 duration=0.227282s
+stdout:
+scan work-sources=64 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=6550981.2/s p50=0.150us p90=0.160us p99=0.211us p99.9=0.310us max=19.086us control-submitted=3355 control-completed=3355 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 10000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-eventfd-rt0-rep4.csv
+exit=0 duration=0.498112s
+stdout:
+activation idle=eventfd samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=225136.9/s p50=4.318us p90=4.368us p99=5.810us p99.9=8.245us max=114.605us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-burst-rt0-rep4.csv
+exit=0 duration=0.111318s
+stdout:
+scan work-sources=1 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23173355.1/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.110us max=4.899us control-submitted=784 control-completed=784 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-periodic-rt88-rep4.csv
+exit=0 duration=0.103543s
+stdout:
+scan work-sources=0 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=24075363.4/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.130us max=6.422us control-submitted=942 control-completed=942 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 10000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-busy-spin-rt88-rep4.csv
+exit=0 duration=0.045995s
+stdout:
+activation idle=busy-spin samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=3026614.1/s p50=0.230us p90=0.280us p99=0.321us p99.9=1.022us max=13.585us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-burst-rt88-rep4.csv
+exit=0 duration=0.106531s
+stdout:
+scan work-sources=1 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23179646.2/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.120us max=5.991us control-submitted=784 control-completed=784 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-periodic-rt88-rep4.csv
+exit=0 duration=0.227000s
+stdout:
+scan work-sources=64 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6561818.6/s p50=0.150us p90=0.160us p99=0.161us p99.9=0.340us max=11.302us control-submitted=3378 control-completed=3378 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-none-rt0-rep4.csv
+exit=0 duration=0.226584s
+stdout:
+scan work-sources=64 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=6621418.0/s p50=0.150us p90=0.151us p99=0.161us p99.9=0.211us max=7.935us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-periodic-rt88-rep4.csv
+exit=0 duration=0.128641s
+stdout:
+scan work-sources=16 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=16097932.1/s p50=0.060us p90=0.070us p99=0.071us p99.9=0.160us max=6.933us control-submitted=1383 control-completed=1383 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-none-rt0-rep4.csv
+exit=0 duration=0.107331s
+stdout:
+scan work-sources=4 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=22337069.5/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.070us max=17.263us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-burst-rt0-rep4.csv
+exit=0 duration=0.126790s
+stdout:
+scan work-sources=16 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=16297891.6/s p50=0.060us p90=0.061us p99=0.071us p99.9=0.160us max=5.851us control-submitted=1104 control-completed=1104 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-burst-rt88-rep4.csv
+exit=0 duration=0.110143s
+stdout:
+scan work-sources=0 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23914020.7/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.100us max=5.190us control-submitted=752 control-completed=752 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-periodic-rt88-rep4.csv
+exit=0 duration=0.108996s
+stdout:
+scan work-sources=1 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=22676934.6/s p50=0.040us p90=0.050us p99=0.070us p99.9=0.130us max=4.117us control-submitted=1005 control-completed=1005 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 10000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-busy-spin-rt88-rep5.csv
+exit=0 duration=0.047183s
+stdout:
+activation idle=busy-spin samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=3029595.2/s p50=0.230us p90=0.280us p99=0.321us p99.9=0.981us max=2.965us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-burst-rt0-rep5.csv
+exit=0 duration=0.104888s
+stdout:
+scan work-sources=1 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23510847.6/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.110us max=6.933us control-submitted=768 control-completed=768 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-burst-rt0-rep5.csv
+exit=0 duration=0.126319s
+stdout:
+scan work-sources=16 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=16257218.3/s p50=0.060us p90=0.070us p99=0.071us p99.9=0.160us max=12.574us control-submitted=1104 control-completed=1104 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-periodic-rt0-rep5.csv
+exit=0 duration=0.105747s
+stdout:
+scan work-sources=1 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23452825.9/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.120us max=4.028us control-submitted=963 control-completed=963 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-burst-rt0-rep5.csv
+exit=0 duration=0.108220s
+stdout:
+scan work-sources=4 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=21877317.6/s p50=0.050us p90=0.050us p99=0.051us p99.9=0.130us max=8.195us control-submitted=816 control-completed=816 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-none-rt0-rep5.csv
+exit=0 duration=0.126068s
+stdout:
+scan work-sources=16 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=16337763.0/s p50=0.060us p90=0.061us p99=0.071us p99.9=0.090us max=6.262us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-periodic-rt0-rep5.csv
+exit=0 duration=0.101470s
+stdout:
+scan work-sources=0 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=24131731.3/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.101us max=3.446us control-submitted=921 control-completed=921 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-none-rt88-rep5.csv
+exit=0 duration=0.104628s
+stdout:
+scan work-sources=1 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23781750.7/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.060us max=2.475us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-periodic-rt0-rep5.csv
+exit=0 duration=0.230948s
+stdout:
+scan work-sources=64 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=6509063.9/s p50=0.150us p90=0.160us p99=0.211us p99.9=0.330us max=16.000us control-submitted=3399 control-completed=3399 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-periodic-rt0-rep5.csv
+exit=0 duration=0.128866s
+stdout:
+scan work-sources=16 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=15687423.9/s p50=0.060us p90=0.070us p99=0.100us p99.9=0.191us max=9.438us control-submitted=1404 control-completed=1404 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-burst-rt88-rep5.csv
+exit=0 duration=0.106826s
+stdout:
+scan work-sources=1 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=22968578.5/s p50=0.040us p90=0.050us p99=0.060us p99.9=0.110us max=3.136us control-submitted=784 control-completed=784 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-burst-rt88-rep5.csv
+exit=0 duration=0.225715s
+stdout:
+scan work-sources=64 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6569773.5/s p50=0.150us p90=0.151us p99=0.190us p99.9=0.391us max=11.341us control-submitted=2688 control-completed=2688 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-periodic-rt88-rep5.csv
+exit=0 duration=0.102111s
+stdout:
+scan work-sources=0 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23968840.7/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.100us max=3.627us control-submitted=922 control-completed=922 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 periodic 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-periodic-rt0-rep5.csv
+exit=0 duration=0.110345s
+stdout:
+scan work-sources=4 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=21701993.1/s p50=0.050us p90=0.050us p99=0.051us p99.9=0.150us max=15.529us control-submitted=1027 control-completed=1027 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-burst-rt88-rep5.csv
+exit=0 duration=0.109847s
+stdout:
+scan work-sources=4 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=21789745.2/s p50=0.050us p90=0.050us p99=0.051us p99.9=0.130us max=7.494us control-submitted=832 control-completed=832 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-periodic-rt88-rep5.csv
+exit=0 duration=0.228118s
+stdout:
+scan work-sources=64 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6574216.7/s p50=0.150us p90=0.151us p99=0.200us p99.9=0.330us max=10.940us control-submitted=3378 control-completed=3378 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-burst-rt0-rep5.csv
+exit=0 duration=0.227304s
+stdout:
+scan work-sources=64 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=6566333.1/s p50=0.150us p90=0.160us p99=0.161us p99.9=0.391us max=7.765us control-submitted=2704 control-completed=2704 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-none-rt0-rep5.csv
+exit=0 duration=0.106425s
+stdout:
+scan work-sources=4 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=22520150.3/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.070us max=4.518us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 10000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-eventfd-rt88-rep5.csv
+exit=0 duration=0.347172s
+stdout:
+activation idle=eventfd samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=326395.2/s p50=2.935us p90=2.976us p99=4.358us p99.9=6.843us max=16.781us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-none-rt88-rep5.csv
+exit=0 duration=0.129802s
+stdout:
+scan work-sources=16 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=16038618.2/s p50=0.060us p90=0.070us p99=0.100us p99.9=0.110us max=9.478us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-none-rt0-rep5.csv
+exit=0 duration=0.230558s
+stdout:
+scan work-sources=64 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=6573115.7/s p50=0.150us p90=0.160us p99=0.180us p99.9=0.221us max=25.518us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-none-rt0-rep5.csv
+exit=0 duration=0.103855s
+stdout:
+scan work-sources=1 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=24001814.9/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.060us max=7.233us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-none-rt88-rep5.csv
+exit=0 duration=0.102655s
+stdout:
+scan work-sources=0 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=24138325.7/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.070us max=2.725us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 none 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-none-rt0-rep5.csv
+exit=0 duration=0.104977s
+stdout:
+scan work-sources=0 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=24295330.9/s p50=0.040us p90=0.041us p99=0.051us p99.9=0.061us max=4.378us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-periodic-rt88-rep5.csv
+exit=0 duration=0.131294s
+stdout:
+scan work-sources=16 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=16167702.5/s p50=0.060us p90=0.070us p99=0.071us p99.9=0.191us max=5.330us control-submitted=1384 control-completed=1384 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 10000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-eventfd-rt0-rep5.csv
+exit=0 duration=0.501076s
+stdout:
+activation idle=eventfd samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=224057.4/s p50=4.328us p90=4.378us p99=6.082us p99.9=8.586us max=306.302us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 1 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-1-periodic-rt88-rep5.csv
+exit=0 duration=0.106227s
+stdout:
+scan work-sources=1 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23179726.8/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.111us max=7.043us control-submitted=964 control-completed=964 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-none-rt88-rep5.csv
+exit=0 duration=0.107395s
+stdout:
+scan work-sources=4 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=22225788.2/s p50=0.041us p90=0.050us p99=0.051us p99.9=0.071us max=3.507us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 none 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-64-none-rt88-rep5.csv
+exit=0 duration=0.223577s
+stdout:
+scan work-sources=64 probe-sources=1 contention=none samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6655262.5/s p50=0.150us p90=0.151us p99=0.161us p99.9=0.211us max=7.244us control-submitted=0 control-completed=0 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 16 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-16-burst-rt88-rep5.csv
+exit=0 duration=0.131668s
+stdout:
+scan work-sources=16 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=15947605.6/s p50=0.060us p90=0.070us p99=0.100us p99.9=0.160us max=9.368us control-submitted=1136 control-completed=1136 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 10000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/activation-busy-spin-rt0-rep5.csv
+exit=0 duration=0.046781s
+stdout:
+activation idle=busy-spin samples=100000 warmup=10000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=3035422.7/s p50=0.221us p90=0.271us p99=0.321us p99.9=1.082us max=3.256us
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 burst 1000000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-burst-rt0-rep5.csv
+exit=0 duration=0.106258s
+stdout:
+scan work-sources=0 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=23573209.7/s p50=0.040us p90=0.050us p99=0.060us p99.9=0.120us max=8.326us control-submitted=768 control-completed=768 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 burst 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-0-burst-rt88-rep5.csv
+exit=0 duration=0.104724s
+stdout:
+scan work-sources=0 probe-sources=1 contention=burst samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23995312.1/s p50=0.040us p90=0.050us p99=0.051us p99.9=0.101us max=2.786us control-submitted=752 control-completed=752 control-failed=0
+stderr:
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 4 periodic 1000000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-prefaulted-temp/scan-4-periodic-rt88-rep5.csv
+exit=0 duration=0.108868s
+stdout:
+scan work-sources=4 probe-sources=1 contention=periodic samples=1000000 warmup=100000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=21767087.9/s p50=0.050us p90=0.050us p99=0.060us p99.9=0.141us max=6.963us control-submitted=1028 control-completed=1028 control-failed=0
+stderr:
+
