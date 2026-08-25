@@ -594,12 +594,6 @@ static int client_node_demarshal_port_set_io(void *data, const struct pw_protoco
 			SPA_POD_Int(&off),
 			SPA_POD_Int(&sz)) < 0)
 		return -EINVAL;
-	if (id == SPA_IO_BuffersLatestNotify && memid != SPA_ID_INVALID) {
-		int fd = pw_protocol_native_get_proxy_fd(proxy, memid);
-		if (fd < 0)
-			return fd;
-		memid = (uint32_t)fd;
-	}
 
 	pw_proxy_notify(proxy, struct pw_client_node_events, port_set_io, 0,
 							direction, port_id, mix_id,
@@ -869,15 +863,8 @@ client_node_marshal_port_set_io(void *data,
 {
 	struct pw_resource *resource = data;
 	struct spa_pod_builder *b;
-	uint32_t fd_index;
 
 	b = pw_protocol_native_begin_resource(resource, PW_CLIENT_NODE_EVENT_PORT_SET_IO, NULL);
-	if (id == SPA_IO_BuffersLatestNotify && memid != SPA_ID_INVALID) {
-		fd_index = pw_protocol_native_add_resource_fd(resource, (int)memid);
-		if (fd_index == SPA_IDX_INVALID)
-			return -EMFILE;
-		memid = fd_index;
-	}
 
 	spa_pod_builder_add_struct(b,
 			       SPA_POD_Int(direction),
