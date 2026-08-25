@@ -35,6 +35,11 @@ int spa_fgn_graph_get_port_format(const struct spa_fgn_graph *graph,
 		uint32_t direction, uint32_t port,
 		const struct spa_fgn_format **format);
 
+/** Get borrowed configured-node and operation-port information. */
+int spa_fgn_graph_get_port_info(const struct spa_fgn_graph *graph,
+		uint32_t direction, uint32_t port, const char **node_name,
+		const struct spa_fgn_port_info **info);
+
 /** Build one namespaced SPA_PARAM_PropInfo object. */
 int spa_fgn_graph_enum_prop_info(struct spa_fgn_graph *graph, uint32_t index,
 		struct spa_pod_builder *builder, struct spa_pod **param);
@@ -46,6 +51,16 @@ int spa_fgn_graph_get_props(struct spa_fgn_graph *graph,
 /** Atomically prepare and commit one namespaced SPA_PARAM_Props update. */
 int spa_fgn_graph_set_props(struct spa_fgn_graph *graph,
 		const struct spa_pod *props);
+
+/**
+ * Prepare and publish one sparse external ndarray parameter-port update.
+ *
+ * Call this from a serial control or worker context, never from the graph data
+ * loop. The buffer is borrowed only for the duration of this call. A plugin
+ * returns -EBUSY when its bounded prepared-state capacity is full.
+ */
+int spa_fgn_graph_update_parameter(struct spa_fgn_graph *graph,
+		uint32_t input_port, struct spa_buffer *buffer);
 
 int spa_fgn_graph_activate(struct spa_fgn_graph *graph);
 int spa_fgn_graph_deactivate(struct spa_fgn_graph *graph);

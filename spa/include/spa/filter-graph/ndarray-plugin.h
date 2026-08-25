@@ -23,7 +23,7 @@ extern "C" {
  */
 
 /** Version of the C ABI exported by ndarray operation shared libraries. */
-#define SPA_FGN_PLUGIN_ABI_VERSION 0u
+#define SPA_FGN_PLUGIN_ABI_VERSION 1u
 
 /** Symbol exported by an ndarray operation shared library. */
 #define SPA_FGN_PLUGIN_ENTRY_NAME "spa_filter_graph_ndarray_plugin_get_interface"
@@ -38,6 +38,8 @@ enum spa_fgn_port_direction {
 enum spa_fgn_port_flag {
 	SPA_FGN_PORT_FLAG_NONE = 0,
 	SPA_FGN_PORT_FLAG_OPTIONAL = (1u << 0),
+	/** Sparse, retained plugin state supplied outside the data-loop process. */
+	SPA_FGN_PORT_FLAG_PARAMETER = (1u << 1),
 };
 
 /**
@@ -156,6 +158,21 @@ struct spa_fgn_descriptor {
 	/** Release a prepared transaction that will not be committed. */
 	void (*discard_props)(void *instance, void *prepared);
 
+	/**
+	 * Prepare one sparse ndarray parameter update off the data loop.
+	 *
+	 * The input buffer is borrowed only for this call. Implementations copy or
+	 * compile everything needed by process() into bounded plugin-owned state.
+	 * Returning -EBUSY applies back pressure when no inactive state slot is
+	 * available.
+	 */
+	int (*prepare_parameter)(void *instance, uint32_t port,
+			const struct spa_fgn_buffer *buffer, void **prepared);
+	/** Publish a prepared parameter update. This callback cannot fail. */
+	void (*commit_parameter)(void *instance, void *prepared);
+	/** Release a parameter update that will not be committed. */
+	void (*discard_parameter)(void *instance, void *prepared);
+
 	int (*activate)(void *instance);
 	int (*deactivate)(void *instance);
 	int (*reset)(void *instance);
@@ -166,7 +183,9 @@ struct spa_fgn_descriptor {
 	 * This callback runs on the graph data loop. It must not allocate, block,
 	 * unwind across the ABI, or retain a buffer after returning. Input buffers
 	 * and their metadata are read-only, including when one output fans out to
-	 * multiple consumers.
+	 * multiple consumers. Parameter-port entries are present in the input
+	 * array with a NULL buffer; process() uses the plugin-owned active state
+	 * previously published by commit_parameter().
 	 */
 	int (*process)(void *instance,
 			const struct spa_fgn_buffer *inputs, uint32_t n_inputs,

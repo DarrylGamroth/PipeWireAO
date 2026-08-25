@@ -7,14 +7,17 @@
 //! are written out here so this repository can test the language boundary
 //! without adding a Rust package dependency to PipeWireAO.
 
+use std::cell::UnsafeCell;
 use std::ffi::{CStr, c_char, c_void};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-const ABI_VERSION: u32 = 0;
+const ABI_VERSION: u32 = 1;
 const DIRECTION_INPUT: u32 = 0;
 const DIRECTION_OUTPUT: u32 = 1;
+const PORT_OPTIONAL: u32 = 1;
+const PORT_PARAMETER: u32 = 2;
 const PROPERTY_READONLY: u32 = 1;
 const PROPERTY_RANGE: u32 = 2;
 const TYPE_LONG: u32 = 5;
@@ -25,6 +28,8 @@ const META_HEADER: u32 = 1;
 const EINVAL: i32 = 22;
 const ENOENT: i32 = 2;
 const EFAULT: i32 = 14;
+const EBUSY: i32 = 16;
+const PARAMETER_SLOT_NONE: u32 = u32::MAX;
 
 #[repr(C)]
 struct SpaChunk {
@@ -58,6 +63,15 @@ struct SpaBuffer {
     n_datas: u32,
     metas: *mut SpaMeta,
     datas: *mut SpaData,
+}
+
+#[repr(C)]
+struct SpaMetaHeader {
+    flags: u32,
+    offset: u32,
+    pts: i64,
+    dts_offset: i64,
+    seq: u64,
 }
 
 #[repr(C)]
@@ -139,6 +153,8 @@ type GetProp = unsafe extern "C" fn(*mut c_void, u32, *mut Value) -> i32;
 type PrepareProps =
     unsafe extern "C" fn(*mut c_void, *const Property, u32, *mut *mut c_void) -> i32;
 type PropsAction = unsafe extern "C" fn(*mut c_void, *mut c_void);
+type PrepareParameter =
+    unsafe extern "C" fn(*mut c_void, u32, *const FgnBuffer, *mut *mut c_void) -> i32;
 type Lifecycle = unsafe extern "C" fn(*mut c_void) -> i32;
 type Process = unsafe extern "C" fn(*mut c_void, *const FgnBuffer, u32, *mut FgnBuffer, u32) -> i32;
 
@@ -157,6 +173,9 @@ struct Descriptor {
     prepare_props: Option<PrepareProps>,
     commit_props: Option<PropsAction>,
     discard_props: Option<PropsAction>,
+    prepare_parameter: Option<PrepareParameter>,
+    commit_parameter: Option<PropsAction>,
+    discard_parameter: Option<PropsAction>,
     activate: Option<Lifecycle>,
     deactivate: Option<Lifecycle>,
     reset: Option<Lifecycle>,
@@ -180,10 +199,26 @@ unsafe impl Sync for Plugin {}
 struct Instance {
     requested_state: AtomicU64,
     active_state: AtomicU64,
+    parameter_slots: UnsafeCell<[ParameterSlot; 2]>,
+    requested_parameter_slot: AtomicU32,
+    active_parameter_slot: AtomicU32,
+}
+
+// SAFETY: the control thread writes only an inactive slot before publishing
+// it with requested_parameter_slot. process() is the only active-slot reader.
+unsafe impl Sync for Instance {}
+
+struct ParameterSlot {
+    values: [f32; 4],
+    sequence: u64,
 }
 
 struct Prepared {
     gain: f32,
+}
+
+struct PreparedParameter {
+    slot: u32,
 }
 
 fn pack_state(generation: u32, gain: f32) -> u64 {
@@ -198,6 +233,20 @@ fn state_gain(state: u64) -> f32 {
     f32::from_bits(state as u32)
 }
 
+fn parameter_sequence(instance: &Instance, requested: bool) -> u64 {
+    let mut slot = if requested {
+        instance.requested_parameter_slot.load(Ordering::Acquire)
+    } else {
+        PARAMETER_SLOT_NONE
+    };
+    if slot == PARAMETER_SLOT_NONE {
+        slot = instance.active_parameter_slot.load(Ordering::Acquire);
+    }
+    // SAFETY: a requested slot is immutable after release publication. With
+    // no requested slot, the active slot cannot change until one is published.
+    unsafe { (*instance.parameter_slots.get())[slot as usize].sequence }
+}
+
 static SHAPE: [u32; 2] = [2, 2];
 static FORMAT: Format = Format {
     element_type: ELEMENT_F32_LE,
@@ -210,7 +259,7 @@ static FORMAT: Format = Format {
     profile: ptr::null(),
 };
 
-static PORTS: [PortInfo; 2] = [
+static PORTS: [PortInfo; 3] = [
     PortInfo {
         struct_size: size_of::<PortInfo>() as u32,
         index: 0,
@@ -224,6 +273,13 @@ static PORTS: [PortInfo; 2] = [
         direction: DIRECTION_OUTPUT,
         flags: 0,
         name: c"out".as_ptr(),
+    },
+    PortInfo {
+        struct_size: size_of::<PortInfo>() as u32,
+        index: 2,
+        direction: DIRECTION_INPUT,
+        flags: PORT_OPTIONAL | PORT_PARAMETER,
+        name: c"coefficients".as_ptr(),
     },
 ];
 
@@ -257,6 +313,18 @@ unsafe extern "C" fn instantiate(
         let instance = Box::new(Instance {
             requested_state: AtomicU64::new(pack_state(0, 1.0)),
             active_state: AtomicU64::new(pack_state(0, 1.0)),
+            parameter_slots: UnsafeCell::new([
+                ParameterSlot {
+                    values: [1.0; 4],
+                    sequence: 0,
+                },
+                ParameterSlot {
+                    values: [1.0; 4],
+                    sequence: 0,
+                },
+            ]),
+            requested_parameter_slot: AtomicU32::new(PARAMETER_SLOT_NONE),
+            active_parameter_slot: AtomicU32::new(0),
         });
         // SAFETY: result was validated above and ownership crosses the ABI.
         unsafe { *result = Box::into_raw(instance).cast() };
@@ -355,6 +423,38 @@ unsafe extern "C" fn enum_prop_info(data: *mut c_void, index: u32, info: *mut Pr
                     value: ValueBody { long_integer: 0 },
                 },
             ),
+            4 => (
+                c"requested-parameter-sequence",
+                c"Sequence of the latest accepted coefficient update",
+                PROPERTY_READONLY,
+                long_value(parameter_sequence(instance, true) as i64),
+                Value {
+                    type_: 0,
+                    reserved: 0,
+                    value: ValueBody { long_integer: 0 },
+                },
+                Value {
+                    type_: 0,
+                    reserved: 0,
+                    value: ValueBody { long_integer: 0 },
+                },
+            ),
+            5 => (
+                c"active-parameter-sequence",
+                c"Coefficient sequence adopted by process()",
+                PROPERTY_READONLY,
+                long_value(parameter_sequence(instance, false) as i64),
+                Value {
+                    type_: 0,
+                    reserved: 0,
+                    value: ValueBody { long_integer: 0 },
+                },
+                Value {
+                    type_: 0,
+                    reserved: 0,
+                    value: ValueBody { long_integer: 0 },
+                },
+            ),
             _ => return 0,
         };
         let value = PropertyInfo {
@@ -387,6 +487,8 @@ unsafe extern "C" fn get_prop(data: *mut c_void, id: u32, value: *mut Value) -> 
             1 => float_value(state_gain(active_state)),
             2 => long_value(i64::from(state_generation(requested_state))),
             3 => long_value(i64::from(state_generation(active_state))),
+            4 => long_value(parameter_sequence(instance, true) as i64),
+            5 => long_value(parameter_sequence(instance, false) as i64),
             _ => return -ENOENT,
         };
         unsafe { *value = current };
@@ -447,6 +549,94 @@ unsafe extern "C" fn discard_props(_data: *mut c_void, prepared: *mut c_void) {
     }));
 }
 
+unsafe fn header_sequence(buffer: &SpaBuffer) -> Option<u64> {
+    for index in 0..buffer.n_metas as usize {
+        let meta = unsafe { &*buffer.metas.add(index) };
+        if meta.type_ == META_HEADER
+            && meta.size as usize >= size_of::<SpaMetaHeader>()
+            && !meta.data.is_null()
+        {
+            return Some(unsafe { (*meta.data.cast::<SpaMetaHeader>()).seq });
+        }
+    }
+    None
+}
+
+unsafe extern "C" fn prepare_parameter(
+    data: *mut c_void,
+    port: u32,
+    buffer: *const FgnBuffer,
+    result: *mut *mut c_void,
+) -> i32 {
+    catch_unwind(AssertUnwindSafe(|| {
+        if data.is_null() || port != 2 || buffer.is_null() || result.is_null() {
+            return -EINVAL;
+        }
+        let instance = unsafe { &*data.cast::<Instance>() };
+        if instance.requested_parameter_slot.load(Ordering::Acquire) != PARAMETER_SLOT_NONE {
+            return -EBUSY;
+        }
+        let update = unsafe { &*buffer };
+        if update.buffer.is_null() {
+            return -EINVAL;
+        }
+        let spa_buffer = unsafe { &*update.buffer };
+        if spa_buffer.n_datas == 0 || spa_buffer.datas.is_null() {
+            return -EINVAL;
+        }
+        let spa_data = unsafe { &*spa_buffer.datas };
+        if spa_data.data.is_null() || spa_data.chunk.is_null() {
+            return -EINVAL;
+        }
+        let values = unsafe {
+            spa_data
+                .data
+                .cast::<u8>()
+                .add((*spa_data.chunk).offset as usize)
+                .cast::<f32>()
+        };
+        for index in 0..4 {
+            if !unsafe { *values.add(index) }.is_finite() {
+                return -EINVAL;
+            }
+        }
+
+        let active = instance.active_parameter_slot.load(Ordering::Acquire);
+        let slot = active ^ 1;
+        let slot_ptr =
+            unsafe { ptr::addr_of_mut!((*instance.parameter_slots.get())[slot as usize]) };
+        unsafe { ptr::copy_nonoverlapping(values, (*slot_ptr).values.as_mut_ptr(), 4) };
+        let sequence = unsafe { header_sequence(spa_buffer) }.unwrap_or_else(|| unsafe {
+            (*instance.parameter_slots.get())[active as usize].sequence + 1
+        });
+        unsafe { (*slot_ptr).sequence = sequence };
+        unsafe { *result = Box::into_raw(Box::new(PreparedParameter { slot })).cast() };
+        0
+    }))
+    .unwrap_or(-EFAULT)
+}
+
+unsafe extern "C" fn commit_parameter(data: *mut c_void, prepared: *mut c_void) {
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        if data.is_null() || prepared.is_null() {
+            return;
+        }
+        let instance = unsafe { &*data.cast::<Instance>() };
+        let prepared = unsafe { Box::from_raw(prepared.cast::<PreparedParameter>()) };
+        instance
+            .requested_parameter_slot
+            .store(prepared.slot, Ordering::Release);
+    }));
+}
+
+unsafe extern "C" fn discard_parameter(_data: *mut c_void, prepared: *mut c_void) {
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        if !prepared.is_null() {
+            unsafe { drop(Box::from_raw(prepared.cast::<PreparedParameter>())) };
+        }
+    }));
+}
+
 unsafe fn copy_metadata(output: *mut SpaBuffer, input: *const SpaBuffer) {
     let output = unsafe { &mut *output };
     let input = unsafe { &*input };
@@ -482,20 +672,34 @@ unsafe extern "C" fn process(
         if data.is_null()
             || inputs.is_null()
             || outputs.is_null()
-            || n_inputs != 1
+            || n_inputs != 2
             || n_outputs != 1
         {
             return -EINVAL;
         }
         let instance = unsafe { &*data.cast::<Instance>() };
         let input = unsafe { &*inputs };
+        let parameter_input = unsafe { &*inputs.add(1) };
         let output = unsafe { &mut *outputs };
-        if input.buffer.is_null() || output.buffer.is_null() {
+        if input.buffer.is_null() || !parameter_input.buffer.is_null() || output.buffer.is_null() {
             return -EINVAL;
         }
         let state = instance.requested_state.load(Ordering::Acquire);
         instance.active_state.store(state, Ordering::Release);
         let gain = state_gain(state);
+        let requested_parameter_slot = instance.requested_parameter_slot.load(Ordering::Acquire);
+        if requested_parameter_slot != PARAMETER_SLOT_NONE {
+            instance
+                .active_parameter_slot
+                .store(requested_parameter_slot, Ordering::Release);
+            instance
+                .requested_parameter_slot
+                .store(PARAMETER_SLOT_NONE, Ordering::Release);
+        }
+        let parameter_slot = instance.active_parameter_slot.load(Ordering::Acquire);
+        let coefficients = unsafe {
+            ptr::addr_of!((*instance.parameter_slots.get())[parameter_slot as usize].values)
+        };
         let input_buffer = unsafe { &*input.buffer };
         let output_buffer = unsafe { &mut *output.buffer };
         if input_buffer.n_datas == 0 || output_buffer.n_datas == 0 {
@@ -525,7 +729,9 @@ unsafe extern "C" fn process(
                 .cast::<f32>()
         };
         for index in 0..4 {
-            unsafe { *output_values.add(index) = *input_values.add(index) * gain };
+            unsafe {
+                *output_values.add(index) = *input_values.add(index) * gain * (*coefficients)[index]
+            };
         }
         unsafe { (*output_data.chunk).size = 4 * size_of::<f32>() as u32 };
         unsafe { copy_metadata(output.buffer, input.buffer) };
@@ -563,6 +769,9 @@ static DESCRIPTOR: Descriptor = Descriptor {
     prepare_props: Some(prepare_props),
     commit_props: Some(commit_props),
     discard_props: Some(discard_props),
+    prepare_parameter: Some(prepare_parameter),
+    commit_parameter: Some(commit_parameter),
+    discard_parameter: Some(discard_parameter),
     activate: None,
     deactivate: None,
     reset: None,
