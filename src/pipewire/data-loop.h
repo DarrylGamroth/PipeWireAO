@@ -75,6 +75,10 @@ int pw_data_loop_stop(struct pw_data_loop *loop);
 /** Check if the current thread is the processing thread.
  * May be called from any thread. */
 bool pw_data_loop_in_thread(struct pw_data_loop *loop);
+
+/** Check whether the loop uses polling instead of blocking for graph work.
+ * May be called from any thread. */
+bool pw_data_loop_is_polling(struct pw_data_loop *loop);
 /** Get the thread object */
 struct spa_thread *pw_data_loop_get_thread(struct pw_data_loop *loop);
 

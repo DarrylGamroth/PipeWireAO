@@ -1,8 +1,6 @@
 pipewire_headers = [
   'array.h',
-  'buffer-latest.h',
   'buffers.h',
-  'image-source.h',
   'impl-core.h',
   'impl-client.h',
   'client.h',
@@ -39,7 +37,6 @@ pipewire_headers = [
   'properties.h',
   'protocol.h',
   'proxy.h',
-  'rtc-data-loop.h',
   'resource.h',
   'stream.h',
   'thread.h',
@@ -53,7 +50,6 @@ pipewire_headers = [
 
 pipewire_sources = [
   'buffers.c',
-  'image-source.c',
   'impl-core.c',
   'impl-client.c',
   'conf.c',
@@ -79,7 +75,6 @@ pipewire_sources = [
   'properties.c',
   'protocol.c',
   'proxy.c',
-  'rtc-data-loop.c',
   'resource.c',
   'settings.c',
   'spa-meta.c',

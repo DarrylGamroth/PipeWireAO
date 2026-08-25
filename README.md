@@ -3,9 +3,10 @@
 PipeWireAO is a maintained adaptive-optics fork of
 [PipeWire](https://pipewire.org). It retains PipeWire's format and metadata
 negotiation, fixed buffer pools, `memfd` and DMA-BUF fd brokering, mapping,
-discovery, and lifecycle infrastructure. Strict AO links add
-graph-independent, lossy latest-buffer ownership with selectable busy-spin,
-`eventfd`, or hybrid receiver waiting and optional progressive-prefix leases.
+discovery, and lifecycle infrastructure. Its AO extensions add negotiated
+ndarray formats, versioned acquisition identity, and PTP-qualified multi-host
+timing, plus an optional busy-spin data-loop policy for polling nonblocking
+graph drivers without an `eventfd` syscall on each cycle.
 
 PipeWireAO is designed to coexist with a system PipeWire installation. It uses
 the `libpipewire-ao-0.3` and `libspa-ao-0.2` library and pkg-config identities,

@@ -4,8 +4,6 @@
 #define SPA_API_IMPL	SPA_EXPORT
 #include <spa/buffer/alloc.h>
 #include <spa/buffer/buffer.h>
-#include <spa/buffer/image-source.h>
-#include <spa/buffer/image-source-latest.h>
 #include <spa/buffer/type-info.h>
 #include <spa/control/control.h>
 #include <spa/control/type-info.h>
@@ -28,7 +26,6 @@
 #include <spa/monitor/type-info.h>
 #include <spa/monitor/utils.h>
 #include <spa/node/command.h>
-#include <spa/node/buffer-latest.h>
 #include <spa/node/event.h>
 #include <spa/node/io.h>
 #include <spa/node/keys.h>
