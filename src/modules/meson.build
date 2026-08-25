@@ -23,6 +23,7 @@ module_sources = [
   'module-metadata.c',
   'module-netjack2-driver.c',
   'module-netjack2-manager.c',
+  'module-ndarray-filter-chain.c',
   'module-parametric-equalizer.c',
   'module-pipe-tunnel.c',
   'module-portal.c',
@@ -87,6 +88,16 @@ if get_option('audioconvert').allowed()
     dependencies : [spa_dep, mathlib, dl_lib, pipewire_dep],
   )
 endif
+
+pipewire_module_ndarray_filter_chain = shared_library('pipewire-module-ndarray-filter-chain',
+  [ 'module-ndarray-filter-chain.c' ],
+  include_directories : [configinc],
+  install : true,
+  install_dir : modules_install_dir,
+  install_rpath: modules_install_dir,
+  dependencies : [spa_dep, dl_lib, pipewire_dep, pthread_lib],
+  link_with : ndarray_filter_graph,
+)
 
 pipewire_module_combine_stream = shared_library('pipewire-module-combine-stream',
   [ 'module-combine-stream.c' ],
