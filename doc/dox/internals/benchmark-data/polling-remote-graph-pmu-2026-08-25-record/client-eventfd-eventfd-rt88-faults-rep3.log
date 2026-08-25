@@ -1,0 +1,3 @@
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-faults-rep3 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-faults-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500018658 source-tid=1772888 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772889 sink-cpu=14 sink-policy=1 sink-priority=88

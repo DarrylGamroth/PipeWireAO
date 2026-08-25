@@ -1,0 +1,5 @@
+[W][1774528][09:42:41.419387] pw.context   | [       context.c:  548 pw_context_new()] 0x55eaed255bf0: can't load dbus library: support/libspa-dbus
+[W][1774528][09:42:41.431337] pw.buffers   | [       buffers.c:  374 pw_buffers_negotiate()] 0x55eaed2e5878: no buffers param
+[W][1774528][09:42:43.653842] pw.buffers   | [       buffers.c:  374 pw_buffers_negotiate()] 0x55eaed2f45a8: no buffers param
+[W][1774528][09:42:45.553620] pw.buffers   | [       buffers.c:  374 pw_buffers_negotiate()] 0x55eaed2d9228: no buffers param
+[W][1774528][09:42:47.783645] pw.buffers   | [       buffers.c:  374 pw_buffers_negotiate()] 0x55eaed2c6f18: no buffers param
