@@ -1,0 +1,321 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 1K of event 'cycles:u'
+# Event count (approx.): 917483223
+#
+# Children      Self  Command         Shared Object                   Symbol                             IPC   [IPC Coverage]
+# ........  ........  ..............  ..............................  .................................  ....................
+#
+   100.00%     0.00%  scan-benchmark  libc.so.6                       [.] 0x00007f5c10f0b7f7             -      -            
+            |
+            ---0x7f5c10f0b7f7
+               0x7f5c10e8db7a
+               do_poll_loop
+               |          
+               |--57.84%--scan_probe
+               |          |          
+               |           --50.36%--raw_time_nsec
+               |                     |          
+               |                     |--47.84%--clock_gettime
+               |                     |          |          
+               |                     |           --46.91%--__vdso_clock_gettime
+               |                     |          
+               |                      --0.74%--clock_gettime@plt
+               |          
+               |--25.37%--spa_loop_control_yield (inlined)
+               |          |          
+               |           --17.83%--loop_yield
+               |                     |          
+               |                     |--4.95%--pthread_mutex_lock
+               |                     |          
+               |                     |--4.22%--flush_all_queues
+               |                     |          
+               |                     |--2.25%--0x7f5c10e9276c
+               |                     |          
+               |                     |--0.94%--0x7f5c10e92737
+               |                     |          
+               |                     |--0.93%--0x7f5c10e92745
+               |                     |          
+               |                     |--0.45%--0x7f5c10e92723
+               |                     |          
+               |                      --0.38%--0x7f5c10e927b5
+               |          
+                --0.75%--pw_data_loop_relax (inlined)
+
+   100.00%     0.00%  scan-benchmark  libc.so.6                       [.] 0x00007f5c10e8db7a             -      -            
+            |
+            ---0x7f5c10e8db7a
+               do_poll_loop
+               |          
+               |--57.84%--scan_probe
+               |          |          
+               |           --50.36%--raw_time_nsec
+               |                     |          
+               |                     |--47.84%--clock_gettime
+               |                     |          |          
+               |                     |           --46.91%--__vdso_clock_gettime
+               |                     |          
+               |                      --0.74%--clock_gettime@plt
+               |          
+               |--25.37%--spa_loop_control_yield (inlined)
+               |          |          
+               |           --17.83%--loop_yield
+               |                     |          
+               |                     |--4.95%--pthread_mutex_lock
+               |                     |          
+               |                     |--4.22%--flush_all_queues
+               |                     |          
+               |                     |--2.25%--0x7f5c10e9276c
+               |                     |          
+               |                     |--0.94%--0x7f5c10e92737
+               |                     |          
+               |                     |--0.93%--0x7f5c10e92745
+               |                     |          
+               |                     |--0.45%--0x7f5c10e92723
+               |                     |          
+               |                      --0.38%--0x7f5c10e927b5
+               |          
+                --0.75%--pw_data_loop_relax (inlined)
+
+   100.00%    24.33%  scan-benchmark  libpipewire-ao-0.3.so.0.1700.0  [.] do_poll_loop                   -      -            
+            |          
+            |--75.67%--do_poll_loop
+            |          |          
+            |          |--57.84%--scan_probe
+            |          |          |          
+            |          |           --50.36%--raw_time_nsec
+            |          |                     |          
+            |          |                     |--47.84%--clock_gettime
+            |          |                     |          |          
+            |          |                     |           --46.91%--__vdso_clock_gettime
+            |          |                     |          
+            |          |                      --0.74%--clock_gettime@plt
+            |          |          
+            |           --17.83%--spa_loop_control_yield (inlined)
+            |                     loop_yield
+            |                     |          
+            |                     |--4.95%--pthread_mutex_lock
+            |                     |          
+            |                     |--4.22%--flush_all_queues
+            |                     |          
+            |                     |--2.25%--0x7f5c10e9276c
+            |                     |          
+            |                     |--0.94%--0x7f5c10e92737
+            |                     |          
+            |                     |--0.93%--0x7f5c10e92745
+            |                     |          
+            |                     |--0.45%--0x7f5c10e92723
+            |                     |          
+            |                      --0.38%--0x7f5c10e927b5
+            |          
+             --24.33%--0x7f5c10f0b7f7
+                       0x7f5c10e8db7a
+                       do_poll_loop
+                       |          
+                       |--7.54%--spa_loop_control_yield (inlined)
+                       |          
+                        --0.75%--pw_data_loop_relax (inlined)
+
+    57.84%     7.47%  scan-benchmark  pw-test-polling-data-loop       [.] scan_probe                     -      -            
+            |          
+            |--50.36%--scan_probe
+            |          |          
+            |           --50.36%--raw_time_nsec
+            |                     |          
+            |                     |--47.84%--clock_gettime
+            |                     |          |          
+            |                     |           --46.91%--__vdso_clock_gettime
+            |                     |          
+            |                      --0.74%--clock_gettime@plt
+            |          
+             --7.47%--0x7f5c10f0b7f7
+                       0x7f5c10e8db7a
+                       do_poll_loop
+                       scan_probe
+
+    50.36%     1.78%  scan-benchmark  pw-test-polling-data-loop       [.] raw_time_nsec                  -      -            
+            |          
+            |--48.58%--raw_time_nsec
+            |          |          
+            |          |--47.84%--clock_gettime
+            |          |          |          
+            |          |           --46.91%--__vdso_clock_gettime
+            |          |          
+            |           --0.74%--clock_gettime@plt
+            |          
+             --1.78%--0x7f5c10f0b7f7
+                       0x7f5c10e8db7a
+                       do_poll_loop
+                       scan_probe
+                       raw_time_nsec
+
+    47.84%     0.94%  scan-benchmark  libc.so.6                       [.] clock_gettime                  -      -            
+            |          
+            |--46.91%--clock_gettime
+            |          __vdso_clock_gettime
+            |          
+             --0.94%--0x7f5c10f0b7f7
+                       0x7f5c10e8db7a
+                       do_poll_loop
+                       scan_probe
+                       raw_time_nsec
+                       clock_gettime
+
+    46.91%    46.91%  scan-benchmark  [vdso]                          [.] __vdso_clock_gettime           -      -            
+            |
+            ---0x7f5c10f0b7f7
+               0x7f5c10e8db7a
+               do_poll_loop
+               scan_probe
+               raw_time_nsec
+               clock_gettime
+               __vdso_clock_gettime
+
+    25.37%     0.00%  scan-benchmark  libpipewire-ao-0.3.so.0.1700.0  [.] spa_loop_control_yield (inlined)  -      -            
+            |
+            ---spa_loop_control_yield (inlined)
+               |          
+                --17.83%--loop_yield
+                          |          
+                          |--4.95%--pthread_mutex_lock
+                          |          
+                          |--4.22%--flush_all_queues
+                          |          
+                          |--2.25%--0x7f5c10e9276c
+                          |          
+                          |--0.94%--0x7f5c10e92737
+                          |          
+                          |--0.93%--0x7f5c10e92745
+                          |          
+                          |--0.45%--0x7f5c10e92723
+                          |          
+                           --0.38%--0x7f5c10e927b5
+
+    17.83%     3.52%  scan-benchmark  libspa-support.so               [.] loop_yield                     -      -            
+            |          
+            |--14.31%--loop_yield
+            |          |          
+            |          |--4.95%--pthread_mutex_lock
+            |          |          
+            |          |--4.22%--flush_all_queues
+            |          |          
+            |          |--2.25%--0x7f5c10e9276c
+            |          |          
+            |          |--0.94%--0x7f5c10e92737
+            |          |          
+            |          |--0.93%--0x7f5c10e92745
+            |          |          
+            |          |--0.45%--0x7f5c10e92723
+            |          |          
+            |           --0.38%--0x7f5c10e927b5
+            |          
+             --3.52%--0x7f5c10f0b7f7
+                       0x7f5c10e8db7a
+                       do_poll_loop
+                       spa_loop_control_yield (inlined)
+                       loop_yield
+
+     4.95%     4.95%  scan-benchmark  libc.so.6                       [.] pthread_mutex_lock             -      -            
+            |
+            ---0x7f5c10f0b7f7
+               0x7f5c10e8db7a
+               do_poll_loop
+               spa_loop_control_yield (inlined)
+               loop_yield
+               pthread_mutex_lock
+
+     4.22%     4.22%  scan-benchmark  libspa-support.so               [.] flush_all_queues               -      -            
+            |
+            ---0x7f5c10f0b7f7
+               0x7f5c10e8db7a
+               do_poll_loop
+               spa_loop_control_yield (inlined)
+               loop_yield
+               flush_all_queues
+
+     2.25%     2.25%  scan-benchmark  libc.so.6                       [.] 0x000000000009776c             -      -            
+            |
+            ---0x7f5c10f0b7f7
+               0x7f5c10e8db7a
+               do_poll_loop
+               spa_loop_control_yield (inlined)
+               loop_yield
+               0x7f5c10e9276c
+
+     2.25%     0.00%  scan-benchmark  libc.so.6                       [.] 0x00007f5c10e9276c             -      -            
+            |
+            ---0x7f5c10e9276c
+
+     0.94%     0.94%  scan-benchmark  libc.so.6                       [.] 0x0000000000097737             -      -            
+            |
+            ---0x7f5c10f0b7f7
+               0x7f5c10e8db7a
+               do_poll_loop
+               spa_loop_control_yield (inlined)
+               loop_yield
+               0x7f5c10e92737
+
+     0.94%     0.00%  scan-benchmark  libc.so.6                       [.] 0x00007f5c10e92737             -      -            
+            |
+            ---0x7f5c10e92737
+
+     0.93%     0.93%  scan-benchmark  libc.so.6                       [.] 0x0000000000097745             -      -            
+            |
+            ---0x7f5c10f0b7f7
+               0x7f5c10e8db7a
+               do_poll_loop
+               spa_loop_control_yield (inlined)
+               loop_yield
+               0x7f5c10e92745
+
+     0.93%     0.00%  scan-benchmark  libc.so.6                       [.] 0x00007f5c10e92745             -      -            
+            |
+            ---0x7f5c10e92745
+
+     0.75%     0.00%  scan-benchmark  libpipewire-ao-0.3.so.0.1700.0  [.] pw_data_loop_relax (inlined)   -      -            
+            |
+            ---pw_data_loop_relax (inlined)
+
+     0.74%     0.74%  scan-benchmark  pw-test-polling-data-loop       [.] clock_gettime@plt              -      -            
+            |
+            ---0x7f5c10f0b7f7
+               0x7f5c10e8db7a
+               do_poll_loop
+               scan_probe
+               raw_time_nsec
+               clock_gettime@plt
+
+     0.45%     0.45%  scan-benchmark  libc.so.6                       [.] 0x0000000000097723             -      -            
+            |
+            ---0x7f5c10f0b7f7
+               0x7f5c10e8db7a
+               do_poll_loop
+               spa_loop_control_yield (inlined)
+               loop_yield
+               0x7f5c10e92723
+
+     0.45%     0.00%  scan-benchmark  libc.so.6                       [.] 0x00007f5c10e92723             -      -            
+            |
+            ---0x7f5c10e92723
+
+     0.38%     0.38%  scan-benchmark  libc.so.6                       [.] 0x00000000000977b5             -      -            
+            |
+            ---0x7f5c10f0b7f7
+               0x7f5c10e8db7a
+               do_poll_loop
+               spa_loop_control_yield (inlined)
+               loop_yield
+               0x7f5c10e927b5
+
+     0.38%     0.00%  scan-benchmark  libc.so.6                       [.] 0x00007f5c10e927b5             -      -            
+            |
+            ---0x7f5c10e927b5
+
+
+
+#
+# (Tip: To adjust path to source files to local file system use perf report --prefix=... --prefix-strip=...)
+#

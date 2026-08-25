@@ -15,6 +15,8 @@ It is a diagnostic experiment, not a complete RTC acceptance test. The
 activation experiment is closed-loop with one activation in flight and an
 otherwise empty process callback. It does not model camera SDK work, algorithm
 execution, buffer pressure, burst arrivals, or end-to-end graph latency.
+CPU counter and call-graph results are documented separately in
+[Polling data-loop profiling](polling-data-loop-profiling.md).
 
 ## Reproduction
 
