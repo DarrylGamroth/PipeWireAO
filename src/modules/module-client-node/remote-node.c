@@ -41,8 +41,6 @@ struct mix {
 	struct pw_impl_port *port;
 	struct pw_impl_port_mix mix;
 	struct pw_array buffers;
-	struct spa_io_buffers_latest *latest_io;
-	int latest_notify_fd;
 };
 
 struct node_data {
@@ -140,7 +138,6 @@ static void mix_init(struct mix *mix, struct pw_impl_port *port,
 	mix->port = port;
 	mix->mix.id = mix_id;
 	mix->mix.peer_id = peer_id;
-	mix->latest_notify_fd = -1;
 	if (mix_id != SPA_ID_INVALID)
 		pw_impl_port_init_mix(port, &mix->mix);
 	pw_array_init(&mix->buffers, 32);
@@ -161,21 +158,6 @@ static struct mix *find_mix(struct node_data *data,
 		}
 	}
 	return NULL;
-}
-
-static int set_latest_link_io(struct node_data *data, struct mix *mix,
-		enum spa_direction direction, uint32_t port_id,
-		struct spa_io_buffers_latest *io, int notify_fd)
-{
-	struct spa_io_buffers_latest_link link = {
-		.id = mix->mix.id,
-		.flags = io != NULL ? SPA_IO_BUFFERS_LATEST_LINK_FLAG_ACTIVE : 0,
-		.io = io,
-		.notify_fd = notify_fd,
-	};
-
-	return spa_node_port_set_io(data->node->node, direction, port_id,
-			SPA_IO_BuffersLatestLink, &link, sizeof(link));
 }
 
 static struct mix *create_mix(struct node_data *data, struct pw_impl_port *port,
@@ -202,6 +184,7 @@ static int client_node_transport(void *_data,
 	struct node_data *data = _data;
 	struct pw_impl_node *node = data->node;
 	struct pw_proxy *proxy = (struct pw_proxy*)data->client_node;
+	bool polling;
 
 	clean_transport(data);
 
@@ -213,6 +196,12 @@ static int client_node_transport(void *_data,
 	}
 
 	node->rt.target.activation = data->activation->ptr;
+	polling = node->data_loop_impl != NULL &&
+		pw_data_loop_is_polling(node->data_loop_impl);
+	/* Publish the implementation-side wake policy in the shared activation so
+	 * triggers in this or another process can skip eventfd safely. */
+	pw_node_activation_set_polling(node->rt.target.activation,
+			polling && node->rt.target.activation->server_version >= 1);
 
 	pw_impl_node_set_io(node, SPA_IO_Clock,
 			&node->rt.target.activation->position.clock,
@@ -784,27 +773,7 @@ client_node_port_set_io(void *_data,
 
 	mix = find_mix(data, direction, port_id, mix_id);
 	if (mix == NULL) {
-		if (id == SPA_IO_BuffersLatestNotify && memid != SPA_ID_INVALID)
-			spa_system_close(data->data_system, (int)memid);
 		res = -ENOENT;
-		goto exit;
-	}
-	if (id == SPA_IO_BuffersLatestNotify) {
-		int old_fd = mix->latest_notify_fd;
-		int new_fd = memid == SPA_ID_INVALID ? -1 : (int)memid;
-
-		res = set_latest_link_io(data, mix, direction, port_id,
-				mix->latest_io, new_fd);
-		if (res == -ENOTSUP)
-			res = 0;
-		if (res < 0) {
-			if (new_fd >= 0)
-				spa_system_close(data->data_system, new_fd);
-			goto exit;
-		}
-		mix->latest_notify_fd = new_fd;
-		if (old_fd >= 0)
-			spa_system_close(data->data_system, old_fd);
 		goto exit;
 	}
 
@@ -828,16 +797,8 @@ client_node_port_set_io(void *_data,
 	pw_log_debug("port %p: set io:%s new:%p old:%p", mix->port,
 			spa_debug_type_find_name(spa_type_io, id), ptr, mix->mix.io);
 
-	if (id == SPA_IO_BuffersLatest) {
-		res = set_latest_link_io(data, mix, direction, port_id,
-				ptr, mix->latest_notify_fd);
-		if (res >= 0)
-			mix->latest_io = ptr;
-	} else {
-		res = spa_node_port_set_io(mix->port->mix,
-				direction, mix->mix.port.port_id, id, ptr, size);
-	}
-	if (res < 0) {
+	if ((res = spa_node_port_set_io(mix->port->mix,
+			     direction, mix->mix.port.port_id, id, ptr, size)) < 0) {
 		if (res == -ENOTSUP)
 			res = 0;
 		else
@@ -933,35 +894,10 @@ error_exit:
 	return res;
 }
 
-/* During ordinary removal, keep mappings alive if synchronous retirement fails.
- * Forced cleanup is reserved for port or node teardown, where the owner can no
- * longer run the removed mix. */
-static int clear_mix(struct node_data *data, struct mix *mix, bool force)
+static void clear_mix(struct node_data *data, struct mix *mix)
 {
-	int res = 0;
-
 	pw_log_debug("port %p: mix clear %d.%d", mix->port, mix->port->port_id, mix->mix.id);
 
-	if (mix->mix.id != SPA_ID_INVALID && mix->latest_io != NULL) {
-		res = set_latest_link_io(data, mix, mix->port->direction,
-				mix->port->port_id, NULL, -1);
-		if (res < 0) {
-			pw_log_warn("port %p: failed to retire latest link %d.%d: %s",
-					mix->port, mix->port->port_id, mix->mix.id,
-					spa_strerror(res));
-			if (!force)
-				return res;
-		}
-		mix->latest_io = NULL;
-	}
-	if (mix->latest_notify_fd >= 0) {
-		int close_res = spa_system_close(data->data_system,
-				mix->latest_notify_fd);
-		if (close_res < 0)
-			pw_log_warn("port %p: failed to close latest notification fd: %s",
-					mix->port, spa_strerror(close_res));
-		mix->latest_notify_fd = -1;
-	}
 	if (mix->mix.id != SPA_ID_INVALID)
 		spa_node_port_set_io(mix->port->mix, mix->mix.port.direction,
 				mix->mix.port.port_id, SPA_IO_Buffers, NULL, 0);
@@ -974,7 +910,6 @@ static int clear_mix(struct node_data *data, struct mix *mix, bool force)
 	spa_list_append(&data->free_mix, &mix->link);
 	if (mix->mix.id != SPA_ID_INVALID)
 		pw_impl_port_release_mix(mix->port, &mix->mix);
-	return res;
 }
 
 static int client_node_port_set_mix_info(void *_data,
@@ -983,7 +918,6 @@ static int client_node_port_set_mix_info(void *_data,
 {
 	struct node_data *data = _data;
 	struct mix *mix;
-	int res;
 
 	pw_log_debug("%p: %d:%d:%d peer:%d", data, direction, port_id, mix_id, peer_id);
 
@@ -992,8 +926,7 @@ static int client_node_port_set_mix_info(void *_data,
 	if (peer_id == SPA_ID_INVALID) {
 		if (mix == NULL)
 			return -EINVAL;
-		if ((res = clear_mix(data, mix, false)) < 0)
-			return res;
+		clear_mix(data, mix);
 	} else {
 		struct pw_impl_port *port;
 		if (mix != NULL)
@@ -1060,9 +993,9 @@ static void clean_node(struct node_data *d)
 	struct mix *mix;
 
 	spa_list_consume(mix, &d->mix[SPA_DIRECTION_INPUT], link)
-		clear_mix(d, mix, true);
+		clear_mix(d, mix);
 	spa_list_consume(mix, &d->mix[SPA_DIRECTION_OUTPUT], link)
-		clear_mix(d, mix, true);
+		clear_mix(d, mix);
 	spa_list_consume(mix, &d->free_mix, link) {
 		spa_list_remove(&mix->link);
 		free(mix);
@@ -1160,7 +1093,7 @@ static void node_port_removed(void *data, struct pw_impl_port *port)
 
 	spa_list_for_each_safe(mix, tmp, &d->mix[port->direction], link) {
 		if (mix->port == port)
-			clear_mix(d, mix, true);
+			clear_mix(d, mix);
 	}
 }
 
@@ -1250,8 +1183,8 @@ static void node_rt_complete(void *data)
 	struct pw_impl_node *node = d->node;
 	struct spa_system *data_system = d->data_system;
 
-	if (!node->driving ||
-	    !SPA_FLAG_IS_SET(node->rt.target.activation->flags, PW_NODE_ACTIVATION_FLAG_PROFILER))
+	if (!node->driving || !pw_node_activation_has_flag(
+			node->rt.target.activation, PW_NODE_ACTIVATION_FLAG_PROFILER))
 		return;
 
 	if (SPA_UNLIKELY(spa_system_eventfd_write(data_system, d->rtwritefd, 1) < 0))

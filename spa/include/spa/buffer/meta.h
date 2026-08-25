@@ -41,8 +41,7 @@ enum spa_meta_type {
 	/* Metadata types are negotiated in a 32-bit mask. Reserve these low
 	 * PipeWireAO slots explicitly instead of following upstream implicitly. */
 	SPA_META_START_PipeWireAO = 10,
-	SPA_META_Progressive = SPA_META_START_PipeWireAO,	/**< struct spa_meta_progressive */
-	SPA_META_Acquisition,		/**< struct spa_meta_acquisition */
+	SPA_META_Acquisition = 11,	/**< struct spa_meta_acquisition */
 	_SPA_META_LAST = 12,		/**< not part of ABI/API */
 
 	SPA_META_START_custom		= 0x200,
@@ -52,8 +51,6 @@ enum spa_meta_type {
 							 * the lower 16 bits with type specific features. */
 };
 
-SPA_STATIC_ASSERT(SPA_META_Progressive == 10,
-		"PipeWireAO progressive metadata ABI");
 SPA_STATIC_ASSERT(SPA_META_Acquisition == 11,
 		"PipeWireAO acquisition metadata ABI");
 
@@ -215,52 +212,74 @@ struct spa_meta_sync_timeline {
 						  *  be signaled when the data is no longer accessed. */
 };
 
-/** Version 1 acquisition metadata ABI. */
+/** Acquisition metadata ABI constants. */
 enum spa_meta_acquisition_constant {
-	SPA_META_ACQUISITION_VERSION = 1u,
+	SPA_META_ACQUISITION_VERSION_1 = 1u,
+	SPA_META_ACQUISITION_VERSION_2 = 2u,
+	SPA_META_ACQUISITION_VERSION = SPA_META_ACQUISITION_VERSION_2,
 	SPA_META_ACQUISITION_SIZE = 96u,
+	SPA_META_ACQUISITION_WIRE_SIZE = 96u,
 	SPA_META_ACQUISITION_DOMAIN_SIZE = 16u,
+	SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE = 8u,
 	SPA_META_FEATURE_ACQUISITION_VERSION_1 = (1u << 0),
+	SPA_META_FEATURE_ACQUISITION_VERSION_2 = (1u << 1),
+	SPA_META_FEATURE_ACQUISITION_CURRENT = SPA_META_FEATURE_ACQUISITION_VERSION_2,
 };
 
 enum spa_meta_acquisition_flag {
 	SPA_META_ACQUISITION_FLAG_IDENTITY_VALID = (1u << 0),
 	SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID = (1u << 1),
 	SPA_META_ACQUISITION_FLAG_EXPOSURE_DURATION_VALID = (1u << 2),
-	SPA_META_ACQUISITION_FLAG_ALL = ((1u << 3) - 1u),
+	SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID = (1u << 3),
+	SPA_META_ACQUISITION_FLAG_ALL = ((1u << 4) - 1u),
+};
+
+enum spa_meta_acquisition_timebase {
+	SPA_META_ACQUISITION_TIMEBASE_NONE,
+	SPA_META_ACQUISITION_TIMEBASE_MONOTONIC,
+	SPA_META_ACQUISITION_TIMEBASE_TAI,
 };
 
 /**
  * Physical acquisition identity and qualified exposure time.
  *
- * The producer initializes this structure before publishing a complete buffer
- * or before the first ACTIVE publication of a progressive buffer. It remains
- * immutable until every producer and consumer lease on that buffer ends.
+ * The producer initializes this structure before publishing a complete buffer.
+ * It remains immutable until every producer and consumer lease on that buffer
+ * ends.
  *
  * Identity is the complete (domain, generation, sequence) tuple. The domain is
- * opaque and compared bytewise. exposure_start_nsec is the physical exposure
- * start mapped into the local Linux CLOCK_MONOTONIC domain. A valid timestamp
- * has a nonnegative value and an inclusive uncertainty bound. Version 1
- * timestamps from different Linux kernels are not comparable.
+ * opaque and compared bytewise. Version 1 exposure timestamps are in the local
+ * Linux CLOCK_MONOTONIC domain and are never comparable across hosts.
+ *
+ * Version 2 makes the timebase explicit. Cross-host timestamps use CLOCK_TAI
+ * nanoseconds and identify the PTP grandmaster and PTP domain that established
+ * the mapping. timestamp_uncertainty_nsec is an inclusive error bound for the
+ * exposure-start mapping. A PTP time is comparable only with another valid
+ * Version 2 PTP time carrying the same grandmaster identity and domain number.
  */
 struct SPA_ALIGNED(8) spa_meta_acquisition {
 	uint32_t version;
 	uint32_t abi_size;
 	uint32_t flags;
-	uint32_t reserved0;
+	uint32_t timebase;
 	uint8_t domain[SPA_META_ACQUISITION_DOMAIN_SIZE];
 	uint64_t generation;
 	uint64_t sequence;
 	int64_t exposure_start_nsec;
 	uint64_t exposure_duration_nsec;
 	uint64_t timestamp_uncertainty_nsec;
-	uint64_t reserved[3];
+	uint8_t ptp_grandmaster_id[SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE];
+	uint8_t ptp_domain_number;
+	uint8_t reserved[7];
+	uint64_t reserved2;
 };
 
 SPA_STATIC_ASSERT(sizeof(struct spa_meta_acquisition) == SPA_META_ACQUISITION_SIZE,
 		"spa_meta_acquisition ABI size");
 SPA_STATIC_ASSERT(SPA_ALIGNOF(struct spa_meta_acquisition) == 8u,
 		"spa_meta_acquisition ABI alignment");
+SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, timebase) == 12u,
+		"spa_meta_acquisition timebase offset");
 SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, domain) == 16u,
 		"spa_meta_acquisition domain offset");
 SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, generation) == 32u,
@@ -269,8 +288,16 @@ SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, sequence) == 40u,
 		"spa_meta_acquisition sequence offset");
 SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, exposure_start_nsec) == 48u,
 		"spa_meta_acquisition exposure-start offset");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, reserved) == 72u,
-		"spa_meta_acquisition reserved offset");
+SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, exposure_duration_nsec) == 56u,
+		"spa_meta_acquisition exposure-duration offset");
+SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, timestamp_uncertainty_nsec) == 64u,
+		"spa_meta_acquisition timestamp-uncertainty offset");
+SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, ptp_grandmaster_id) == 72u,
+		"spa_meta_acquisition PTP grandmaster offset");
+SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, ptp_domain_number) == 80u,
+		"spa_meta_acquisition PTP domain offset");
+SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, reserved2) == 88u,
+		"spa_meta_acquisition final reserved offset");
 
 static inline bool _spa_meta_acquisition_domain_is_zero(
 		const uint8_t domain[SPA_META_ACQUISITION_DOMAIN_SIZE])
@@ -283,18 +310,71 @@ static inline bool _spa_meta_acquisition_domain_is_zero(
 	return value == 0;
 }
 
+static inline bool _spa_meta_acquisition_bytes_are_zero(const uint8_t *data,
+		uint32_t size)
+{
+	uint8_t value = 0;
+	uint32_t i;
+
+	for (i = 0; i < size; i++)
+		value |= data[i];
+	return value == 0;
+}
+
+static inline void _spa_meta_acquisition_store_u32_be(uint8_t *data,
+		uint32_t value)
+{
+	data[0] = (uint8_t)(value >> 24);
+	data[1] = (uint8_t)(value >> 16);
+	data[2] = (uint8_t)(value >> 8);
+	data[3] = (uint8_t)value;
+}
+
+static inline void _spa_meta_acquisition_store_u64_be(uint8_t *data,
+		uint64_t value)
+{
+	uint32_t i;
+
+	for (i = 0; i < 8; i++)
+		data[i] = (uint8_t)(value >> (56u - 8u * i));
+}
+
+static inline uint32_t _spa_meta_acquisition_load_u32_be(const uint8_t *data)
+{
+	return ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) |
+		((uint32_t)data[2] << 8) | (uint32_t)data[3];
+}
+
+static inline uint64_t _spa_meta_acquisition_load_u64_be(const uint8_t *data)
+{
+	uint64_t value = 0;
+	uint32_t i;
+
+	for (i = 0; i < 8; i++)
+		value = (value << 8) | data[i];
+	return value;
+}
+
 static inline bool _spa_meta_acquisition_fields_are_valid(
 		const struct spa_meta_acquisition *acquisition)
 {
-	bool identity_valid, start_valid, duration_valid;
+	bool identity_valid, start_valid, duration_valid, ptp_valid;
 
 	if (acquisition == NULL || !SPA_IS_ALIGNED(acquisition, 8) ||
-	    acquisition->version != SPA_META_ACQUISITION_VERSION ||
+	    (acquisition->version != SPA_META_ACQUISITION_VERSION_1 &&
+	     acquisition->version != SPA_META_ACQUISITION_VERSION_2) ||
 	    acquisition->abi_size != SPA_META_ACQUISITION_SIZE ||
 	    (acquisition->flags & ~SPA_META_ACQUISITION_FLAG_ALL) != 0 ||
-	    acquisition->reserved0 != 0 ||
-	    acquisition->reserved[0] != 0 || acquisition->reserved[1] != 0 ||
-	    acquisition->reserved[2] != 0)
+	    !_spa_meta_acquisition_bytes_are_zero(acquisition->reserved,
+		    sizeof(acquisition->reserved)) || acquisition->reserved2 != 0)
+		return false;
+	if (acquisition->version == SPA_META_ACQUISITION_VERSION_1 &&
+	    (acquisition->timebase != SPA_META_ACQUISITION_TIMEBASE_NONE ||
+	     SPA_FLAG_IS_SET(acquisition->flags,
+		     SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID) ||
+	     !_spa_meta_acquisition_bytes_are_zero(acquisition->ptp_grandmaster_id,
+		     sizeof(acquisition->ptp_grandmaster_id)) ||
+	     acquisition->ptp_domain_number != 0))
 		return false;
 
 	identity_valid = SPA_FLAG_IS_SET(acquisition->flags,
@@ -315,6 +395,33 @@ static inline bool _spa_meta_acquisition_fields_are_valid(
 	} else if (acquisition->exposure_start_nsec != SPA_TIME_INVALID ||
 		   acquisition->timestamp_uncertainty_nsec != 0) {
 		return false;
+	}
+
+	ptp_valid = SPA_FLAG_IS_SET(acquisition->flags,
+			SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID);
+	if (acquisition->version == SPA_META_ACQUISITION_VERSION_2) {
+		if (!start_valid) {
+			if (acquisition->timebase != SPA_META_ACQUISITION_TIMEBASE_NONE)
+				return false;
+		} else if (acquisition->timebase !=
+				SPA_META_ACQUISITION_TIMEBASE_MONOTONIC &&
+			   acquisition->timebase != SPA_META_ACQUISITION_TIMEBASE_TAI) {
+			return false;
+		}
+		if (ptp_valid) {
+			if (!start_valid || acquisition->timebase !=
+					SPA_META_ACQUISITION_TIMEBASE_TAI ||
+			    _spa_meta_acquisition_bytes_are_zero(
+					acquisition->ptp_grandmaster_id,
+					sizeof(acquisition->ptp_grandmaster_id)))
+				return false;
+		} else if (!_spa_meta_acquisition_bytes_are_zero(
+				acquisition->ptp_grandmaster_id,
+				sizeof(acquisition->ptp_grandmaster_id)) ||
+			   acquisition->ptp_domain_number != 0 ||
+			   acquisition->timebase == SPA_META_ACQUISITION_TIMEBASE_TAI) {
+			return false;
+		}
 	}
 
 	duration_valid = SPA_FLAG_IS_SET(acquisition->flags,
@@ -358,7 +465,7 @@ SPA_API_META bool spa_meta_acquisition_set_identity(
 	return true;
 }
 
-/** Establish a local CLOCK_MONOTONIC exposure-start mapping. */
+/** Establish a host-local CLOCK_MONOTONIC exposure-start mapping. */
 SPA_API_META bool spa_meta_acquisition_set_exposure_start(
 		struct spa_meta_acquisition *acquisition, int64_t exposure_start_nsec,
 		uint64_t timestamp_uncertainty_nsec)
@@ -368,8 +475,42 @@ SPA_API_META bool spa_meta_acquisition_set_exposure_start(
 
 	acquisition->exposure_start_nsec = exposure_start_nsec;
 	acquisition->timestamp_uncertainty_nsec = timestamp_uncertainty_nsec;
+	if (acquisition->version == SPA_META_ACQUISITION_VERSION_2) {
+		acquisition->timebase = SPA_META_ACQUISITION_TIMEBASE_MONOTONIC;
+		memset(acquisition->ptp_grandmaster_id, 0,
+				sizeof(acquisition->ptp_grandmaster_id));
+		acquisition->ptp_domain_number = 0;
+		SPA_FLAG_CLEAR(acquisition->flags,
+				SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID);
+	}
 	SPA_FLAG_SET(acquisition->flags,
 			SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID);
+	return true;
+}
+
+/** Establish a PTP-qualified CLOCK_TAI exposure-start mapping. */
+SPA_API_META bool spa_meta_acquisition_set_exposure_start_ptp(
+		struct spa_meta_acquisition *acquisition, int64_t exposure_start_nsec,
+		uint64_t timestamp_uncertainty_nsec,
+		const uint8_t ptp_grandmaster_id[SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE],
+		uint8_t ptp_domain_number)
+{
+	if (!_spa_meta_acquisition_fields_are_valid(acquisition) ||
+	    acquisition->version != SPA_META_ACQUISITION_VERSION_2 ||
+	    exposure_start_nsec < 0 || ptp_grandmaster_id == NULL ||
+	    _spa_meta_acquisition_bytes_are_zero(ptp_grandmaster_id,
+		    SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE))
+		return false;
+
+	acquisition->exposure_start_nsec = exposure_start_nsec;
+	acquisition->timestamp_uncertainty_nsec = timestamp_uncertainty_nsec;
+	acquisition->timebase = SPA_META_ACQUISITION_TIMEBASE_TAI;
+	memcpy(acquisition->ptp_grandmaster_id, ptp_grandmaster_id,
+			sizeof(acquisition->ptp_grandmaster_id));
+	acquisition->ptp_domain_number = ptp_domain_number;
+	SPA_FLAG_SET(acquisition->flags,
+			SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID |
+			SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID);
 	return true;
 }
 
@@ -387,13 +528,86 @@ SPA_API_META bool spa_meta_acquisition_set_exposure_duration(
 	return true;
 }
 
-/** Validate a mapped Version 1 acquisition metadata allocation. */
+/** Validate a mapped Version 1 or Version 2 acquisition metadata allocation. */
 SPA_API_META bool spa_meta_acquisition_is_valid(const struct spa_meta *meta)
 {
 	return meta != NULL && meta->type == SPA_META_Acquisition &&
 		meta->data != NULL && meta->size >= sizeof(struct spa_meta_acquisition) &&
 		_spa_meta_acquisition_fields_are_valid(
 				(const struct spa_meta_acquisition *)meta->data);
+}
+
+/** Serialize Version 2 metadata to the canonical big-endian wire record. */
+SPA_API_META bool spa_meta_acquisition_serialize(
+		const struct spa_meta_acquisition *acquisition,
+		uint8_t *wire, uint32_t wire_size)
+{
+	if (!_spa_meta_acquisition_fields_are_valid(acquisition) || wire == NULL ||
+	    wire_size != SPA_META_ACQUISITION_WIRE_SIZE ||
+	    acquisition->version != SPA_META_ACQUISITION_VERSION_2)
+		return false;
+
+	memset(wire, 0, wire_size);
+	_spa_meta_acquisition_store_u32_be(&wire[0], acquisition->version);
+	_spa_meta_acquisition_store_u32_be(&wire[4], acquisition->abi_size);
+	_spa_meta_acquisition_store_u32_be(&wire[8], acquisition->flags);
+	_spa_meta_acquisition_store_u32_be(&wire[12], acquisition->timebase);
+	memcpy(&wire[16], acquisition->domain, sizeof(acquisition->domain));
+	_spa_meta_acquisition_store_u64_be(&wire[32], acquisition->generation);
+	_spa_meta_acquisition_store_u64_be(&wire[40], acquisition->sequence);
+	_spa_meta_acquisition_store_u64_be(&wire[48],
+			(uint64_t)acquisition->exposure_start_nsec);
+	_spa_meta_acquisition_store_u64_be(&wire[56],
+			acquisition->exposure_duration_nsec);
+	_spa_meta_acquisition_store_u64_be(&wire[64],
+			acquisition->timestamp_uncertainty_nsec);
+	memcpy(&wire[72], acquisition->ptp_grandmaster_id,
+			sizeof(acquisition->ptp_grandmaster_id));
+	wire[80] = acquisition->ptp_domain_number;
+	return true;
+}
+
+/** Deserialize and validate a canonical big-endian Version 2 wire record. */
+SPA_API_META bool spa_meta_acquisition_deserialize(
+		struct spa_meta_acquisition *acquisition,
+		const uint8_t *wire, uint32_t wire_size)
+{
+	struct spa_meta_acquisition decoded;
+	uint64_t exposure_start;
+
+	if (acquisition == NULL || !SPA_IS_ALIGNED(acquisition, 8) || wire == NULL ||
+	    wire_size != SPA_META_ACQUISITION_WIRE_SIZE ||
+	    !_spa_meta_acquisition_bytes_are_zero(&wire[81], 15))
+		return false;
+
+	memset(&decoded, 0, sizeof(decoded));
+	decoded.version = _spa_meta_acquisition_load_u32_be(&wire[0]);
+	decoded.abi_size = _spa_meta_acquisition_load_u32_be(&wire[4]);
+	decoded.flags = _spa_meta_acquisition_load_u32_be(&wire[8]);
+	decoded.timebase = _spa_meta_acquisition_load_u32_be(&wire[12]);
+	memcpy(decoded.domain, &wire[16], sizeof(decoded.domain));
+	decoded.generation = _spa_meta_acquisition_load_u64_be(&wire[32]);
+	decoded.sequence = _spa_meta_acquisition_load_u64_be(&wire[40]);
+	exposure_start = _spa_meta_acquisition_load_u64_be(&wire[48]);
+	if (exposure_start == ~(uint64_t)0)
+		decoded.exposure_start_nsec = SPA_TIME_INVALID;
+	else if (exposure_start > (uint64_t)INT64_MAX)
+		return false;
+	else
+		decoded.exposure_start_nsec = (int64_t)exposure_start;
+	decoded.exposure_duration_nsec =
+			_spa_meta_acquisition_load_u64_be(&wire[56]);
+	decoded.timestamp_uncertainty_nsec =
+			_spa_meta_acquisition_load_u64_be(&wire[64]);
+	memcpy(decoded.ptp_grandmaster_id, &wire[72],
+			sizeof(decoded.ptp_grandmaster_id));
+	decoded.ptp_domain_number = wire[80];
+	if (decoded.version != SPA_META_ACQUISITION_VERSION_2 ||
+	    !_spa_meta_acquisition_fields_are_valid(&decoded))
+		return false;
+
+	*acquisition = decoded;
+	return true;
 }
 
 /** Compare two complete, valid acquisition identity tuples. */
@@ -411,154 +625,64 @@ SPA_API_META bool spa_meta_acquisition_identity_equal(
 		memcmp(a->domain, b->domain, sizeof(a->domain)) == 0;
 }
 
-/** Version 1 progressive metadata ABI. */
-#define SPA_META_PROGRESSIVE_VERSION		1u
-#define SPA_META_PROGRESSIVE_SIZE		48u
-#define SPA_META_FEATURE_PROGRESSIVE_VERSION_1	(1u << 0)
-
-#define SPA_META_PROGRESSIVE_COMMITTED_MASK	0x00000000ffffffffULL
-#define SPA_META_PROGRESSIVE_STATE_MASK		0x0000000300000000ULL
-#define SPA_META_PROGRESSIVE_STATE_SHIFT	32u
-#define SPA_META_PROGRESSIVE_RESERVED_MASK	0xfffffffc00000000ULL
-
-#define SPA_META_PROGRESSIVE_FLAG_INCOMPLETE	(1u << 0)
-#define SPA_META_PROGRESSIVE_FLAG_INVALID_LAYOUT	(1u << 1)
-#define SPA_META_PROGRESSIVE_FLAG_CANCELLED	(1u << 2)
-#define SPA_META_PROGRESSIVE_FLAG_DEVICE_ERROR	(1u << 3)
-#define SPA_META_PROGRESSIVE_FLAG_CORRUPTED	(1u << 4)
-#define SPA_META_PROGRESSIVE_FLAG_PROTOCOL_ERROR	(1u << 5)
-#define SPA_META_PROGRESSIVE_FLAG_ALL		((1u << 6) - 1u)
-
-enum spa_meta_progressive_state {
-	SPA_META_PROGRESSIVE_STATE_PREPARED,
-	SPA_META_PROGRESSIVE_STATE_ACTIVE,
-	SPA_META_PROGRESSIVE_STATE_COMPLETE,
-	SPA_META_PROGRESSIVE_STATE_ABORTED,
-};
-
 /**
- * Progressive payload publication state shared by producer and consumer.
+ * Compare PTP-qualified time domains and return a - b with their summed error.
  *
- * One producer owns updates for the duration of a producer lease. Version,
- * layout, granularity, and reserved fields are immutable from PREPARED until
- * all producer and consumer leases end. The committed count never decreases.
- * Before release-storing an ACTIVE snapshot, the producer makes the newly
- * committed payload prefix immutable. A consumer acquire-loads snapshot before
- * reading that prefix and does not read beyond the observed committed count.
- *
- * terminal_flags is zero in PREPARED and ACTIVE. To finish, the producer first
- * writes terminal_flags and any final payload bytes, then release-stores a
- * COMPLETE or ABORTED snapshot. A consumer reads terminal_flags only after an
- * acquire-load observes that terminal snapshot. This ordering deliberately
- * keeps terminal_flags out of validation while publication is active.
+ * The returned uncertainty saturates at UINT64_MAX. Join policy remains with
+ * the caller; this helper only proves that the two timestamps are comparable.
  */
-struct SPA_ALIGNED(8) spa_meta_progressive {
-	uint32_t version;
-	uint32_t abi_size;
-	uint32_t data_index;
-	uint32_t payload_offset;
-	uint32_t payload_size;
-	uint32_t commit_granularity;
-	uint32_t terminal_flags;
-	uint32_t reserved0;
-	uint64_t snapshot;
-	uint64_t reserved1;
-};
-
-SPA_API_META uint64_t spa_meta_progressive_snapshot_encode(uint32_t committed,
-		enum spa_meta_progressive_state state)
+SPA_API_META bool spa_meta_acquisition_time_difference(
+		const struct spa_meta_acquisition *a,
+		const struct spa_meta_acquisition *b,
+		int64_t *difference_nsec, uint64_t *combined_uncertainty_nsec)
 {
-	return (uint64_t) committed | ((uint64_t) state << SPA_META_PROGRESSIVE_STATE_SHIFT);
-}
+	uint64_t uncertainty;
 
-SPA_API_META bool spa_meta_progressive_snapshot_decode(uint64_t snapshot,
-		uint32_t *committed, enum spa_meta_progressive_state *state)
-{
-	if (snapshot & SPA_META_PROGRESSIVE_RESERVED_MASK)
+	if (!_spa_meta_acquisition_fields_are_valid(a) ||
+	    !_spa_meta_acquisition_fields_are_valid(b) ||
+	    a->version != SPA_META_ACQUISITION_VERSION_2 ||
+	    b->version != SPA_META_ACQUISITION_VERSION_2 ||
+	    !SPA_FLAG_IS_SET(a->flags,
+		    SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID |
+		    SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID) ||
+	    !SPA_FLAG_IS_SET(b->flags,
+		    SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID |
+		    SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID) ||
+	    a->timebase != SPA_META_ACQUISITION_TIMEBASE_TAI ||
+	    b->timebase != SPA_META_ACQUISITION_TIMEBASE_TAI ||
+	    a->ptp_domain_number != b->ptp_domain_number ||
+	    memcmp(a->ptp_grandmaster_id, b->ptp_grandmaster_id,
+		    sizeof(a->ptp_grandmaster_id)) != 0)
 		return false;
-	if (committed != NULL)
-		*committed = (uint32_t) (snapshot & SPA_META_PROGRESSIVE_COMMITTED_MASK);
-	if (state != NULL)
-		*state = (enum spa_meta_progressive_state)
-			((snapshot & SPA_META_PROGRESSIVE_STATE_MASK) >>
-			 SPA_META_PROGRESSIVE_STATE_SHIFT);
+
+	if (difference_nsec != NULL)
+		*difference_nsec = a->exposure_start_nsec - b->exposure_start_nsec;
+	uncertainty = a->timestamp_uncertainty_nsec;
+	if (~(uint64_t)0 - uncertainty < b->timestamp_uncertainty_nsec)
+		uncertainty = ~(uint64_t)0;
+	else
+		uncertainty += b->timestamp_uncertainty_nsec;
+	if (combined_uncertainty_nsec != NULL)
+		*combined_uncertainty_nsec = uncertainty;
 	return true;
 }
 
-SPA_API_META uint64_t spa_meta_progressive_load_acquire(
-		const struct spa_meta_progressive *meta)
+/** Test whether comparable PTP times overlap within an additional tolerance. */
+SPA_API_META bool spa_meta_acquisition_times_match(
+		const struct spa_meta_acquisition *a,
+		const struct spa_meta_acquisition *b, uint64_t tolerance_nsec)
 {
-	return __atomic_load_n(&meta->snapshot, __ATOMIC_ACQUIRE);
-}
+	int64_t difference;
+	uint64_t distance, limit;
 
-SPA_API_META void spa_meta_progressive_store_release(
-		struct spa_meta_progressive *meta, uint64_t snapshot)
-{
-	__atomic_store_n(&meta->snapshot, snapshot, __ATOMIC_RELEASE);
-}
-
-/** Initialize a reusable Version 1 progressive metadata allocation. */
-SPA_API_META bool spa_meta_progressive_init(struct spa_meta_progressive *meta,
-		uint32_t data_index, uint32_t payload_offset, uint32_t payload_size,
-		uint32_t commit_granularity)
-{
-	if (meta == NULL || !SPA_IS_ALIGNED(meta, 8) || payload_size == 0 ||
-	    commit_granularity == 0 || commit_granularity > payload_size)
+	if (!spa_meta_acquisition_time_difference(a, b, &difference, &limit))
 		return false;
-
-	meta->version = SPA_META_PROGRESSIVE_VERSION;
-	meta->abi_size = SPA_META_PROGRESSIVE_SIZE;
-	meta->data_index = data_index;
-	meta->payload_offset = payload_offset;
-	meta->payload_size = payload_size;
-	meta->commit_granularity = commit_granularity;
-	meta->terminal_flags = 0;
-	meta->reserved0 = 0;
-	meta->reserved1 = 0;
-	spa_meta_progressive_store_release(meta,
-			spa_meta_progressive_snapshot_encode(0,
-				SPA_META_PROGRESSIVE_STATE_PREPARED));
-	return true;
-}
-
-/** Validate a mapped Version 1 progressive metadata allocation. */
-SPA_API_META bool spa_meta_progressive_is_valid(const struct spa_meta *meta)
-{
-	const struct spa_meta_progressive *progressive;
-	enum spa_meta_progressive_state state;
-	uint32_t committed;
-	uint64_t snapshot;
-
-	if (meta == NULL || meta->type != SPA_META_Progressive ||
-	    meta->data == NULL || meta->size < sizeof(struct spa_meta_progressive) ||
-	    !SPA_IS_ALIGNED(meta->data, 8))
-		return false;
-
-	progressive = (const struct spa_meta_progressive *) meta->data;
-	snapshot = spa_meta_progressive_load_acquire(progressive);
-	if (progressive->version != SPA_META_PROGRESSIVE_VERSION ||
-	    progressive->abi_size != SPA_META_PROGRESSIVE_SIZE ||
-	    progressive->reserved0 != 0 || progressive->reserved1 != 0 ||
-	    progressive->payload_size == 0 || progressive->commit_granularity == 0 ||
-	    progressive->commit_granularity > progressive->payload_size)
-		return false;
-
-	if (!spa_meta_progressive_snapshot_decode(snapshot, &committed, &state) ||
-	    committed > progressive->payload_size)
-		return false;
-	if ((state == SPA_META_PROGRESSIVE_STATE_PREPARED && committed != 0) ||
-	    (state == SPA_META_PROGRESSIVE_STATE_COMPLETE &&
-	     committed != progressive->payload_size) ||
-	    ((state == SPA_META_PROGRESSIVE_STATE_ACTIVE ||
-	      state == SPA_META_PROGRESSIVE_STATE_ABORTED) &&
-	     committed != progressive->payload_size &&
-	     committed % progressive->commit_granularity != 0))
-		return false;
-	if ((state == SPA_META_PROGRESSIVE_STATE_COMPLETE ||
-	     state == SPA_META_PROGRESSIVE_STATE_ABORTED) &&
-	    (progressive->terminal_flags & ~SPA_META_PROGRESSIVE_FLAG_ALL) != 0)
-		return false;
-	return true;
+	distance = difference < 0 ? (uint64_t)-difference : (uint64_t)difference;
+	if (~(uint64_t)0 - limit < tolerance_nsec)
+		limit = ~(uint64_t)0;
+	else
+		limit += tolerance_nsec;
+	return distance <= limit;
 }
 
 /**

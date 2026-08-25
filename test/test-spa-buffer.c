@@ -49,7 +49,6 @@ PWTEST(buffer_abi_types)
 	pwtest_int_eq(SPA_META_Busy, 7);
 	pwtest_int_eq(SPA_META_VideoTransform, 8);
 	pwtest_int_eq(SPA_META_SyncTimeline, 9);
-	pwtest_int_eq(SPA_META_Progressive, 10);
 	pwtest_int_eq(SPA_META_Acquisition, 11);
 	pwtest_int_eq(_SPA_META_LAST, 12);
 	pwtest_str_eq(spa_debug_type_find_name(spa_type_meta_type,
@@ -74,15 +73,17 @@ PWTEST(buffer_abi_sizes)
 	pwtest_int_eq(sizeof(struct spa_meta_acquisition),
 			(size_t) SPA_META_ACQUISITION_SIZE);
 	pwtest_int_eq(_Alignof(struct spa_meta_acquisition), 8U);
+	pwtest_int_eq(offsetof(struct spa_meta_acquisition, timebase), 12U);
 	pwtest_int_eq(offsetof(struct spa_meta_acquisition, domain), 16U);
 	pwtest_int_eq(offsetof(struct spa_meta_acquisition, generation), 32U);
 	pwtest_int_eq(offsetof(struct spa_meta_acquisition, sequence), 40U);
 	pwtest_int_eq(offsetof(struct spa_meta_acquisition, exposure_start_nsec), 48U);
-	pwtest_int_eq(offsetof(struct spa_meta_acquisition, reserved), 72U);
-	pwtest_int_eq(sizeof(struct spa_meta_progressive), SPA_META_PROGRESSIVE_SIZE);
-	pwtest_int_eq(_Alignof(struct spa_meta_progressive), 8U);
-	pwtest_int_eq(offsetof(struct spa_meta_progressive, snapshot), 32U);
-	pwtest_int_eq(offsetof(struct spa_meta_progressive, reserved1), 40U);
+	pwtest_int_eq(offsetof(struct spa_meta_acquisition, exposure_duration_nsec), 56U);
+	pwtest_int_eq(offsetof(struct spa_meta_acquisition,
+			timestamp_uncertainty_nsec), 64U);
+	pwtest_int_eq(offsetof(struct spa_meta_acquisition, ptp_grandmaster_id), 72U);
+	pwtest_int_eq(offsetof(struct spa_meta_acquisition, ptp_domain_number), 80U);
+	pwtest_int_eq(offsetof(struct spa_meta_acquisition, reserved2), 88U);
 
 	return PWTEST_PASS;
 #else
@@ -104,23 +105,38 @@ PWTEST(buffer_acquisition_meta)
 	const uint8_t domain_a[SPA_META_ACQUISITION_DOMAIN_SIZE] = { 1 };
 	const uint8_t domain_b[SPA_META_ACQUISITION_DOMAIN_SIZE] = { 2 };
 	const uint8_t zero_domain[SPA_META_ACQUISITION_DOMAIN_SIZE] = { 0 };
-	struct spa_meta_acquisition acquisition, same, malformed;
+	const uint8_t grandmaster_a[SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE] = { 1 };
+	const uint8_t grandmaster_b[SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE] = { 2 };
+	const uint8_t zero_grandmaster[SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE] = { 0 };
+	struct spa_meta_acquisition acquisition, same, peer, legacy, decoded, malformed;
 	struct spa_meta meta = {
 		.type = SPA_META_Acquisition,
 		.size = sizeof(acquisition),
 		.data = &acquisition,
 	};
-	uint8_t unaligned[sizeof(acquisition) + 1];
+	uint8_t unaligned[sizeof(acquisition) + 1] = { 0 };
+	uint8_t wire[SPA_META_ACQUISITION_WIRE_SIZE];
+	int64_t difference;
+	uint64_t uncertainty;
 
-	pwtest_int_eq(SPA_META_ACQUISITION_VERSION, 1);
+	pwtest_int_eq(SPA_META_ACQUISITION_VERSION_1, 1);
+	pwtest_int_eq(SPA_META_ACQUISITION_VERSION_2, 2);
+	pwtest_int_eq(SPA_META_ACQUISITION_VERSION, 2);
 	pwtest_int_eq(SPA_META_ACQUISITION_SIZE, 96);
+	pwtest_int_eq(SPA_META_ACQUISITION_WIRE_SIZE, 96);
 	pwtest_int_eq(SPA_META_ACQUISITION_DOMAIN_SIZE, 16);
+	pwtest_int_eq(SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE, 8);
 	pwtest_int_eq(SPA_META_FEATURE_ACQUISITION_VERSION_1, 1 << 0);
+	pwtest_int_eq(SPA_META_FEATURE_ACQUISITION_VERSION_2, 1 << 1);
+	pwtest_int_eq(SPA_META_FEATURE_ACQUISITION_CURRENT,
+			SPA_META_FEATURE_ACQUISITION_VERSION_2);
 	pwtest_bool_false(spa_meta_acquisition_init(NULL));
 	pwtest_bool_false(spa_meta_acquisition_init(
 			(struct spa_meta_acquisition *)&unaligned[1]));
 	pwtest_bool_true(spa_meta_acquisition_init(&acquisition));
 	pwtest_int_eq(acquisition.flags, 0U);
+	pwtest_int_eq(acquisition.timebase,
+			(uint32_t)SPA_META_ACQUISITION_TIMEBASE_NONE);
 	pwtest_int_eq(acquisition.exposure_start_nsec, SPA_TIME_INVALID);
 	pwtest_bool_true(spa_meta_acquisition_is_valid(&meta));
 	pwtest_bool_false(spa_meta_acquisition_identity_equal(&acquisition, &acquisition));
@@ -146,16 +162,89 @@ PWTEST(buffer_acquisition_meta)
 			&acquisition, SPA_TIME_INVALID, 9));
 	pwtest_bool_true(spa_meta_acquisition_set_exposure_start(
 			&acquisition, 123456, 9));
+	pwtest_int_eq(acquisition.timebase,
+			(uint32_t)SPA_META_ACQUISITION_TIMEBASE_MONOTONIC);
 	pwtest_bool_false(spa_meta_acquisition_set_exposure_duration(&acquisition, 0));
 	pwtest_bool_true(spa_meta_acquisition_set_exposure_duration(&acquisition, 5000));
 	pwtest_bool_true(spa_meta_acquisition_is_valid(&meta));
+	pwtest_bool_false(spa_meta_acquisition_time_difference(
+			&acquisition, &acquisition, NULL, NULL));
 
+	pwtest_bool_true(spa_meta_acquisition_init(&peer));
+	pwtest_bool_false(spa_meta_acquisition_set_exposure_start_ptp(
+			&peer, 123500, 11, NULL, 7));
+	pwtest_bool_false(spa_meta_acquisition_set_exposure_start_ptp(
+			&peer, 123500, 11, zero_grandmaster, 7));
+	pwtest_bool_true(spa_meta_acquisition_set_exposure_start_ptp(
+			&peer, 123500, 11, grandmaster_a, 7));
+	pwtest_int_eq(peer.timebase,
+			(uint32_t)SPA_META_ACQUISITION_TIMEBASE_TAI);
+	pwtest_bool_true(SPA_FLAG_IS_SET(peer.flags,
+			SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID));
+	same = peer;
+	same.exposure_start_nsec = 123456;
+	same.timestamp_uncertainty_nsec = 9;
+	pwtest_bool_true(spa_meta_acquisition_time_difference(
+			&same, &peer, &difference, &uncertainty));
+	pwtest_int_eq(difference, -44);
+	pwtest_int_eq(uncertainty, 20U);
+	pwtest_bool_false(spa_meta_acquisition_times_match(&same, &peer, 23));
+	pwtest_bool_true(spa_meta_acquisition_times_match(&same, &peer, 24));
+	peer.ptp_domain_number++;
+	pwtest_bool_false(spa_meta_acquisition_time_difference(
+			&same, &peer, NULL, NULL));
+	peer = same;
+	memcpy(peer.ptp_grandmaster_id, grandmaster_b,
+			sizeof(peer.ptp_grandmaster_id));
+	pwtest_bool_false(spa_meta_acquisition_time_difference(
+			&same, &peer, NULL, NULL));
+	peer = same;
+	peer.exposure_start_nsec = 123500;
+	peer.timestamp_uncertainty_nsec = 11;
+	pwtest_bool_false(spa_meta_acquisition_serialize(&peer, NULL, sizeof(wire)));
+	pwtest_bool_false(spa_meta_acquisition_serialize(
+			&peer, wire, sizeof(wire) - 1));
+	pwtest_bool_true(spa_meta_acquisition_serialize(&peer, wire, sizeof(wire)));
+	pwtest_int_eq(wire[0], 0);
+	pwtest_int_eq(wire[3], SPA_META_ACQUISITION_VERSION_2);
+	pwtest_bool_true(spa_meta_acquisition_deserialize(
+			&decoded, wire, sizeof(wire)));
+	pwtest_bool_true(spa_meta_acquisition_time_difference(
+			&peer, &decoded, &difference, &uncertainty));
+	pwtest_int_eq(difference, 0);
+	pwtest_int_eq(uncertainty, 22U);
+	wire[81] = 1;
+	pwtest_bool_false(spa_meta_acquisition_deserialize(
+			&decoded, wire, sizeof(wire)));
+	wire[81] = 0;
+	pwtest_bool_true(spa_meta_acquisition_set_exposure_start(&same, 123456, 9));
+	pwtest_int_eq(same.timebase,
+			(uint32_t)SPA_META_ACQUISITION_TIMEBASE_MONOTONIC);
+	pwtest_bool_false(SPA_FLAG_IS_SET(same.flags,
+			SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID));
+	pwtest_int_eq(memcmp(same.ptp_grandmaster_id, zero_grandmaster,
+			sizeof(same.ptp_grandmaster_id)), 0);
+
+	memset(&legacy, 0, sizeof(legacy));
+	legacy.version = SPA_META_ACQUISITION_VERSION_1;
+	legacy.abi_size = SPA_META_ACQUISITION_SIZE;
+	legacy.exposure_start_nsec = SPA_TIME_INVALID;
+	meta.data = &legacy;
+	pwtest_bool_true(spa_meta_acquisition_is_valid(&meta));
+	pwtest_bool_true(spa_meta_acquisition_set_exposure_start(&legacy, 12, 3));
+	pwtest_int_eq(legacy.timebase,
+			(uint32_t)SPA_META_ACQUISITION_TIMEBASE_NONE);
+	pwtest_bool_true(spa_meta_acquisition_is_valid(&meta));
+	pwtest_bool_false(spa_meta_acquisition_set_exposure_start_ptp(
+			&legacy, 12, 3, grandmaster_a, 7));
+
+	meta.data = &acquisition;
 	malformed = acquisition;
 	malformed.flags |= 1u << 31;
 	meta.data = &malformed;
 	pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
 	malformed = acquisition;
-	malformed.reserved0 = 1;
+	malformed.timebase = SPA_META_ACQUISITION_TIMEBASE_NONE;
 	pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
 	malformed = acquisition;
 	malformed.reserved[1] = 1;
@@ -185,9 +274,16 @@ PWTEST(buffer_acquisition_meta)
 	malformed = acquisition;
 	malformed.exposure_duration_nsec = 0;
 	pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
+	malformed = acquisition;
+	malformed.timebase = SPA_META_ACQUISITION_TIMEBASE_TAI;
+	pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
+	malformed = acquisition;
+	SPA_FLAG_SET(malformed.flags,
+			SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID);
+	pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
 
 	meta.data = &acquisition;
-	meta.type = SPA_META_Progressive;
+	meta.type = SPA_META_Header;
 	pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
 	meta.type = SPA_META_Acquisition;
 	meta.size = sizeof(acquisition) - 1;
@@ -206,9 +302,16 @@ PWTEST(buffer_acquisition_meta_exports)
 	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_init"));
 	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_set_identity"));
 	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_set_exposure_start"));
+	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT,
+			"spa_meta_acquisition_set_exposure_start_ptp"));
 	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_set_exposure_duration"));
 	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_is_valid"));
+	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_serialize"));
+	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_deserialize"));
 	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_identity_equal"));
+	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT,
+			"spa_meta_acquisition_time_difference"));
+	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_times_match"));
 
 	return PWTEST_PASS;
 }
@@ -244,12 +347,12 @@ PWTEST(buffer_acquisition_meta_param)
 	fixed = build_acquisition_meta_param(&fixed_builder, SPA_META_Acquisition,
 			SPA_META_ACQUISITION_SIZE, true,
 			SPA_POD_PROP_FLAG_MANDATORY,
-			SPA_META_FEATURE_ACQUISITION_VERSION_1);
+			SPA_META_FEATURE_ACQUISITION_CURRENT);
 	spa_pod_builder_init(&offered_builder, offered_buffer, sizeof(offered_buffer));
 	offered = build_acquisition_meta_param(&offered_builder, SPA_META_Acquisition,
 			SPA_META_ACQUISITION_SIZE, true,
 			SPA_POD_PROP_FLAG_MANDATORY,
-			SPA_META_FEATURE_ACQUISITION_VERSION_1);
+			SPA_META_FEATURE_ACQUISITION_CURRENT);
 	spa_pod_builder_init(&result_builder, result_buffer, sizeof(result_buffer));
 	pwtest_int_ge(spa_pod_filter(&result_builder, &result, fixed, offered), 0);
 	pwtest_int_ge(spa_pod_filter_make(result), 0);
@@ -260,13 +363,13 @@ PWTEST(buffer_acquisition_meta_param)
 	pwtest_int_eq(type, (uint32_t) SPA_META_Acquisition);
 	pwtest_int_eq(size, (int32_t) SPA_META_ACQUISITION_SIZE);
 	pwtest_int_eq(features,
-			(int32_t) SPA_META_FEATURE_ACQUISITION_VERSION_1);
+			(int32_t) SPA_META_FEATURE_ACQUISITION_CURRENT);
 
 	spa_pod_builder_init(&offered_builder, offered_buffer, sizeof(offered_buffer));
-	offered = build_acquisition_meta_param(&offered_builder, SPA_META_Progressive,
+	offered = build_acquisition_meta_param(&offered_builder, SPA_META_Header,
 			SPA_META_ACQUISITION_SIZE, true,
 			SPA_POD_PROP_FLAG_MANDATORY,
-			SPA_META_FEATURE_ACQUISITION_VERSION_1);
+			SPA_META_FEATURE_ACQUISITION_CURRENT);
 	spa_pod_builder_init(&result_builder, result_buffer, sizeof(result_buffer));
 	pwtest_int_lt(spa_pod_filter(&result_builder, &result, fixed, offered), 0);
 
@@ -274,14 +377,15 @@ PWTEST(buffer_acquisition_meta_param)
 	offered = build_acquisition_meta_param(&offered_builder, SPA_META_Acquisition,
 			SPA_META_ACQUISITION_SIZE - 1, true,
 			SPA_POD_PROP_FLAG_MANDATORY,
-			SPA_META_FEATURE_ACQUISITION_VERSION_1);
+			SPA_META_FEATURE_ACQUISITION_CURRENT);
 	spa_pod_builder_init(&result_builder, result_buffer, sizeof(result_buffer));
 	pwtest_int_lt(spa_pod_filter(&result_builder, &result, fixed, offered), 0);
 
 	spa_pod_builder_init(&offered_builder, offered_buffer, sizeof(offered_buffer));
 	offered = build_acquisition_meta_param(&offered_builder, SPA_META_Acquisition,
 			SPA_META_ACQUISITION_SIZE, true,
-			SPA_POD_PROP_FLAG_MANDATORY, 1u << 1);
+			SPA_POD_PROP_FLAG_MANDATORY,
+			SPA_META_FEATURE_ACQUISITION_VERSION_1);
 	spa_pod_builder_init(&result_builder, result_buffer, sizeof(result_buffer));
 	pwtest_int_lt(spa_pod_filter(&result_builder, &result, fixed, offered), 0);
 
@@ -294,94 +398,10 @@ PWTEST(buffer_acquisition_meta_param)
 	spa_pod_builder_init(&fixed_builder, fixed_buffer, sizeof(fixed_buffer));
 	fixed = build_acquisition_meta_param(&fixed_builder, SPA_META_Acquisition,
 			SPA_META_ACQUISITION_SIZE, true, SPA_POD_PROP_FLAG_DROP,
-			SPA_META_FEATURE_ACQUISITION_VERSION_1);
+			SPA_META_FEATURE_ACQUISITION_CURRENT);
 	spa_pod_builder_init(&result_builder, result_buffer, sizeof(result_buffer));
 	pwtest_int_ge(spa_pod_filter(&result_builder, &result, fixed, offered), 0);
 	pwtest_ptr_null(spa_pod_find_prop(result, NULL, SPA_PARAM_META_features));
-
-	return PWTEST_PASS;
-}
-
-PWTEST(buffer_progressive_meta)
-{
-	struct spa_meta_progressive progressive;
-	struct spa_meta meta = {
-		.type = SPA_META_Progressive,
-		.size = sizeof(progressive),
-		.data = &progressive,
-	};
-	enum spa_meta_progressive_state state;
-	uint32_t committed;
-	uint64_t snapshot;
-	uint8_t unaligned[sizeof(progressive) + 1];
-
-	pwtest_int_eq(SPA_META_PROGRESSIVE_STATE_PREPARED, 0);
-	pwtest_int_eq(SPA_META_PROGRESSIVE_STATE_ACTIVE, 1);
-	pwtest_int_eq(SPA_META_PROGRESSIVE_STATE_COMPLETE, 2);
-	pwtest_int_eq(SPA_META_PROGRESSIVE_STATE_ABORTED, 3);
-	pwtest_bool_true(spa_meta_progressive_init(&progressive, 1, 128, 4096, 256));
-	pwtest_bool_false(spa_meta_progressive_init(&progressive, 1, 128, 0, 256));
-	pwtest_bool_false(spa_meta_progressive_init(&progressive, 1, 128, 4096, 0));
-	pwtest_bool_true(spa_meta_progressive_init(&progressive, 1, 128, 4096, 256));
-
-	snapshot = spa_meta_progressive_snapshot_encode(1024,
-			SPA_META_PROGRESSIVE_STATE_ACTIVE);
-	spa_meta_progressive_store_release(&progressive, snapshot);
-	pwtest_int_eq(spa_meta_progressive_load_acquire(&progressive), snapshot);
-	pwtest_bool_true(spa_meta_progressive_snapshot_decode(snapshot, &committed, &state));
-	pwtest_int_eq(committed, 1024U);
-	pwtest_int_eq((uint32_t) state,
-			(uint32_t) SPA_META_PROGRESSIVE_STATE_ACTIVE);
-	pwtest_bool_true(spa_meta_progressive_is_valid(&meta));
-	spa_meta_progressive_store_release(&progressive,
-			spa_meta_progressive_snapshot_encode(1025,
-				SPA_META_PROGRESSIVE_STATE_ACTIVE));
-	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
-	spa_meta_progressive_store_release(&progressive,
-			spa_meta_progressive_snapshot_encode(1024,
-				SPA_META_PROGRESSIVE_STATE_COMPLETE));
-	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
-	spa_meta_progressive_store_release(&progressive,
-			spa_meta_progressive_snapshot_encode(1,
-				SPA_META_PROGRESSIVE_STATE_PREPARED));
-	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
-	progressive.terminal_flags = SPA_META_PROGRESSIVE_FLAG_CANCELLED;
-	spa_meta_progressive_store_release(&progressive,
-			spa_meta_progressive_snapshot_encode(1024,
-				SPA_META_PROGRESSIVE_STATE_ABORTED));
-	pwtest_bool_true(spa_meta_progressive_is_valid(&meta));
-	progressive.terminal_flags = ~SPA_META_PROGRESSIVE_FLAG_ALL;
-	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
-	progressive.terminal_flags = 0;
-
-	pwtest_bool_false(spa_meta_progressive_snapshot_decode(
-			SPA_META_PROGRESSIVE_RESERVED_MASK, NULL, NULL));
-	spa_meta_progressive_store_release(&progressive,
-			SPA_META_PROGRESSIVE_RESERVED_MASK);
-	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
-
-	spa_meta_progressive_store_release(&progressive, snapshot);
-	progressive.reserved0 = 1;
-	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
-	progressive.reserved0 = 0;
-
-	meta.size = sizeof(progressive) - 1;
-	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
-	meta.size = sizeof(progressive);
-	meta.data = &unaligned[1];
-	pwtest_bool_false(spa_meta_progressive_is_valid(&meta));
-
-	return PWTEST_PASS;
-}
-
-PWTEST(buffer_progressive_meta_exports)
-{
-	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_progressive_snapshot_encode"));
-	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_progressive_snapshot_decode"));
-	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_progressive_load_acquire"));
-	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_progressive_store_release"));
-	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_progressive_init"));
-	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_progressive_is_valid"));
 
 	return PWTEST_PASS;
 }
@@ -452,8 +472,6 @@ PWTEST_SUITE(spa_buffer)
 	pwtest_add(buffer_acquisition_meta, PWTEST_NOARG);
 	pwtest_add(buffer_acquisition_meta_exports, PWTEST_NOARG);
 	pwtest_add(buffer_acquisition_meta_param, PWTEST_NOARG);
-	pwtest_add(buffer_progressive_meta, PWTEST_NOARG);
-	pwtest_add(buffer_progressive_meta_exports, PWTEST_NOARG);
 	pwtest_add(buffer_alloc, PWTEST_NOARG);
 
 	return PWTEST_PASS;
