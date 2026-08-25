@@ -356,10 +356,12 @@ static const struct pw_impl_node_rt_events node_rt_events = {
 static void enable_node_profiling(struct node *n, bool enabled)
 {
 	if (enabled && !n->enabled) {
-		SPA_FLAG_SET(n->node->rt.target.activation->flags, PW_NODE_ACTIVATION_FLAG_PROFILER);
+		pw_node_activation_update_flag(n->node->rt.target.activation,
+				PW_NODE_ACTIVATION_FLAG_PROFILER, true);
 		pw_impl_node_add_rt_listener(n->node, &n->node_rt_listener, &node_rt_events, n);
 	} else if (!enabled && n->enabled) {
-		SPA_FLAG_CLEAR(n->node->rt.target.activation->flags, PW_NODE_ACTIVATION_FLAG_PROFILER);
+		pw_node_activation_update_flag(n->node->rt.target.activation,
+				PW_NODE_ACTIVATION_FLAG_PROFILER, false);
 		pw_impl_node_remove_rt_listener(n->node, &n->node_rt_listener);
 	}
 	n->enabled = enabled;

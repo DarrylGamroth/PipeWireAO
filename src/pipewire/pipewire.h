@@ -14,7 +14,6 @@
 #include <pipewire/context.h>
 #include <pipewire/device.h>
 #include <pipewire/buffers.h>
-#include <pipewire/image-source.h>
 #include <pipewire/core.h>
 #include <pipewire/factory.h>
 #include <pipewire/keys.h>
@@ -35,7 +34,6 @@
 #include <pipewire/filter.h>
 #include <pipewire/thread-loop.h>
 #include <pipewire/data-loop.h>
-#include <pipewire/rtc-data-loop.h>
 #include <pipewire/timer-queue.h>
 #include <pipewire/type.h>
 #include <pipewire/utils.h>

@@ -25,7 +25,6 @@
 #define PW_API_NODE_IMPL	SPA_EXPORT
 #include "pipewire/impl-node.h"
 #include "pipewire/private.h"
-#include "pipewire/rtc-data-loop.h"
 
 PW_LOG_TOPIC_EXTERN(log_node);
 #define PW_LOG_TOPIC_DEFAULT log_node
@@ -79,153 +78,13 @@ static const char * const global_keys[] = {
 	NULL
 };
 
-static inline bool is_rtc_process(const struct pw_impl_node *node)
+static inline bool is_poll_driver(const struct pw_impl_node *node)
 {
-	return SPA_FLAG_IS_SET(node->spa_flags, SPA_NODE_FLAG_RTC_PROCESS);
+	return SPA_FLAG_IS_SET(node->spa_flags, SPA_NODE_FLAG_POLL_DRIVER);
 }
 
 static int poll_process_node(void *data);
-
-static void rtc_error_event(struct spa_source *source)
-{
-	struct pw_impl_node *node = source->data;
-	struct impl *impl = SPA_CONTAINER_OF(node, struct impl, this);
-	struct pw_loop *main_loop = pw_context_get_main_loop(node->context);
-	uint64_t count;
-	int res;
-
-	if ((source->rmask & SPA_IO_IN) == 0)
-		return;
-	res = spa_system_eventfd_read(main_loop->system, source->fd, &count);
-	if (res < 0 && res != -EAGAIN) {
-		pw_log_error("%p: failed to read RTC terminal result: %s",
-				node, spa_strerror(res));
-		return;
-	}
-	res = SPA_ATOMIC_LOAD(node->rtc_error);
-	if (res >= 0 || node->info.state != PW_NODE_STATE_RUNNING)
-		return;
-	impl->last_error = res;
-	pw_impl_node_set_state(node, PW_NODE_STATE_ERROR);
-}
-
-static int ensure_rtc_error_source(struct pw_impl_node *node)
-{
-	struct pw_loop *main_loop = pw_context_get_main_loop(node->context);
-	int res;
-
-	if (node->rtc_error_source.fd >= 0)
-		return 0;
-	res = spa_system_eventfd_create(main_loop->system,
-			SPA_FD_CLOEXEC | SPA_FD_NONBLOCK);
-	if (res < 0)
-		return res;
-	node->rtc_error_source.fd = res;
-	node->rtc_error_source.func = rtc_error_event;
-	node->rtc_error_source.data = node;
-	node->rtc_error_source.mask = SPA_IO_IN | SPA_IO_ERR | SPA_IO_HUP;
-	if ((res = pw_loop_add_source(main_loop, &node->rtc_error_source)) < 0) {
-		spa_system_close(main_loop->system, node->rtc_error_source.fd);
-		node->rtc_error_source.fd = -1;
-		return res;
-	}
-	return 0;
-}
-
-static int rtc_process_node(void *data)
-{
-	struct pw_impl_node *node = data;
-	struct pw_loop *main_loop;
-	int res;
-
-	res = spa_node_process_fast(node->node);
-	if (SPA_UNLIKELY(res < 0)) {
-		main_loop = pw_context_get_main_loop(node->context);
-		SPA_ATOMIC_STORE(node->rtc_error, res);
-		(void) spa_system_eventfd_write(main_loop->system,
-				node->rtc_error_source.fd, 1);
-	}
-	return res;
-}
-
-static int ensure_rtc_owner(struct pw_impl_node *node)
-{
-	struct pw_rtc_data_loop_config config = {
-		.version = PW_VERSION_RTC_DATA_LOOP_CONFIG,
-		.idle = PW_RTC_DATA_LOOP_IDLE_BUSY_SPIN,
-		.scheduler = PW_RTC_DATA_LOOP_SCHED_OTHER,
-		.priority = 0,
-	};
-	int priority, res;
-
-	if (!is_rtc_process(node))
-		return -EINVAL;
-	if (!SPA_FLAG_IS_SET(node->spa_flags, SPA_NODE_FLAG_RT))
-		return -EINVAL;
-	if (node->remote || node->exported)
-		return -ENOTSUP;
-	if (node->rtc_loop != NULL)
-		return 0;
-	if ((res = ensure_rtc_error_source(node)) < 0)
-		return res;
-
-	priority = pw_properties_get_int32(node->properties,
-			PW_KEY_LOOP_RT_PRIO, 0);
-	if (priority != 0) {
-		config.scheduler = PW_RTC_DATA_LOOP_SCHED_FIFO;
-		config.priority = priority;
-	}
-	node->rtc_loop = pw_rtc_data_loop_new(node->context,
-			&node->properties->dict, &config, rtc_process_node, node);
-	return node->rtc_loop != NULL ? 0 : -errno;
-}
-
-static int do_stop_rtc_polling(struct spa_loop *loop, bool async, uint32_t seq,
-		const void *data, size_t size, void *user_data)
-{
-	struct pw_impl_node *node = user_data;
-
-	return pw_data_loop_remove_poll_source(node->data_loop_impl,
-			&node->poll_source);
-}
-
-static int stop_rtc_owner(struct pw_impl_node *node)
-{
-	if (node->poll_source.added)
-		return pw_loop_locked(node->data_loop, do_stop_rtc_polling,
-				1, NULL, 0, node);
-	if (node->rtc_loop == NULL)
-		return 0;
-	return pw_rtc_data_loop_stop(node->rtc_loop);
-}
-
-static int do_start_rtc_polling(struct spa_loop *loop, bool async, uint32_t seq,
-		const void *data, size_t size, void *user_data)
-{
-	struct pw_impl_node *node = user_data;
-
-	return pw_data_loop_add_poll_source(node->data_loop_impl,
-			&node->poll_source);
-}
-
-static int start_rtc_owner(struct pw_impl_node *node)
-{
-	int res;
-
-	if (node->data_loop_impl != NULL &&
-			pw_data_loop_is_polling(node->data_loop_impl)) {
-		if (node->remote || node->exported)
-			return -ENOTSUP;
-		if ((res = ensure_rtc_error_source(node)) < 0)
-			return res;
-		return pw_loop_locked(node->data_loop, do_start_rtc_polling,
-				1, NULL, 0, node);
-	}
-
-	if ((res = ensure_rtc_owner(node)) < 0)
-		return res;
-	return pw_rtc_data_loop_start(node->rtc_loop);
-}
+static int node_ready(void *data, int status);
 
 #define pw_node_resource(r,m,v,...)	pw_resource_call(r,struct pw_node_events,m,v,__VA_ARGS__)
 #define pw_node_resource_info(r,...)	pw_node_resource(r,info,0,__VA_ARGS__)
@@ -352,6 +211,7 @@ do_node_prepare(struct spa_loop *loop, bool async, uint32_t seq,
 	struct pw_impl_node *this = user_data;
 	struct pw_node_target *t;
 	uint64_t dummy;
+	bool polling;
 	int res;
 
 	pw_log_trace("%p: prepare %d remote:%d exported:%d", this, this->rt.prepared,
@@ -359,13 +219,21 @@ do_node_prepare(struct spa_loop *loop, bool async, uint32_t seq,
 
 	if (this->rt.prepared)
 		return 0;
-	if (this->data_loop_impl != NULL &&
-			pw_data_loop_is_polling(this->data_loop_impl) &&
-			(this->remote || this->exported))
+	polling = this->data_loop_impl != NULL &&
+			pw_data_loop_is_polling(this->data_loop_impl);
+	if (is_poll_driver(this) && !this->remote && !polling)
 		return -ENOTSUP;
 
-	if (this->data_loop_impl != NULL &&
-			pw_data_loop_is_polling(this->data_loop_impl)) {
+	/* A remote node is only the server-side graph representation; its process
+	 * owner advertises the wake policy in the shared activation. Local and
+	 * exported implementations own their policy and their process source. */
+	if (!this->remote) {
+		if (polling && this->rt.target.activation->server_version < 1)
+			return -EPROTONOSUPPORT;
+		pw_node_activation_set_polling(this->rt.target.activation, polling);
+	}
+
+	if (polling && !this->remote) {
 		if ((res = pw_data_loop_add_poll_source(this->data_loop_impl,
 					&this->poll_source)) < 0)
 			return res;
@@ -391,6 +259,24 @@ do_node_prepare(struct spa_loop *loop, bool async, uint32_t seq,
 static int add_node_to_graph(struct pw_impl_node *node)
 {
 	return pw_loop_locked(node->data_loop, do_node_prepare, 1, NULL, 0, node);
+}
+
+static int do_node_enable_polling(struct spa_loop *loop, bool async,
+		uint32_t seq, const void *data, size_t size, void *user_data)
+{
+	struct pw_impl_node *node = user_data;
+
+	return pw_data_loop_enable_poll_source(node->data_loop_impl,
+			&node->poll_source);
+}
+
+static int enable_node_polling(struct pw_impl_node *node)
+{
+	if (node->remote || node->data_loop_impl == NULL ||
+			!pw_data_loop_is_polling(node->data_loop_impl))
+		return 0;
+	return pw_loop_locked(node->data_loop, do_node_enable_polling,
+			1, NULL, 0, node);
 }
 
 /* called from the node data loop and undoes the changes done in do_node_prepare.  */
@@ -465,8 +351,7 @@ static void node_deactivate(struct pw_impl_node *this)
 static int idle_node(struct pw_impl_node *this)
 {
 	struct impl *impl = SPA_CONTAINER_OF(this, struct impl, this);
-	int res = 0, stop_res = 0;
-	bool rtc_process = is_rtc_process(this);
+	int res;
 
 	pw_log_debug("%p: idle node state:%s pending:%s pause-on-idle:%d", this,
 			pw_node_state_as_string(this->info.state),
@@ -476,10 +361,8 @@ static int idle_node(struct pw_impl_node *this)
 	if (impl->pending_state == PW_NODE_STATE_IDLE)
 		return 0;
 
-	if (!this->pause_on_idle && !rtc_process)
+	if (!this->pause_on_idle)
 		return 0;
-	if (rtc_process)
-		stop_res = stop_rtc_owner(this);
 
 	node_deactivate(this);
 
@@ -488,7 +371,7 @@ static int idle_node(struct pw_impl_node *this)
 	if (res < 0)
 		pw_log_debug("%p: pause node error %s", this, spa_strerror(res));
 
-	return stop_res < 0 ? stop_res : res;
+	return res;
 }
 
 static void node_activate(struct pw_impl_node *this)
@@ -632,24 +515,13 @@ static void node_update_state(struct pw_impl_node *node, enum pw_node_state stat
 				node->driving, node->driver, node->rt.prepared);
 
 		if (res >= 0) {
-			if (is_rtc_process(node)) {
-				res = start_rtc_owner(node);
-				if (res < 0) {
-					spa_node_send_command(node->node,
-						&SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Pause));
-					state = PW_NODE_STATE_ERROR;
-					error = spa_aprintf("RTC process owner error: %s",
-							spa_strerror(res));
-				}
-			} else {
-				res = add_node_to_graph(node);
-				if (res < 0) {
-					spa_node_send_command(node->node,
-						&SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Pause));
-					state = PW_NODE_STATE_ERROR;
-					error = spa_aprintf("Graph process owner error: %s",
-							spa_strerror(res));
-				}
+			res = add_node_to_graph(node);
+			if (res < 0) {
+				spa_node_send_command(node->node,
+					&SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Pause));
+				state = PW_NODE_STATE_ERROR;
+				error = spa_aprintf("Graph process owner error: %s",
+						spa_strerror(res));
 			}
 		}
 		if (res >= 0 && node->driving && node->driver) {
@@ -663,12 +535,18 @@ static void node_update_state(struct pw_impl_node *node, enum pw_node_state stat
 				emit_pending_request_process = true;
 			}
 		}
+		if (res >= 0 && (res = enable_node_polling(node)) < 0) {
+			spa_node_send_command(node->node,
+					&SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Pause));
+			remove_node_from_graph(node);
+			state = PW_NODE_STATE_ERROR;
+			error = spa_aprintf("Polling start error: %s",
+					spa_strerror(res));
+		}
 		break;
 	case PW_NODE_STATE_IDLE:
 	case PW_NODE_STATE_SUSPENDED:
 	case PW_NODE_STATE_ERROR:
-		if (is_rtc_process(node))
-			stop_rtc_owner(node);
 		if (state != PW_NODE_STATE_IDLE || node->pause_on_idle)
 			if (old != PW_NODE_STATE_CREATING)
 				remove_node_from_graph(node);
@@ -721,7 +599,7 @@ static void node_update_state(struct pw_impl_node *node, enum pw_node_state stat
 static int suspend_node(struct pw_impl_node *this)
 {
 	struct impl *impl = SPA_CONTAINER_OF(this, struct impl, this);
-	int res = 0, stop_res = 0;
+	int res = 0;
 	struct pw_impl_port *p;
 
 	pw_log_debug("%p: suspend node state:%s", this,
@@ -732,9 +610,6 @@ static int suspend_node(struct pw_impl_node *this)
 		return 0;
 
 	pw_context_freeze_recalc_graph(this->context);
-	if (is_rtc_process(this))
-		stop_res = stop_rtc_owner(this);
-
 	node_deactivate(this);
 
 	pw_log_debug("%p: suspend node driving:%d driver:%d prepared:%d", this,
@@ -757,7 +632,7 @@ static int suspend_node(struct pw_impl_node *this)
 
 	node_update_state(this, PW_NODE_STATE_SUSPENDED, 0, NULL);
 
-	return stop_res < 0 ? stop_res : res;
+	return res;
 }
 
 static void
@@ -883,9 +758,7 @@ static int node_send_command(void *object, const struct spa_command *command)
 
 	switch (id) {
 	case SPA_NODE_COMMAND_Suspend:
-		res = is_rtc_process(node)
-			? pw_impl_node_send_command(node, command)
-			: suspend_node(node);
+		res = suspend_node(node);
 		break;
 	default:
 		res = pw_impl_node_send_command(node, command);
@@ -1229,9 +1102,9 @@ int pw_impl_node_set_driver(struct pw_impl_node *node, struct pw_impl_node *driv
 	struct pw_impl_node *old = node->driver_node;
 	bool was_driving, no_driver = (driver == NULL);
 
-	if (is_rtc_process(node) &&
+	if (is_poll_driver(node) &&
 	    driver != NULL && driver != node) {
-		pw_log_error("%p: refusing graph driver for RTC-owned node %s",
+		pw_log_error("%p: refusing external graph driver for process-owned node %s",
 				node, node->name);
 		return -EPERM;
 	}
@@ -1442,7 +1315,8 @@ static void check_properties(struct pw_impl_node *node)
 	if (async != node->async) {
 		pw_log_info("%p: async %d -> %d", node, node->async, async);
 		node->async = async;
-		SPA_FLAG_UPDATE(node->rt.target.activation->flags, PW_NODE_ACTIVATION_FLAG_ASYNC, async);
+		pw_node_activation_update_flag(node->rt.target.activation,
+				PW_NODE_ACTIVATION_FLAG_ASYNC, async);
 	}
 
 	if ((str = pw_properties_get(node->properties, PW_KEY_NODE_PASSIVE)) == NULL) {
@@ -1691,15 +1565,6 @@ static inline int process_node(void *data, uint64_t nsec)
 	int status;
 	bool was_awake;
 
-	/* RTC-owned nodes have a single process owner outside the graph. Keep
-	 * this guard at the graph execution boundary as a defence against a
-	 * scheduler or activation bug. */
-	if (SPA_UNLIKELY(is_rtc_process(this))) {
-		pw_log_error("%p: refusing graph process for RTC-owned node %s",
-				this, this->name);
-		return -EPERM;
-	}
-
 	if (!SPA_ATOMIC_CAS(a->status,
 				PW_NODE_ACTIVATION_TRIGGERED,
 				PW_NODE_ACTIVATION_AWAKE))
@@ -1715,6 +1580,15 @@ static inline int process_node(void *data, uint64_t nsec)
 		a->pending_sync = false;
 
 	if (SPA_LIKELY(this->rt.prepared)) {
+		/* A poll driver already invoked its SPA process method to discover and
+		 * publish the quantum that started this cycle. Its self activation is
+		 * the graph-completion dependency, not a request to poll the source a
+		 * second time. Calling it here could consume the next quantum without
+		 * starting a corresponding cycle. */
+		if (SPA_UNLIKELY(is_poll_driver(this) && this->driving)) {
+			status = SPA_STATUS_OK;
+			goto processed;
+		}
 		/* process input mixers */
 		spa_list_for_each(p, &this->rt.input_mix, rt.node_link)
 			spa_node_process_fast(p->mix);
@@ -1727,6 +1601,8 @@ static inline int process_node(void *data, uint64_t nsec)
 			spa_list_for_each(p, &this->rt.output_mix, rt.node_link)
 				spa_node_process_fast(p->mix);
 		}
+	processed:
+		;
 	} else {
 		/* This can happen when we deactivated the node but some links are
 		 * still not shut down. We simply don't schedule the node and make
@@ -1767,9 +1643,31 @@ static int poll_process_node(void *data)
 {
 	struct pw_impl_node *node = data;
 	struct pw_node_activation *activation = node->rt.target.activation;
+	int status;
 
-	if (is_rtc_process(node))
-		return rtc_process_node(node);
+	if (is_poll_driver(node)) {
+		if (SPA_ATOMIC_LOAD(activation->status) ==
+				PW_NODE_ACTIVATION_TRIGGERED) {
+			process_node(node, get_time_ns(node->rt.target.system));
+			return 1;
+		}
+		/* One process call may publish one scheduling quantum. DMA and follower
+		 * processing continue concurrently, but the source does not advance shared
+		 * publication metadata again until the preceding graph cycle completes. */
+		if (!node->driving || node->driver_node != node ||
+				SPA_ATOMIC_LOAD(activation->status) !=
+				PW_NODE_ACTIVATION_FINISHED)
+			return 0;
+		status = spa_node_process_fast(node->node);
+		if (status == SPA_STATUS_OK)
+			return 0;
+		if (status < 0)
+			return status;
+		pw_log_trace_fp("%p: polled driver %s produced status:%d",
+				node, node->name, status);
+		node_ready(node, status);
+		return 1;
+	}
 	if (SPA_ATOMIC_LOAD(activation->status) != PW_NODE_ACTIVATION_TRIGGERED)
 		return 0;
 	process_node(node, get_time_ns(node->rt.target.system));
@@ -1780,8 +1678,6 @@ int pw_impl_node_trigger(struct pw_impl_node *node)
 {
 	uint64_t nsec;
 
-	if (is_rtc_process(node))
-		return -ENOTSUP;
 	nsec = get_time_ns(node->rt.target.system);
 	struct pw_node_target *t = &node->rt.target;
 	return t->trigger(t, nsec);
@@ -1874,8 +1770,6 @@ struct pw_impl_node *pw_context_create_node(struct pw_context *context,
 		goto error_clean;
 	}
 	this->source.fd = -1;
-	this->rtc_error_source.fd = -1;
-
 	if (properties == NULL)
 		properties = pw_properties_new(NULL, NULL);
 	if (properties == NULL) {
@@ -1950,9 +1844,10 @@ struct pw_impl_node *pw_context_create_node(struct pw_context *context,
 	this->rt.target.node = this;
 	this->rt.target.system = this->data_loop->system;
 	this->rt.target.fd = this->source.fd;
-	this->rt.target.trigger = this->data_loop_impl != NULL &&
-			pw_data_loop_is_polling(this->data_loop_impl) ?
-		trigger_target_poll_v1 : trigger_target_v1;
+	/* Version-1 targets select eventfd or polling from the destination's
+	 * shared activation flag. This also works when the owner is in another
+	 * process and its server-side representation uses a different loop. */
+	this->rt.target.trigger = trigger_target_v1;
 
 	reset_position(this, &this->rt.target.activation->position);
 	this->rt.target.activation->sync_timeout = DEFAULT_SYNC_TIMEOUT;
@@ -2065,10 +1960,11 @@ static void node_info(void *data, const struct spa_node_info *info)
 		uint64_t flags = info->flags;
 
 		if (node->spa_flags_initialized &&
-		    ((node->spa_flags ^ flags) & SPA_NODE_FLAG_RTC_PROCESS) != 0) {
-			pw_log_error("%p: SPA_NODE_FLAG_RTC_PROCESS is immutable", node);
-			flags = (flags & ~SPA_NODE_FLAG_RTC_PROCESS) |
-				(node->spa_flags & SPA_NODE_FLAG_RTC_PROCESS);
+		    ((node->spa_flags ^ flags) & SPA_NODE_FLAG_POLL_DRIVER) != 0) {
+			const uint64_t process_flags = SPA_NODE_FLAG_POLL_DRIVER;
+			pw_log_error("%p: process ownership flags are immutable", node);
+			flags = (flags & ~process_flags) |
+				(node->spa_flags & process_flags);
 		}
 		if (node->spa_flags != flags) {
 			flags_changed = node->spa_flags_initialized;
@@ -2411,7 +2307,8 @@ retry_status:
 		if (SPA_UNLIKELY(!SPA_ATOMIC_CAS(ta->status, old_status, PW_NODE_ACTIVATION_NOT_TRIGGERED)))
 			goto retry_status;
 
-		if (!SPA_FLAG_IS_SET(ta->flags, PW_NODE_ACTIVATION_FLAG_ASYNC))
+		if (!pw_node_activation_has_flag(ta,
+				PW_NODE_ACTIVATION_FLAG_ASYNC))
 			pending++;
 
 		if (old_status == PW_NODE_ACTIVATION_TRIGGERED ||
@@ -2666,9 +2563,6 @@ void pw_impl_node_destroy(struct pw_impl_node *node)
 	pw_log_info("(%s-%u) destroy", node->name, node->info.id);
 
 	pw_context_freeze_recalc_graph(context);
-	if (is_rtc_process(node))
-		stop_rtc_owner(node);
-
 	node_deactivate(node);
 
 	suspend_node(node);
@@ -2730,15 +2624,6 @@ void pw_impl_node_destroy(struct pw_impl_node *node)
 	pw_map_clear(&node->output_port_map);
 
 	pw_work_queue_cancel(impl->work, node, SPA_ID_INVALID);
-	if (node->rtc_loop)
-		pw_rtc_data_loop_destroy(node->rtc_loop);
-	if (node->rtc_error_source.fd >= 0) {
-		struct pw_loop *main_loop = pw_context_get_main_loop(context);
-
-		pw_loop_remove_source(main_loop, &node->rtc_error_source);
-		spa_system_close(main_loop->system, node->rtc_error_source.fd);
-	}
-
 	pw_properties_free(node->properties);
 	spa_clear_ptr(impl->pending_request_process, free);
 
@@ -3075,12 +2960,6 @@ int pw_impl_node_set_state(struct pw_impl_node *node, enum pw_node_state state)
 		break;
 
 	case PW_NODE_STATE_ERROR:
-		if (is_rtc_process(node)) {
-			stop_rtc_owner(node);
-			node_deactivate(node);
-			res = spa_node_send_command(node->node,
-					&SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Pause));
-		}
 		break;
 	}
 	if (SPA_RESULT_IS_ERROR(res))
@@ -3158,19 +3037,6 @@ int pw_impl_node_send_command(struct pw_impl_node *node, const struct spa_comman
 {
 	uint32_t id = SPA_NODE_COMMAND_ID(command);
 	int res = 0;
-
-	if (is_rtc_process(node)) {
-		switch (id) {
-		case SPA_NODE_COMMAND_Start:
-			return pw_impl_node_set_state(node, PW_NODE_STATE_RUNNING);
-		case SPA_NODE_COMMAND_Pause:
-			return pw_impl_node_set_state(node, PW_NODE_STATE_IDLE);
-		case SPA_NODE_COMMAND_Suspend:
-			return pw_impl_node_set_state(node, PW_NODE_STATE_SUSPENDED);
-		default:
-			break;
-		}
-	}
 
 	switch (id) {
 	case SPA_NODE_COMMAND_RequestProcess:

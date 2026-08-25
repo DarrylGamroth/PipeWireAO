@@ -2120,19 +2120,25 @@ static void trigger_link_v1(struct link *l, uint64_t nsec)
 	struct pw_node_activation *a = l->activation;
 	struct pw_node_activation_state *state = &a->state[0];
 	uint64_t cmd = 1;
+	bool polling;
 
 	pw_log_trace_fp("%p: link %p-%d %p %d/%d", c, l, l->node_id, state,
 			state->pending, state->required);
 
 	if (pw_node_activation_state_dec(state)) {
+		polling = pw_node_activation_is_polling(a);
+		if (polling)
+			a->signal_time = nsec;
 		if (SPA_ATOMIC_CAS(a->status,
 					PW_NODE_ACTIVATION_NOT_TRIGGERED,
 					PW_NODE_ACTIVATION_TRIGGERED)) {
-			a->signal_time = nsec;
+			if (!polling)
+				a->signal_time = nsec;
 
 			pw_log_trace_fp("%p: signal %p %p", c, l, state);
 
-			if (SPA_UNLIKELY(write(l->signalfd, &cmd, sizeof(cmd)) != sizeof(cmd)))
+			if (!polling && SPA_UNLIKELY(write(l->signalfd, &cmd,
+						sizeof(cmd)) != sizeof(cmd)))
 				pw_log_warn("%p: write failed %m", c);
 		}
 	}

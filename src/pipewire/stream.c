@@ -18,7 +18,6 @@
 #include <spa/utils/ringbuffer.h>
 #include <spa/pod/filter.h>
 #include <spa/pod/dynamic.h>
-#include <spa/pod/compare.h>
 #include <spa/debug/types.h>
 
 #define PW_ENABLE_DEPRECATED
@@ -26,7 +25,6 @@
 #include "pipewire/pipewire.h"
 #include "pipewire/stream.h"
 #include "pipewire/private.h"
-#include <spa/node/buffer-latest.h>
 
 PW_LOG_TOPIC_EXTERN(log_stream);
 #define PW_LOG_TOPIC_DEFAULT log_stream
@@ -99,7 +97,6 @@ struct stream {
 
 	struct spa_io_buffers *io;
 	struct spa_io_rate_match *rate_match;
-	struct spa_buffer_latest *latest;
 	uint32_t rate_queued;
 	uint32_t have_requested;
 	uint64_t rate_size;
@@ -774,8 +771,6 @@ static int impl_port_set_io(void *object, enum spa_direction direction, uint32_t
 {
 	struct stream *impl = object;
 	struct pw_stream *stream = &impl->this;
-	bool was_latest;
-	int res;
 
 	pw_log_debug("%p: id:%d (%s) %p %zd", impl, id,
 			spa_debug_type_find_name(spa_type_io, id), data, size);
@@ -792,17 +787,6 @@ static int impl_port_set_io(void *object, enum spa_direction direction, uint32_t
 			impl->rate_match = data;
 		else
 			impl->rate_match = NULL;
-		break;
-	case SPA_IO_BuffersLatest:
-	case SPA_IO_BuffersLatestNotify:
-	case SPA_IO_BuffersLatestLink:
-		was_latest = spa_buffer_latest_is_enabled(impl->latest);
-		if ((res = spa_buffer_latest_set_io(impl->latest, id, data, size)) < 0)
-			return res;
-		if (!was_latest && spa_buffer_latest_is_enabled(impl->latest)) {
-			clear_queue(impl, &impl->dequeued);
-			clear_queue(impl, &impl->queued);
-		}
 		break;
 	}
 	pw_stream_emit_io_changed(stream, id, data, size);
@@ -891,8 +875,6 @@ static void clear_buffers(struct pw_stream *stream)
 		}
 	}
 	impl->n_buffers = 0;
-	if (impl->latest != NULL)
-		spa_buffer_latest_clear_buffers(impl->latest);
 	if (impl->direction == SPA_DIRECTION_INPUT) {
 		struct buffer *b;
 
@@ -952,23 +934,6 @@ static void emit_dummy_peer_capability(struct stream *impl, bool empty)
 	emit_param_changed(impl, SPA_PARAM_PeerCapability, param);
 }
 
-static bool latest_worker_keeps_format(struct stream *impl,
-		const struct spa_pod *param)
-{
-	struct param *current;
-
-	if (!spa_buffer_latest_worker_is_active(impl->latest))
-		return false;
-	if (param == NULL)
-		return true;
-	spa_list_for_each(current, &impl->param_list, link) {
-		if (current->id == SPA_PARAM_Format &&
-				spa_pod_compare(current->param, param) == 0)
-			return true;
-	}
-	return false;
-}
-
 static int impl_port_set_param(void *object,
 			       enum spa_direction direction, uint32_t port_id,
 			       uint32_t id, uint32_t flags,
@@ -978,7 +943,6 @@ static int impl_port_set_param(void *object,
 	struct pw_stream *stream = &impl->this;
 	uint32_t user = 0, fl = 0;
 	int res;
-	bool retiring = false;
 	const struct spa_pod *params[1];
 	uint32_t n_params = 0;
 
@@ -995,19 +959,6 @@ static int impl_port_set_param(void *object,
 
 	params[0] = param;
 	n_params = param ? 1 : 0;
-	if (id == SPA_PARAM_Format && impl->n_buffers > 0) {
-		if (latest_worker_keeps_format(impl, param))
-			return 0;
-		if (spa_buffer_latest_has_links(impl->latest))
-			return -EBUSY;
-		if ((res = spa_buffer_latest_begin_worker_retirement(impl->latest)) < 0)
-			return res;
-		retiring = true;
-		if ((res = spa_buffer_latest_service_retirements(impl->latest)) < 0) {
-			spa_buffer_latest_end_worker_retirement(impl->latest);
-			return res;
-		}
-	}
 
 	switch (id) {
 	case SPA_PARAM_PeerCapability:
@@ -1020,17 +971,12 @@ static int impl_port_set_param(void *object,
 		break;
 	}
 
-	if ((res = update_params(impl, id, fl, params, n_params)) < 0) {
-		if (retiring)
-			spa_buffer_latest_end_worker_retirement(impl->latest);
+	if ((res = update_params(impl, id, fl, params, n_params)) < 0)
 		return res;
-	}
 
 	switch (id) {
 	case SPA_PARAM_Format:
 		clear_buffers(stream);
-		if (retiring)
-			spa_buffer_latest_end_worker_retirement(impl->latest);
 		user = impl->params[NODE_Format].user;
 		break;
 	default:
@@ -1064,49 +1010,17 @@ static int impl_port_use_buffers(void *object,
 	struct pw_stream *stream = &impl->this;
 	uint32_t i, j, impl_flags = impl->flags;
 	int res, size = 0;
-	bool retiring = false;
 
 	pw_log_debug("%p: port:%d.%d buffers:%u disconnecting:%d", impl,
 			direction, port_id, n_buffers, impl->disconnecting);
 
 	if (impl->disconnecting && n_buffers > 0)
 		return -EIO;
-	if (n_buffers > MAX_BUFFERS)
-		return -ENOSPC;
-	/* stream_disconnect() already owns the worker-retirement barrier.  Node
-	 * teardown may clear the port, but it must not reopen that barrier before
-	 * the latest engine is destroyed. */
-	if (impl->disconnecting) {
-		clear_buffers(stream);
-		return 0;
-	}
-	if (spa_buffer_latest_worker_is_active(impl->latest) && impl->n_buffers > 0) {
-		if (n_buffers == 0 && impl->direction == SPA_DIRECTION_INPUT &&
-				spa_buffer_latest_active_mask(impl->latest) == 0 &&
-				spa_buffer_latest_claimed_buffer(impl->latest) == SPA_ID_INVALID) {
-			clear_buffers(stream);
-			return 0;
-		}
-		if ((n_buffers == 0 &&
-				spa_buffer_latest_active_mask(impl->latest) == 0) ||
-				spa_buffer_latest_same_buffer_pool(impl->latest,
-						buffers, n_buffers))
-			return 0;
-		return -EBUSY;
-	}
-	if (impl->n_buffers > 0) {
-		if (spa_buffer_latest_has_links(impl->latest))
-			return -EBUSY;
-		if ((res = spa_buffer_latest_begin_worker_retirement(impl->latest)) < 0)
-			return res;
-		retiring = true;
-		if ((res = spa_buffer_latest_service_retirements(impl->latest)) < 0) {
-			spa_buffer_latest_end_worker_retirement(impl->latest);
-			return res;
-		}
-	}
 
 	clear_buffers(stream);
+
+	if (n_buffers > MAX_BUFFERS)
+		return -ENOSPC;
 
 	for (i = 0; i < n_buffers; i++) {
 		int buf_size = 0;
@@ -1125,13 +1039,12 @@ static int impl_port_use_buffers(void *object,
 					if (SPA_FLAG_IS_SET(d->flags, SPA_DATA_FLAG_WRITABLE))
 						prot |= PROT_WRITE;
 					if ((res = map_data(impl, d, prot)) < 0)
-						goto done;
+						return res;
 					SPA_FLAG_SET(b->flags, BUFFER_FLAG_MAPPED);
 				}
 				else if (d->type == SPA_DATA_MemPtr && d->data == NULL) {
 					pw_log_error("%p: invalid buffer mem", stream);
-					res = -EINVAL;
-					goto done;
+					return -EINVAL;
 				}
 				buf_size += d->maxsize;
 				pw_log_debug("%p:  data:%d type:%d flags:%08x size:%d", stream, j,
@@ -1139,8 +1052,7 @@ static int impl_port_use_buffers(void *object,
 			}
 			if (size > 0 && buf_size != size) {
 				pw_log_error("%p: invalid buffer size %d", stream, buf_size);
-				res = -EINVAL;
-				goto done;
+				return -EINVAL;
 			} else
 				size = buf_size;
 		}
@@ -1148,7 +1060,6 @@ static int impl_port_use_buffers(void *object,
 				buffers[i]->n_datas, size);
 	}
 	impl->n_buffers = n_buffers;
-	spa_buffer_latest_set_buffers(impl->latest, buffers, n_buffers);
 
 	for (i = 0; i < n_buffers; i++) {
 		struct buffer *b = &impl->buffers[i];
@@ -1156,8 +1067,7 @@ static int impl_port_use_buffers(void *object,
 		b->this.buffer = buffers[i];
 		b->busy = spa_buffer_find_meta_data(buffers[i], SPA_META_Busy, sizeof(*b->busy));
 
-		if (impl->direction == SPA_DIRECTION_OUTPUT &&
-				!spa_buffer_latest_is_enabled(impl->latest)) {
+		if (impl->direction == SPA_DIRECTION_OUTPUT) {
 			pw_log_trace("%p: recycle buffer %d", stream, b->id);
 			queue_push(impl, &impl->dequeued, b);
 		}
@@ -1166,18 +1076,12 @@ static int impl_port_use_buffers(void *object,
 
 		pw_stream_emit_add_buffer(stream, &b->this);
 	}
-	res = 0;
-done:
-	if (retiring)
-		spa_buffer_latest_end_worker_retirement(impl->latest);
-	return res;
+	return 0;
 }
 
 static int impl_port_reuse_buffer(void *object, uint32_t port_id, uint32_t buffer_id)
 {
 	struct stream *d = object;
-	if (spa_buffer_latest_is_enabled(d->latest))
-		return -ENOTSUP;
 	if (buffer_id >= d->n_buffers)
 		return -EINVAL;
 	pw_log_trace("%p: recycle buffer %d", d, buffer_id);
@@ -1191,8 +1095,6 @@ static int impl_node_process_input(void *object)
 	struct pw_stream *stream = &impl->this;
 	struct spa_io_buffers *io = impl->io;
 	struct buffer *b = NULL;
-	if (spa_buffer_latest_is_enabled(impl->latest))
-		return SPA_STATUS_OK;
 
 	if (io == NULL)
 		return -EIO;
@@ -1242,8 +1144,6 @@ static int impl_node_process_output(void *object)
 	struct buffer *b;
 	int res;
 	bool ask_more, driver_end;
-	if (spa_buffer_latest_is_enabled(impl->latest))
-		return SPA_STATUS_OK;
 
 	if (io == NULL)
 		return -EIO;
@@ -1827,15 +1727,11 @@ const char *pw_stream_state_as_string(enum pw_stream_state state)
 static int stream_disconnect(struct stream *impl)
 {
 	struct pw_stream *stream = &impl->this;
-	int res;
 
 	pw_log_debug("%p: disconnect", stream);
 
 	if (impl->disconnecting)
 		return -EBUSY;
-	if (impl->latest != NULL &&
-			(res = spa_buffer_latest_begin_worker_retirement(impl->latest)) < 0)
-		return res;
 
 	impl->disconnecting = true;
 
@@ -1849,11 +1745,6 @@ static int stream_disconnect(struct stream *impl)
 
 	if (stream->node)
 		pw_impl_node_destroy(stream->node);
-	if (impl->latest != NULL) {
-		spa_buffer_latest_service_retirements(impl->latest);
-		spa_buffer_latest_destroy(impl->latest);
-		impl->latest = NULL;
-	}
 
 	if (impl->disconnect_core) {
 		impl->disconnect_core = false;
@@ -1887,7 +1778,6 @@ static void stream_free(struct pw_stream *stream)
 		pw_context_destroy(impl->data.context);
 
 	pw_properties_free(impl->port_props);
-	spa_buffer_latest_destroy(impl->latest);
 	free(impl);
 }
 
@@ -1895,17 +1785,10 @@ SPA_EXPORT
 void pw_stream_destroy(struct pw_stream *stream)
 {
 	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
-	int res;
 
 	ensure_loop(impl->main_loop, return);
 
 	pw_log_debug("%p: destroy", stream);
-	if (impl->latest != NULL &&
-			(res = spa_buffer_latest_begin_worker_retirement(impl->latest)) < 0) {
-		pw_log_error("%p: refusing to destroy stream with an active latest-buffer worker",
-				stream);
-		return;
-	}
 
 	pw_stream_emit_destroy(stream);
 
@@ -2032,21 +1915,6 @@ static void add_params(struct stream *impl)
 			SPA_PARAM_IO_id,   SPA_POD_Id(SPA_IO_Buffers),
 			SPA_PARAM_IO_size, SPA_POD_Int(sizeof(struct spa_io_buffers))));
 
-	spa_pod_builder_init(&b, buffer, sizeof(buffer));
-	add_param(impl, SPA_PARAM_IO, PARAM_FLAG_LOCKED,
-		spa_pod_builder_add_object(&b,
-			SPA_TYPE_OBJECT_ParamIO, SPA_PARAM_IO,
-			SPA_PARAM_IO_id,   SPA_POD_Id(SPA_IO_BuffersLatest),
-			SPA_PARAM_IO_size, SPA_POD_Int(sizeof(struct spa_io_buffers_latest))));
-
-	spa_pod_builder_init(&b, buffer, sizeof(buffer));
-	add_param(impl, SPA_PARAM_IO, PARAM_FLAG_LOCKED,
-		spa_pod_builder_add_object(&b,
-			SPA_TYPE_OBJECT_ParamIO, SPA_PARAM_IO,
-			SPA_PARAM_IO_id,   SPA_POD_Id(SPA_IO_BuffersLatestLink),
-			SPA_PARAM_IO_size, SPA_POD_Int(sizeof(struct spa_io_buffers_latest_link))));
-
-	spa_pod_builder_init(&b, buffer, sizeof(buffer));
 	add_param(impl, SPA_PARAM_Meta, PARAM_FLAG_LOCKED,
 		spa_pod_builder_add_object(&b,
 			SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta,
@@ -2130,9 +1998,6 @@ pw_stream_connect(struct pw_stream *stream,
 
 	impl->direction =
 	    direction == PW_DIRECTION_INPUT ? SPA_DIRECTION_INPUT : SPA_DIRECTION_OUTPUT;
-	if ((impl->latest = spa_buffer_latest_new(impl->direction, impl,
-			pw_log_get())) == NULL)
-		return -errno;
 	impl->flags = flags;
 	impl->node_methods = impl_node;
 
@@ -2185,10 +2050,6 @@ pw_stream_connect(struct pw_stream *stream,
 	impl->port_info = SPA_PORT_INFO_INIT();
 	impl->port_info.change_mask = impl->port_change_mask_all;
 	impl->port_info.flags = 0;
-	if (SPA_FLAG_IS_SET(flags, PW_STREAM_FLAG_BUFFER_LATEST)) {
-		pw_properties_set(impl->port_props, PW_KEY_PORT_BUFFER_LATEST, "true");
-		spa_buffer_latest_enable(impl->latest);
-	}
 	if (SPA_FLAG_IS_SET(flags, PW_STREAM_FLAG_ALLOC_BUFFERS))
 		impl->port_info.flags |= SPA_PORT_FLAG_CAN_ALLOC_BUFFERS;
 	impl->port_params[PORT_EnumFormat] = SPA_PARAM_INFO(SPA_PARAM_EnumFormat, 0);
@@ -2211,7 +2072,7 @@ pw_stream_connect(struct pw_stream *stream,
 	add_params(impl);
 
 	if ((res = find_format(impl, direction, &impl->media_type, &impl->media_subtype)) < 0)
-		goto exit_cleanup;
+		return res;
 
 	impl->disconnecting = false;
 	impl->drained = false;
@@ -2402,8 +2263,6 @@ error_proxy:
 
 exit_cleanup:
 	pw_properties_free(props);
-	spa_buffer_latest_destroy(impl->latest);
-	impl->latest = NULL;
 	return res;
 }
 
@@ -2675,200 +2534,6 @@ struct pw_loop *pw_stream_get_data_loop(struct pw_stream *stream)
 	return impl->data_loop;
 }
 
-SPA_EXPORT
-int pw_stream_buffer_latest_worker_begin(struct pw_stream *stream)
-{
-	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
-
-	return impl->latest == NULL ? -ENOTCONN :
-		spa_buffer_latest_worker_begin(impl->latest);
-}
-
-SPA_EXPORT
-int pw_stream_buffer_latest_worker_end(struct pw_stream *stream)
-{
-	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
-
-	return impl->latest == NULL ? -ENOTCONN :
-		spa_buffer_latest_worker_end(impl->latest);
-}
-
-SPA_EXPORT
-int pw_stream_get_buffer_latest_stats(struct pw_stream *stream,
-		struct pw_buffer_latest_stats *stats, size_t stats_size)
-{
-	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
-	struct spa_buffer_latest_stats latest_stats;
-	int res;
-
-	SPA_STATIC_ASSERT(sizeof(latest_stats) ==
-			PW_BUFFER_LATEST_STATS_VERSION_0_SIZE,
-			"shared latest-buffer statistics ABI");
-
-	if (impl->latest == NULL)
-		return -ENOTCONN;
-	if (SPA_UNLIKELY(stats == NULL))
-		return -EINVAL;
-	if (SPA_UNLIKELY(stats_size <
-			PW_BUFFER_LATEST_STATS_VERSION_0_SIZE))
-		return -ENOSPC;
-	if ((res = spa_buffer_latest_get_stats(impl->latest, &latest_stats,
-			sizeof(latest_stats))) < 0)
-		return res;
-	memcpy(stats, &latest_stats, SPA_MIN(stats_size, sizeof(latest_stats)));
-	return 0;
-}
-
-SPA_EXPORT
-int pw_stream_get_buffer_latest_fd(struct pw_stream *stream)
-{
-	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
-
-	return impl->latest == NULL ? -ENOTCONN :
-		spa_buffer_latest_get_fd(impl->latest);
-}
-
-SPA_EXPORT
-int pw_stream_try_dequeue_buffer_reusable(struct pw_stream *stream,
-		struct pw_buffer **buffer)
-{
-	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
-	uint32_t id;
-	int res;
-
-	if (buffer == NULL)
-		return -EINVAL;
-	*buffer = NULL;
-	if (impl->latest == NULL)
-		return -ENOTCONN;
-	res = spa_buffer_latest_try_dequeue_reusable(impl->latest, &id);
-	if (res <= 0)
-		return res;
-	if (SPA_UNLIKELY(id >= impl->n_buffers ||
-			SPA_FLAG_IS_SET(impl->buffers[id].flags, BUFFER_FLAG_DEQUEUED)))
-		return -EPROTO;
-	SPA_FLAG_SET(impl->buffers[id].flags, BUFFER_FLAG_DEQUEUED);
-	*buffer = &impl->buffers[id].this;
-	return 1;
-}
-
-SPA_EXPORT
-int pw_stream_try_reclaim_buffer_latest(struct pw_stream *stream,
-		struct pw_buffer **buffer)
-{
-	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
-	uint32_t id;
-	int res;
-
-	if (buffer == NULL)
-		return -EINVAL;
-	*buffer = NULL;
-	if (impl->latest == NULL)
-		return -ENOTCONN;
-	res = spa_buffer_latest_try_reclaim_submission(impl->latest, &id);
-	if (res <= 0)
-		return res;
-	if (SPA_UNLIKELY(id >= impl->n_buffers ||
-			SPA_FLAG_IS_SET(impl->buffers[id].flags, BUFFER_FLAG_DEQUEUED)))
-		return -EPROTO;
-	SPA_FLAG_SET(impl->buffers[id].flags, BUFFER_FLAG_DEQUEUED);
-	*buffer = &impl->buffers[id].this;
-	return 1;
-}
-
-SPA_EXPORT
-int pw_stream_try_dequeue_buffer_latest(struct pw_stream *stream,
-		struct pw_buffer **buffer, uint64_t *submission_sequence)
-{
-	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
-	uint32_t id;
-	int res;
-
-	if (buffer == NULL || submission_sequence == NULL)
-		return -EINVAL;
-	*buffer = NULL;
-	if (impl->latest == NULL)
-		return -ENOTCONN;
-	res = spa_buffer_latest_try_dequeue(impl->latest, &id,
-			submission_sequence);
-	if (res <= 0)
-		return res;
-	if (SPA_UNLIKELY(id >= impl->n_buffers ||
-			SPA_FLAG_IS_SET(impl->buffers[id].flags, BUFFER_FLAG_DEQUEUED)))
-		return -EPROTO;
-	SPA_FLAG_SET(impl->buffers[id].flags, BUFFER_FLAG_DEQUEUED);
-	*buffer = &impl->buffers[id].this;
-	return 1;
-}
-
-SPA_EXPORT
-int pw_stream_buffer_latest_poller_init(
-		struct pw_stream_buffer_latest_poller *poller,
-		struct pw_stream *stream)
-{
-	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
-	struct spa_buffer_latest_poller latest_poller = SPA_BUFFER_LATEST_POLLER_INIT;
-	int res;
-
-	if (poller == NULL)
-		return -EINVAL;
-	memset(poller, 0, sizeof(*poller));
-	if (impl->latest == NULL)
-		return -ENOTCONN;
-	res = spa_buffer_latest_poller_init(&latest_poller, impl->latest);
-	if (res < 0)
-		return res;
-	SPA_STATIC_ASSERT(sizeof(*poller) == sizeof(latest_poller),
-			"stream and shared latest poller storage");
-	memcpy(poller, &latest_poller, sizeof(*poller));
-	return 0;
-}
-
-SPA_EXPORT
-int pw_stream_buffer_latest_poller_try_dequeue(
-		struct pw_stream_buffer_latest_poller *poller,
-		struct pw_buffer **buffer, uint64_t *submission_sequence)
-{
-	struct spa_buffer_latest_poller latest_poller;
-	struct spa_buffer_latest *latest;
-	struct stream *impl;
-	uint32_t id;
-	int res;
-
-	if (poller == NULL || buffer == NULL || submission_sequence == NULL)
-		return -EINVAL;
-	*buffer = NULL;
-	memcpy(&latest_poller, poller, sizeof(latest_poller));
-	latest = latest_poller.latest;
-	if (latest == NULL)
-		return -EINVAL;
-	impl = spa_buffer_latest_get_data(latest);
-	res = spa_buffer_latest_poller_try_dequeue(&latest_poller, &id,
-			submission_sequence);
-	memcpy(poller, &latest_poller, sizeof(*poller));
-	if (res <= 0)
-		return res;
-	if (SPA_UNLIKELY(impl == NULL || id >= impl->n_buffers ||
-			SPA_FLAG_IS_SET(impl->buffers[id].flags, BUFFER_FLAG_DEQUEUED)))
-		return -EPROTO;
-	SPA_FLAG_SET(impl->buffers[id].flags, BUFFER_FLAG_DEQUEUED);
-	*buffer = &impl->buffers[id].this;
-	return 1;
-}
-
-SPA_EXPORT
-void pw_stream_buffer_latest_poller_clear(
-		struct pw_stream_buffer_latest_poller *poller)
-{
-	struct spa_buffer_latest_poller latest_poller;
-
-	if (poller == NULL)
-		return;
-	memcpy(&latest_poller, poller, sizeof(latest_poller));
-	spa_buffer_latest_poller_clear(&latest_poller);
-	*poller = PW_STREAM_BUFFER_LATEST_POLLER_INIT;
-}
-
 static int
 do_trigger_deprecated(struct spa_loop *loop,
                  bool async, uint32_t seq, const void *data, size_t size, void *user_data)
@@ -2885,25 +2550,7 @@ struct pw_buffer *pw_stream_dequeue_buffer(struct pw_stream *stream)
 {
 	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
 	struct buffer *b;
-	uint32_t id;
 	int res;
-
-	if (spa_buffer_latest_is_enabled(impl->latest)) {
-		res = spa_buffer_latest_dequeue(impl->latest, &id, NULL);
-		if (res <= 0) {
-			errno = -res;
-			return NULL;
-		}
-		if (SPA_UNLIKELY(id >= impl->n_buffers ||
-				SPA_FLAG_IS_SET(impl->buffers[id].flags,
-					BUFFER_FLAG_DEQUEUED))) {
-			errno = EPROTO;
-			return NULL;
-		}
-		b = &impl->buffers[id];
-		SPA_FLAG_SET(b->flags, BUFFER_FLAG_DEQUEUED);
-		return &b->this;
-	}
 
 	/* For reliable output streams, only give buffers when both queue AND output IO are clear */
 	if (impl->direction == SPA_DIRECTION_OUTPUT && stream->node->reliable) {
@@ -2950,12 +2597,6 @@ int pw_stream_queue_buffer(struct pw_stream *stream, struct pw_buffer *buffer)
 		pw_log_warn("%p: tried to queue cleared buffer %d", stream, b->id);
 		return -EINVAL;
 	}
-	if (spa_buffer_latest_is_enabled(impl->latest)) {
-		if ((res = spa_buffer_latest_queue(impl->latest, b->id)) < 0)
-			return res;
-		SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
-		return 0;
-	}
 
 	SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
 
@@ -2974,38 +2615,6 @@ int pw_stream_queue_buffer(struct pw_stream *stream, struct pw_buffer *buffer)
 			do_trigger_deprecated, 1, NULL, 0, false, impl);
 	}
 	return res;
-}
-
-SPA_EXPORT
-int pw_stream_begin_progressive_buffer(struct pw_stream *stream,
-		struct pw_buffer *buffer)
-{
-	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
-	struct buffer *b = SPA_CONTAINER_OF(buffer, struct buffer, this);
-
-	if (impl->latest == NULL)
-		return -ENOTCONN;
-	if (!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED))
-		return -EINVAL;
-	return spa_buffer_latest_begin_progressive(impl->latest, b->id);
-}
-
-SPA_EXPORT
-int pw_stream_end_progressive_buffer(struct pw_stream *stream,
-		struct pw_buffer *buffer)
-{
-	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
-	struct buffer *b = SPA_CONTAINER_OF(buffer, struct buffer, this);
-	int res;
-
-	if (impl->latest == NULL)
-		return -ENOTCONN;
-	if (!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED))
-		return -EINVAL;
-	if ((res = spa_buffer_latest_end_progressive(impl->latest, b->id)) < 0)
-		return res;
-	SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
-	return 0;
 }
 
 static inline int queue_push_front(struct stream *stream, struct queue *queue, struct buffer *buffer)
@@ -3032,13 +2641,6 @@ int pw_stream_return_buffer(struct pw_stream *stream, struct pw_buffer *buffer)
 	struct buffer *b = SPA_CONTAINER_OF(buffer, struct buffer, this);
 
 	pw_log_trace_fp("%p: %p id: %d", impl, buffer, b->id);
-	if (spa_buffer_latest_is_enabled(impl->latest)) {
-		int res = spa_buffer_latest_return(impl->latest, b->id);
-
-		if (res == 0)
-			SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
-		return res;
-	}
 
 	/* dequeue increments the busy count, so undo that */
 	if (b->busy) {
@@ -3094,8 +2696,6 @@ int pw_stream_flush(struct pw_stream *stream, bool drain)
 {
 	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
 
-	if (spa_buffer_latest_is_enabled(impl->latest))
-		return -ENOTSUP;
 	if (stream->node == NULL)
 		return -EIO;
 
@@ -3158,8 +2758,6 @@ SPA_EXPORT
 int pw_stream_trigger_process(struct pw_stream *stream)
 {
 	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
-	if (spa_buffer_latest_is_enabled(impl->latest))
-		return -ENOTSUP;
 	int res = 0;
 
 	pw_log_trace_fp("%p: trigger:%d driving:%d", impl, impl->trigger, stream->node->driving);

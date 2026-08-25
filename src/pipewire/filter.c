@@ -5,11 +5,8 @@
 #include <errno.h>
 #include <stdio.h>
 #include <math.h>
-#include <sched.h>
-#include <string.h>
 #include <sys/mman.h>
 #include <time.h>
-#include <unistd.h>
 
 #include <spa/buffer/alloc.h>
 #include <spa/param/props.h>
@@ -20,18 +17,17 @@
 #include <spa/utils/string.h>
 #include <spa/pod/filter.h>
 #include <spa/pod/dynamic.h>
-#include <spa/pod/compare.h>
 #include <spa/debug/types.h>
 
 #include "pipewire/pipewire.h"
 #include "pipewire/filter.h"
 #include "pipewire/private.h"
-#include <spa/node/buffer-latest.h>
 
 PW_LOG_TOPIC_EXTERN(log_filter);
 #define PW_LOG_TOPIC_DEFAULT log_filter
 
 #define MAX_BUFFERS	64u
+
 #define MASK_BUFFERS	(MAX_BUFFERS-1)
 
 static bool mlock_warned = false;
@@ -89,7 +85,6 @@ struct port {
 	struct spa_param_info params[N_PORT_PARAMS];
 
 	struct spa_io_buffers *io;
-	struct spa_buffer_latest *latest;
 
 	struct buffer buffers[MAX_BUFFERS];
 	uint32_t n_buffers;
@@ -150,28 +145,8 @@ struct filter {
 	unsigned int allow_mlock:1;
 	unsigned int warn_mlock:1;
 	unsigned int trigger:1;
-	uint32_t latest_workers;
-	uint32_t latest_workers_retiring;
 	int in_emit_param_changed;
 	int pending_drain;
-};
-
-struct pw_filter_rendezvous {
-	uint32_t n_ports;
-	uint64_t required_inputs;
-	enum pw_filter_rendezvous_release_policy policy;
-	void *ports[PW_FILTER_RENDEZVOUS_MAX_INPUTS];
-	struct pw_buffer *buffers[PW_FILTER_RENDEZVOUS_MAX_INPUTS];
-	struct spa_meta_acquisition acquisition;
-	struct spa_meta_acquisition last_released;
-	uint64_t release_at_nsec;
-	uint64_t accepted_inputs;
-	int error;
-	bool active;
-	bool decision_ready;
-	bool have_last_released;
-	struct pw_filter_rendezvous_result result;
-	struct pw_filter_rendezvous_stats stats;
 };
 
 static int get_param_index(uint32_t id)
@@ -351,22 +326,15 @@ static void clear_params(struct filter *impl, struct port *port, uint32_t id)
 }
 
 static struct port *alloc_port(struct filter *filter,
-		enum spa_direction direction, size_t user_data_size)
+		enum spa_direction direction, uint32_t user_data_size)
 {
 	struct port *p;
 
-	if (SPA_UNLIKELY(user_data_size > SIZE_MAX - sizeof(struct port))) {
-		errno = ENOMEM;
-		return NULL;
-	}
-	if ((p = calloc(1, sizeof(struct port) + user_data_size)) == NULL)
+	p = calloc(1, sizeof(struct port) + user_data_size);
+	if (p == NULL)
 		return NULL;
 	p->filter = filter;
 	p->direction = direction;
-	if ((p->latest = spa_buffer_latest_new(direction, p, pw_log_get())) == NULL) {
-		free(p);
-		return NULL;
-	}
 	p->latency[SPA_DIRECTION_INPUT] = SPA_LATENCY_INFO(SPA_DIRECTION_INPUT);
 	p->latency[SPA_DIRECTION_OUTPUT] = SPA_LATENCY_INFO(SPA_DIRECTION_OUTPUT);
 
@@ -421,24 +389,6 @@ static inline struct buffer *pop_queue(struct port *port, struct queue *queue)
 static inline void clear_queue(struct port *port, struct queue *queue)
 {
 	spa_ringbuffer_init(&queue->ring);
-}
-
-static void set_latest_output_mode(struct port *port, bool active)
-{
-	uint32_t i;
-
-	if (port->direction != SPA_DIRECTION_OUTPUT)
-		return;
-
-	clear_queue(port, &port->dequeued);
-
-	for (i = 0; i < port->n_buffers; i++) {
-		struct buffer *b = &port->buffers[i];
-
-		SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
-		if (!active)
-			push_queue(port, &port->dequeued, b);
-	}
 }
 
 static bool filter_set_state(struct pw_filter *filter, enum pw_filter_state state,
@@ -648,28 +598,11 @@ static int impl_set_callbacks(void *object,
 	return 0;
 }
 
-static inline bool port_has_latest(const struct port *port)
-{
-	return spa_buffer_latest_has_links(port->latest);
-}
-
-static int begin_latest_worker_retirement(struct port *port)
-{
-	return spa_buffer_latest_begin_worker_retirement(port->latest);
-}
-
-static inline void end_latest_worker_retirement(struct port *port)
-{
-	spa_buffer_latest_end_worker_retirement(port->latest);
-}
-
 static int impl_port_set_io(void *object, enum spa_direction direction, uint32_t port_id,
 			    uint32_t id, void *data, size_t size)
 {
 	struct filter *impl = object;
 	struct port *port;
-	int res;
-	bool was_latest;
 
 	pw_log_debug("%p: id:%d (%s) %p %zd", impl, id,
 			spa_debug_type_find_name(spa_type_io, id), data, size);
@@ -683,15 +616,6 @@ static int impl_port_set_io(void *object, enum spa_direction direction, uint32_t
 			port->io = data;
 		else
 			port->io = NULL;
-		break;
-	case SPA_IO_BuffersLatest:
-	case SPA_IO_BuffersLatestNotify:
-	case SPA_IO_BuffersLatestLink:
-		was_latest = spa_buffer_latest_is_enabled(port->latest);
-		if ((res = spa_buffer_latest_set_io(port->latest, id, data, size)) < 0)
-			return res;
-		if (!was_latest && spa_buffer_latest_is_enabled(port->latest))
-			set_latest_output_mode(port, true);
 		break;
 	}
 
@@ -837,7 +761,6 @@ static void clear_buffers(struct port *port)
 		}
 	}
 	port->n_buffers = 0;
-	spa_buffer_latest_clear_buffers(port->latest);
 	clear_queue(port, &port->dequeued);
 	clear_queue(port, &port->queued);
 }
@@ -903,25 +826,6 @@ static int handle_latency(struct filter *impl, struct port *port, const struct s
 	return 0;
 }
 
-static bool latest_worker_keeps_format(struct port *port,
-		const struct spa_pod *param)
-{
-	struct param *current;
-
-	if (!spa_buffer_latest_worker_is_active(port->latest))
-		return false;
-	/* Link retirement keeps the selected format so a live replacement can
-	 * attach without disrupting the exclusive worker. */
-	if (param == NULL)
-		return true;
-	spa_list_for_each(current, &port->param_list, link) {
-		if (current->id == SPA_PARAM_Format &&
-				spa_pod_compare(current->param, param) == 0)
-			return true;
-	}
-	return false;
-}
-
 static int impl_port_set_param(void *object,
 			       enum spa_direction direction, uint32_t port_id,
 			       uint32_t id, uint32_t flags,
@@ -932,7 +836,6 @@ static int impl_port_set_param(void *object,
 	struct port *port;
 	int res;
 	bool emit = true;
-	bool retiring = false;
 	const struct spa_pod *params[1];
 	uint32_t n_params = 0;
 
@@ -952,31 +855,13 @@ static int impl_port_set_param(void *object,
 
 	params[0] = param;
 	n_params = param ? 1 : 0;
-	if (id == SPA_PARAM_Format && port->n_buffers > 0) {
-		if (latest_worker_keeps_format(port, param))
-			return 0;
-		if (port_has_latest(port))
-			return -EBUSY;
-		if ((res = begin_latest_worker_retirement(port)) < 0)
-			return res;
-		retiring = true;
-		if ((res = spa_buffer_latest_service_retirements(port->latest)) < 0) {
-			end_latest_worker_retirement(port);
-			return res;
-		}
-	}
 
-	if ((res = update_params(impl, port, id, params, n_params)) < 0) {
-		if (retiring)
-			end_latest_worker_retirement(port);
+	if ((res = update_params(impl, port, id, params, n_params)) < 0)
 		return res;
-	}
 
 	switch (id) {
 	case SPA_PARAM_Format:
 		clear_buffers(port);
-		if (retiring)
-			end_latest_worker_retirement(port);
 		break;
 	case SPA_PARAM_Latency:
 		handle_latency(impl, port, param);
@@ -1005,7 +890,6 @@ static int impl_port_use_buffers(void *object,
 	struct pw_filter *filter = &impl->this;
 	uint32_t i, j, impl_flags;
 	int res, size = 0;
-	bool retiring = false;
 
 	pw_log_debug("%p: port:%d.%d buffers:%u disconnecting:%d", impl,
 			direction, port_id, n_buffers, impl->disconnecting);
@@ -1015,39 +899,13 @@ static int impl_port_use_buffers(void *object,
 
 	if (impl->disconnecting && n_buffers > 0)
 		return -EIO;
-	if (n_buffers > MAX_BUFFERS)
-		return -ENOSPC;
-	if (spa_buffer_latest_worker_is_active(port->latest) && port->n_buffers > 0) {
-		/* A quiescent, unlinked input may discard its mapping before a live
-		 * rebind. Otherwise only an identical pool may be reasserted. */
-		if (n_buffers == 0 && port->direction == SPA_DIRECTION_INPUT &&
-				spa_buffer_latest_active_mask(port->latest) == 0 &&
-				spa_buffer_latest_claimed_buffer(port->latest) == SPA_ID_INVALID) {
-			clear_buffers(port);
-			return 0;
-		}
-		if ((n_buffers == 0 &&
-				spa_buffer_latest_active_mask(port->latest) == 0) ||
-				spa_buffer_latest_same_buffer_pool(port->latest,
-						buffers, n_buffers))
-			return 0;
-		return -EBUSY;
-	}
-	if (port->n_buffers > 0) {
-		if (port_has_latest(port))
-			return -EBUSY;
-		if ((res = begin_latest_worker_retirement(port)) < 0)
-			return res;
-		retiring = true;
-		if ((res = spa_buffer_latest_service_retirements(port->latest)) < 0) {
-			end_latest_worker_retirement(port);
-			return res;
-		}
-	}
 
 	clear_buffers(port);
 
 	impl_flags = port->flags;
+
+	if (n_buffers > MAX_BUFFERS)
+		return -ENOSPC;
 
 	for (i = 0; i < n_buffers; i++) {
 		int buf_size = 0;
@@ -1066,13 +924,12 @@ static int impl_port_use_buffers(void *object,
 					if (SPA_FLAG_IS_SET(d->flags, SPA_DATA_FLAG_WRITABLE))
 						prot |= PROT_WRITE;
 					if ((res = map_data(impl, d, prot)) < 0)
-						goto done;
+						return res;
 					SPA_FLAG_SET(b->flags, BUFFER_FLAG_MAPPED);
 				}
 				else if (d->type == SPA_DATA_MemPtr && d->data == NULL) {
 					pw_log_error("%p: invalid buffer mem", filter);
-					res = -EINVAL;
-					goto done;
+					return -EINVAL;
 				}
 				buf_size += d->maxsize;
 				pw_log_debug("%p:  data:%d type:%d flags:%08x size:%d", filter, j,
@@ -1081,8 +938,7 @@ static int impl_port_use_buffers(void *object,
 
 			if (size > 0 && buf_size != size) {
 				pw_log_error("%p: invalid buffer size %d", filter, buf_size);
-				res = -EINVAL;
-				goto done;
+				return -EINVAL;
 			} else
 				size = buf_size;
 		}
@@ -1090,7 +946,6 @@ static int impl_port_use_buffers(void *object,
 				buffers[i]->n_datas, size);
 	}
 	port->n_buffers = n_buffers;
-	spa_buffer_latest_set_buffers(port->latest, buffers, n_buffers);
 
 	for (i = 0; i < n_buffers; i++) {
 		struct buffer *b = &port->buffers[i];
@@ -1099,19 +954,14 @@ static int impl_port_use_buffers(void *object,
 
 		if (port->direction == SPA_DIRECTION_OUTPUT) {
 			pw_log_trace("%p: recycle buffer %d", filter, b->id);
-			if (!spa_buffer_latest_is_enabled(port->latest))
-				push_queue(port, &port->dequeued, b);
+			push_queue(port, &port->dequeued, b);
 		}
 
 		SPA_FLAG_SET(b->flags, BUFFER_FLAG_ADDED);
 
 		pw_filter_emit_add_buffer(filter, port->user_data, &b->this);
 	}
-	res = 0;
-done:
-	if (retiring)
-		end_latest_worker_retirement(port);
-	return res;
+	return 0;
 }
 
 static int impl_port_reuse_buffer(void *object, uint32_t port_id, uint32_t buffer_id)
@@ -1174,7 +1024,7 @@ static int impl_node_process(void *object)
 	spa_list_for_each(p, &impl->port_list, link) {
 		struct spa_io_buffers *io = p->io;
 
-		if (SPA_UNLIKELY(spa_buffer_latest_is_enabled(p->latest) || io == NULL ||
+		if (SPA_UNLIKELY(io == NULL ||
 		    io->buffer_id >= p->n_buffers))
 			continue;
 
@@ -1204,7 +1054,7 @@ static int impl_node_process(void *object)
 	spa_list_for_each(p, &impl->port_list, link) {
 		struct spa_io_buffers *io = p->io;
 
-		if (SPA_UNLIKELY(spa_buffer_latest_is_enabled(p->latest) || io == NULL))
+		if (SPA_UNLIKELY(io == NULL))
 			continue;
 
 		if (p->direction == SPA_DIRECTION_INPUT) {
@@ -1510,11 +1360,6 @@ static int filter_disconnect(struct filter *impl)
 	struct pw_filter *filter = &impl->this;
 	pw_log_debug("%p: disconnect", impl);
 
-	SPA_ATOMIC_STORE(impl->latest_workers_retiring, true);
-	if (SPA_ATOMIC_LOAD(impl->latest_workers) != 0) {
-		SPA_ATOMIC_STORE(impl->latest_workers_retiring, false);
-		return -EBUSY;
-	}
 	if (impl->disconnecting)
 		return -EBUSY;
 
@@ -1548,7 +1393,6 @@ static void free_port(struct filter *impl, struct port *port)
 	clear_buffers(port);
 	clear_params(impl, port, SPA_ID_INVALID);
 	pw_properties_free(port->props);
-	spa_buffer_latest_destroy(port->latest);
 	free(port);
 }
 
@@ -1583,13 +1427,6 @@ void pw_filter_destroy(struct pw_filter *filter)
 	ensure_loop(impl->main_loop, return);
 
 	pw_log_debug("%p: destroy", filter);
-	SPA_ATOMIC_STORE(impl->latest_workers_retiring, true);
-	if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(impl->latest_workers) != 0)) {
-		pw_log_error("%p: refusing to destroy filter with %u active latest-buffer workers",
-				filter, SPA_ATOMIC_LOAD(impl->latest_workers));
-		SPA_ATOMIC_STORE(impl->latest_workers_retiring, false);
-		return;
-	}
 
 	pw_filter_emit_destroy(filter);
 
@@ -1909,18 +1746,6 @@ static void add_port_params(struct filter *impl, struct port *port)
 			SPA_TYPE_OBJECT_ParamIO, SPA_PARAM_IO,
 			SPA_PARAM_IO_id,   SPA_POD_Id(SPA_IO_Buffers),
 			SPA_PARAM_IO_size, SPA_POD_Int(sizeof(struct spa_io_buffers))));
-	spa_pod_builder_init(&b, buffer, sizeof(buffer));
-	add_param(impl, port, SPA_PARAM_IO, PARAM_FLAG_LOCKED,
-		spa_pod_builder_add_object(&b,
-			SPA_TYPE_OBJECT_ParamIO, SPA_PARAM_IO,
-			SPA_PARAM_IO_id,   SPA_POD_Id(SPA_IO_BuffersLatest),
-			SPA_PARAM_IO_size, SPA_POD_Int(sizeof(struct spa_io_buffers_latest))));
-	spa_pod_builder_init(&b, buffer, sizeof(buffer));
-	add_param(impl, port, SPA_PARAM_IO, PARAM_FLAG_LOCKED,
-		spa_pod_builder_add_object(&b,
-			SPA_TYPE_OBJECT_ParamIO, SPA_PARAM_IO,
-			SPA_PARAM_IO_id,   SPA_POD_Id(SPA_IO_BuffersLatestLink),
-			SPA_PARAM_IO_size, SPA_POD_Int(sizeof(struct spa_io_buffers_latest_link))));
 }
 
 static void add_audio_dsp_port_params(struct filter *impl, struct port *port)
@@ -2064,7 +1889,6 @@ void *pw_filter_add_port(struct pw_filter *filter,
 
 error_free:
 	clear_params(impl, p, SPA_ID_INVALID);
-	spa_buffer_latest_destroy(p->latest);
 	free(p);
 error_cleanup:
 	pw_properties_free(props);
@@ -2076,11 +1900,8 @@ int pw_filter_remove_port(void *port_data)
 {
 	struct port *port = SPA_CONTAINER_OF(port_data, struct port, user_data);
 	struct filter *impl = port->filter;
-	int res;
 
 	ensure_loop(impl->main_loop, return -EIO);
-	if ((res = begin_latest_worker_retirement(port)) < 0)
-		return res;
 
 	free_port(impl, port);
 	return 0;
@@ -2199,586 +2020,22 @@ struct pw_loop *pw_filter_get_data_loop(struct pw_filter *filter)
 }
 
 SPA_EXPORT
-int pw_filter_get_buffer_latest_stats(void *port_data,
-		struct pw_filter_buffer_latest_stats *stats, size_t stats_size)
-{
-	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
-	struct spa_buffer_latest_stats latest_stats;
-	int res;
-
-	SPA_STATIC_ASSERT(sizeof(latest_stats) ==
-			PW_FILTER_BUFFER_LATEST_STATS_VERSION_0_SIZE,
-			"shared latest-buffer statistics ABI");
-
-	if (SPA_UNLIKELY(stats == NULL))
-		return -EINVAL;
-	if (SPA_UNLIKELY(stats_size <
-			PW_FILTER_BUFFER_LATEST_STATS_VERSION_0_SIZE))
-		return -ENOSPC;
-	if ((res = spa_buffer_latest_get_stats(p->latest, &latest_stats,
-			sizeof(latest_stats))) < 0)
-		return res;
-	memcpy(stats, &latest_stats, SPA_MIN(stats_size, sizeof(latest_stats)));
-	return 0;
-}
-
-SPA_EXPORT
-int pw_filter_buffer_latest_worker_begin(void *port_data)
-{
-	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
-	struct filter *impl = p->filter;
-	int res;
-
-	if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(impl->latest_workers_retiring)))
-		return -EPIPE;
-	SPA_ATOMIC_INC(impl->latest_workers);
-	if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(impl->latest_workers_retiring))) {
-		SPA_ATOMIC_DEC(impl->latest_workers);
-		return -EPIPE;
-	}
-	if ((res = spa_buffer_latest_worker_begin(p->latest)) < 0) {
-		SPA_ATOMIC_DEC(impl->latest_workers);
-		return res;
-	}
-	if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(impl->latest_workers_retiring))) {
-		spa_buffer_latest_worker_end(p->latest);
-		SPA_ATOMIC_DEC(impl->latest_workers);
-		return -EPIPE;
-	}
-	return 0;
-}
-
-SPA_EXPORT
-int pw_filter_buffer_latest_worker_end(void *port_data)
-{
-	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
-	int res;
-
-	if ((res = spa_buffer_latest_worker_end(p->latest)) < 0)
-		return res;
-	SPA_ATOMIC_DEC(p->filter->latest_workers);
-	return 0;
-}
-
-static inline void rendezvous_count(uint64_t *counter)
-{
-	if (*counter != UINT64_MAX)
-		(*counter)++;
-}
-
-static inline uint64_t rendezvous_input_mask(uint32_t n_ports)
-{
-	return n_ports == PW_FILTER_RENDEZVOUS_MAX_INPUTS ? UINT64_MAX :
-		(UINT64_C(1) << n_ports) - 1;
-}
-
-static bool rendezvous_has_identity(
-		const struct spa_meta_acquisition *acquisition)
-{
-	return _spa_meta_acquisition_fields_are_valid(acquisition) &&
-		SPA_FLAG_IS_SET(acquisition->flags,
-				SPA_META_ACQUISITION_FLAG_IDENTITY_VALID);
-}
-
-static int rendezvous_compare_identity(
-		const struct spa_meta_acquisition *observation,
-		const struct spa_meta_acquisition *reference)
-{
-	if (memcmp(observation->domain, reference->domain,
-				sizeof(reference->domain)) != 0)
-		return 2;
-	if (observation->generation < reference->generation)
-		return -1;
-	if (observation->generation > reference->generation)
-		return 1;
-	return observation->sequence < reference->sequence ? -1 :
-		observation->sequence > reference->sequence ? 1 : 0;
-}
-
-static void rendezvous_clear_active(struct pw_filter_rendezvous *rendezvous)
-{
-	rendezvous->active = false;
-	rendezvous->decision_ready = false;
-	rendezvous->release_at_nsec = 0;
-	rendezvous->accepted_inputs = 0;
-	rendezvous->error = 0;
-	memset(&rendezvous->acquisition, 0, sizeof(rendezvous->acquisition));
-	memset(&rendezvous->result, 0, sizeof(rendezvous->result));
-}
-
-static int rendezvous_return_leases(struct pw_filter_rendezvous *rendezvous)
-{
-	uint32_t i;
-	int first_error = 0;
-
-	for (i = 0; i < rendezvous->n_ports; i++) {
-		int res;
-
-		if (rendezvous->buffers[i] == NULL)
-			continue;
-		res = pw_filter_queue_buffer(rendezvous->ports[i],
-				rendezvous->buffers[i]);
-		if (res < 0) {
-			rendezvous_count(&rendezvous->stats.cleanup_errors);
-			if (first_error == 0)
-				first_error = res;
-			continue;
-		}
-		rendezvous->buffers[i] = NULL;
-		rendezvous_count(&rendezvous->stats.lease_returns);
-	}
-	return first_error;
-}
-
-SPA_EXPORT
-int pw_filter_rendezvous_new(struct pw_filter_rendezvous **rendezvous,
-		void *const *port_data, uint32_t n_ports, uint64_t required_inputs,
-		enum pw_filter_rendezvous_release_policy policy)
-{
-	struct pw_filter_rendezvous *state;
-	uint64_t valid_inputs;
-	uint32_t i;
-	int res;
-
-	if (rendezvous == NULL)
-		return -EINVAL;
-	*rendezvous = NULL;
-	if (port_data == NULL || n_ports < 2 ||
-			n_ports > PW_FILTER_RENDEZVOUS_MAX_INPUTS ||
-			required_inputs == 0 ||
-			(policy != PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE &&
-			 policy != PW_FILTER_RENDEZVOUS_RELEASE_FIXED))
-		return -EINVAL;
-	valid_inputs = rendezvous_input_mask(n_ports);
-	if ((required_inputs & ~valid_inputs) != 0)
-		return -EINVAL;
-	for (i = 0; i < n_ports; i++) {
-		struct port *port;
-
-		if (port_data[i] == NULL)
-			return -EINVAL;
-		port = SPA_CONTAINER_OF(port_data[i], struct port, user_data);
-		if (port->direction != SPA_DIRECTION_INPUT)
-			return -ENOTSUP;
-	}
-	state = calloc(1, sizeof(*state));
-	if (state == NULL)
-		return -errno;
-	state->n_ports = n_ports;
-	state->required_inputs = required_inputs;
-	state->policy = policy;
-	memcpy(state->ports, port_data, n_ports * sizeof(port_data[0]));
-	for (i = 0; i < n_ports; i++) {
-		res = pw_filter_buffer_latest_worker_begin(state->ports[i]);
-		if (res < 0)
-			goto error_workers;
-	}
-	*rendezvous = state;
-	return 0;
-
-error_workers:
-	while (i > 0)
-		pw_filter_buffer_latest_worker_end(state->ports[--i]);
-	free(state);
-	return res;
-}
-
-SPA_EXPORT
-int pw_filter_rendezvous_begin(struct pw_filter_rendezvous *rendezvous,
-		const struct spa_meta_acquisition *acquisition,
-		uint64_t release_at_nsec, bool discontinuity)
-{
-	int comparison;
-
-	if (rendezvous == NULL || !rendezvous_has_identity(acquisition))
-		return -EINVAL;
-	if (rendezvous->active)
-		return -EBUSY;
-	if (rendezvous->have_last_released) {
-		comparison = rendezvous_compare_identity(acquisition,
-				&rendezvous->last_released);
-		if (comparison == 2 && !discontinuity)
-			return -EXDEV;
-		if (comparison != 2 && comparison <= 0)
-			return -ESTALE;
-	}
-	rendezvous->acquisition = *acquisition;
-	rendezvous->release_at_nsec = release_at_nsec;
-	rendezvous->accepted_inputs = 0;
-	rendezvous->error = 0;
-	rendezvous->decision_ready = false;
-	rendezvous->active = true;
-	memset(&rendezvous->result, 0, sizeof(rendezvous->result));
-	return 0;
-}
-
-static int rendezvous_reject_buffer(struct pw_filter_rendezvous *rendezvous,
-		uint32_t input_index, struct pw_buffer *buffer, uint64_t *counter)
-{
-	int res;
-
-	rendezvous_count(counter);
-	res = pw_filter_queue_buffer(rendezvous->ports[input_index], buffer);
-	if (res < 0) {
-		rendezvous->buffers[input_index] = buffer;
-		rendezvous_count(&rendezvous->stats.cleanup_errors);
-		return res;
-	}
-	rendezvous_count(&rendezvous->stats.lease_returns);
-	return 0;
-}
-
-static int rendezvous_scan_input(struct pw_filter_rendezvous *rendezvous,
-		uint32_t input_index)
-{
-	struct spa_meta_acquisition *acquisition;
-	struct pw_buffer *buffer;
-	struct spa_meta *meta;
-	uint64_t submission_sequence;
-	int comparison, res;
-
-	res = pw_filter_try_dequeue_buffer_latest(rendezvous->ports[input_index],
-			&buffer, &submission_sequence);
-	/* Preparation is allowed before the first latest-buffer link. An
-	 * unlinked input participates as missing data until a link is installed. */
-	if (res == -ENOTSUP)
-		return 0;
-	if (res <= 0)
-		return res;
-	if (buffer->buffer == NULL ||
-			spa_buffer_find_meta(buffer->buffer, SPA_META_Progressive) != NULL)
-		return rendezvous_reject_buffer(rendezvous, input_index, buffer,
-				&rendezvous->stats.rejected);
-	meta = spa_buffer_find_meta(buffer->buffer, SPA_META_Acquisition);
-	if (!spa_meta_acquisition_is_valid(meta))
-		return rendezvous_reject_buffer(rendezvous, input_index, buffer,
-				&rendezvous->stats.rejected);
-	acquisition = meta->data;
-	if (!SPA_FLAG_IS_SET(acquisition->flags,
-				SPA_META_ACQUISITION_FLAG_IDENTITY_VALID))
-		return rendezvous_reject_buffer(rendezvous, input_index, buffer,
-				&rendezvous->stats.rejected);
-	comparison = rendezvous_compare_identity(acquisition,
-			&rendezvous->acquisition);
-	if (comparison == 2)
-		return rendezvous_reject_buffer(rendezvous, input_index, buffer,
-				&rendezvous->stats.rejected);
-	if (comparison < 0)
-		return rendezvous_reject_buffer(rendezvous, input_index, buffer,
-				&rendezvous->stats.stale);
-	if (comparison > 0)
-		return rendezvous_reject_buffer(rendezvous, input_index, buffer,
-				&rendezvous->stats.future);
-	rendezvous->buffers[input_index] = buffer;
-	rendezvous->accepted_inputs |= UINT64_C(1) << input_index;
-	rendezvous_count(&rendezvous->stats.accepted);
-	return 1;
-}
-
-SPA_EXPORT
-int pw_filter_rendezvous_poll(struct pw_filter_rendezvous *rendezvous,
-		uint64_t monotonic_now_nsec,
-		struct pw_filter_rendezvous_result *result, size_t result_size)
-{
-	enum pw_filter_rendezvous_release_cause cause;
-	uint64_t unaccepted;
-	uint32_t input_index;
-	int res;
-
-	if (rendezvous == NULL || result == NULL)
-		return -EINVAL;
-	if (result_size < PW_FILTER_RENDEZVOUS_RESULT_VERSION_0_SIZE)
-		return -ENOSPC;
-	if (!rendezvous->active)
-		return -ENOENT;
-	if (rendezvous->error < 0) {
-		int operation_error = rendezvous->error;
-		int cleanup_res = rendezvous_return_leases(rendezvous);
-
-		if (cleanup_res == 0)
-			rendezvous_clear_active(rendezvous);
-		return cleanup_res < 0 ? cleanup_res : operation_error;
-	}
-	if (rendezvous->decision_ready) {
-		memcpy(result, &rendezvous->result, SPA_MIN(result_size,
-				sizeof(rendezvous->result)));
-		return 1;
-	}
-	unaccepted = rendezvous_input_mask(rendezvous->n_ports) &
-			~rendezvous->accepted_inputs;
-	while (unaccepted != 0) {
-		input_index = (uint32_t)__builtin_ctzll(unaccepted);
-		unaccepted &= unaccepted - 1;
-		res = rendezvous_scan_input(rendezvous, input_index);
-		if (res < 0) {
-			int cleanup_res = rendezvous_return_leases(rendezvous);
-
-			rendezvous->error = res;
-			if (cleanup_res == 0)
-				rendezvous_clear_active(rendezvous);
-			return cleanup_res < 0 ? cleanup_res : res;
-		}
-	}
-	if (monotonic_now_nsec >= rendezvous->release_at_nsec) {
-		cause = rendezvous->policy ==
-				PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE ?
-				PW_FILTER_RENDEZVOUS_CAUSE_DEADLINE :
-				PW_FILTER_RENDEZVOUS_CAUSE_FIXED;
-	} else if (rendezvous->policy ==
-			PW_FILTER_RENDEZVOUS_RELEASE_COMPLETE_OR_DEADLINE &&
-			(rendezvous->accepted_inputs & rendezvous->required_inputs) ==
-				rendezvous->required_inputs) {
-		cause = PW_FILTER_RENDEZVOUS_CAUSE_COMPLETE;
-	} else {
-		return 0;
-	}
-	rendezvous->result.acquisition = rendezvous->acquisition;
-	rendezvous->result.accepted_inputs = rendezvous->accepted_inputs;
-	rendezvous->result.missing_required_inputs = rendezvous->required_inputs &
-			~rendezvous->accepted_inputs;
-	rendezvous->result.cause = cause;
-	rendezvous->decision_ready = true;
-	switch (cause) {
-	case PW_FILTER_RENDEZVOUS_CAUSE_COMPLETE:
-		rendezvous_count(&rendezvous->stats.complete_releases);
-		break;
-	case PW_FILTER_RENDEZVOUS_CAUSE_DEADLINE:
-		rendezvous_count(&rendezvous->stats.deadline_releases);
-		break;
-	case PW_FILTER_RENDEZVOUS_CAUSE_FIXED:
-		rendezvous_count(&rendezvous->stats.fixed_releases);
-		break;
-	default:
-		return -EPROTO;
-	}
-	if (rendezvous->result.missing_required_inputs != 0) {
-		uint32_t missing = (uint32_t)__builtin_popcountll(
-				rendezvous->result.missing_required_inputs);
-
-		while (missing-- > 0)
-			rendezvous_count(&rendezvous->stats.missing_required_inputs);
-	}
-	memcpy(result, &rendezvous->result, SPA_MIN(result_size,
-			sizeof(rendezvous->result)));
-	return 1;
-}
-
-SPA_EXPORT
-struct pw_buffer *pw_filter_rendezvous_get_buffer(
-		struct pw_filter_rendezvous *rendezvous, uint32_t input_index)
-{
-	if (rendezvous == NULL || !rendezvous->active ||
-			!rendezvous->decision_ready || input_index >= rendezvous->n_ports)
-		return NULL;
-	return rendezvous->buffers[input_index];
-}
-
-SPA_EXPORT
-int pw_filter_rendezvous_finish(struct pw_filter_rendezvous *rendezvous)
-{
-	int res;
-
-	if (rendezvous == NULL)
-		return -EINVAL;
-	if (!rendezvous->active || !rendezvous->decision_ready)
-		return -ENOENT;
-	res = rendezvous_return_leases(rendezvous);
-	if (res < 0)
-		return res;
-	rendezvous->last_released = rendezvous->acquisition;
-	rendezvous->have_last_released = true;
-	rendezvous_clear_active(rendezvous);
-	return 0;
-}
-
-SPA_EXPORT
-int pw_filter_rendezvous_cancel(struct pw_filter_rendezvous *rendezvous)
-{
-	int res;
-
-	if (rendezvous == NULL)
-		return -EINVAL;
-	if (!rendezvous->active)
-		return 0;
-	res = rendezvous_return_leases(rendezvous);
-	if (res < 0)
-		return res;
-	rendezvous_clear_active(rendezvous);
-	return 0;
-}
-
-SPA_EXPORT
-int pw_filter_rendezvous_reset(struct pw_filter_rendezvous *rendezvous)
-{
-	int res;
-
-	if (rendezvous == NULL)
-		return -EINVAL;
-	res = pw_filter_rendezvous_cancel(rendezvous);
-	if (res < 0)
-		return res;
-	rendezvous->have_last_released = false;
-	memset(&rendezvous->last_released, 0,
-			sizeof(rendezvous->last_released));
-	return 0;
-}
-
-SPA_EXPORT
-int pw_filter_rendezvous_get_stats(struct pw_filter_rendezvous *rendezvous,
-		struct pw_filter_rendezvous_stats *stats, size_t stats_size)
-{
-	if (rendezvous == NULL || stats == NULL)
-		return -EINVAL;
-	if (stats_size < PW_FILTER_RENDEZVOUS_STATS_VERSION_0_SIZE)
-		return -ENOSPC;
-	memcpy(stats, &rendezvous->stats, SPA_MIN(stats_size,
-			sizeof(rendezvous->stats)));
-	return 0;
-}
-
-SPA_EXPORT
-int pw_filter_rendezvous_destroy(struct pw_filter_rendezvous *rendezvous)
-{
-	uint32_t i;
-	int first_error = 0, res;
-
-	if (rendezvous == NULL)
-		return 0;
-	res = pw_filter_rendezvous_cancel(rendezvous);
-	if (res < 0)
-		return res;
-	for (i = 0; i < rendezvous->n_ports; i++) {
-		res = pw_filter_buffer_latest_worker_end(rendezvous->ports[i]);
-		if (res < 0 && first_error == 0)
-			first_error = res;
-	}
-	free(rendezvous);
-	return first_error;
-}
-
-SPA_EXPORT
-int pw_filter_try_dequeue_buffer_latest(void *port_data,
-		struct pw_buffer **buffer, uint64_t *submission_sequence)
-{
-	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
-	uint32_t id;
-	int res;
-
-	if (SPA_UNLIKELY(buffer == NULL || submission_sequence == NULL))
-		return -EINVAL;
-	*buffer = NULL;
-	res = spa_buffer_latest_try_dequeue(p->latest, &id, submission_sequence);
-	if (res <= 0)
-		return res;
-	if (SPA_UNLIKELY(id >= p->n_buffers ||
-			SPA_FLAG_IS_SET(p->buffers[id].flags, BUFFER_FLAG_DEQUEUED)))
-		return -EPROTO;
-	SPA_FLAG_SET(p->buffers[id].flags, BUFFER_FLAG_DEQUEUED);
-	*buffer = &p->buffers[id].this;
-	return 1;
-}
-
-SPA_EXPORT
-int pw_filter_buffer_latest_poller_init(
-		struct pw_filter_buffer_latest_poller *poller, void *port_data)
-{
-	struct port *p;
-	struct spa_buffer_latest_poller latest_poller;
-	int res;
-
-	if (SPA_UNLIKELY(poller == NULL || port_data == NULL))
-		return -EINVAL;
-	*poller = PW_FILTER_BUFFER_LATEST_POLLER_INIT;
-	p = SPA_CONTAINER_OF(port_data, struct port, user_data);
-	res = spa_buffer_latest_poller_init(&latest_poller, p->latest);
-	if (res < 0)
-		return res;
-	SPA_STATIC_ASSERT(sizeof(*poller) == sizeof(latest_poller),
-			"filter and shared latest poller storage");
-	memcpy(poller, &latest_poller, sizeof(*poller));
-	return 0;
-}
-
-SPA_EXPORT
-int pw_filter_buffer_latest_poller_try_dequeue(
-		struct pw_filter_buffer_latest_poller *poller,
-		struct pw_buffer **buffer, uint64_t *submission_sequence)
-{
-	struct spa_buffer_latest_poller latest_poller;
-	struct spa_buffer_latest *latest;
-	struct port *p;
-	uint32_t id;
-	int res;
-
-	if (SPA_UNLIKELY(poller == NULL || buffer == NULL ||
-			submission_sequence == NULL))
-		return -EINVAL;
-	*buffer = NULL;
-	memcpy(&latest_poller, poller, sizeof(latest_poller));
-	latest = latest_poller.latest;
-	if (SPA_UNLIKELY(latest == NULL))
-		return -EINVAL;
-	p = spa_buffer_latest_get_data(latest);
-	res = spa_buffer_latest_poller_try_dequeue(&latest_poller, &id,
-			submission_sequence);
-	memcpy(poller, &latest_poller, sizeof(*poller));
-	if (res <= 0)
-		return res;
-	if (SPA_UNLIKELY(p == NULL || id >= p->n_buffers ||
-			SPA_FLAG_IS_SET(p->buffers[id].flags, BUFFER_FLAG_DEQUEUED)))
-		return -EPROTO;
-	SPA_FLAG_SET(p->buffers[id].flags, BUFFER_FLAG_DEQUEUED);
-	*buffer = &p->buffers[id].this;
-	return 1;
-}
-
-SPA_EXPORT
-void pw_filter_buffer_latest_poller_clear(
-		struct pw_filter_buffer_latest_poller *poller)
-{
-	struct spa_buffer_latest_poller latest_poller;
-
-	if (poller == NULL)
-		return;
-	memcpy(&latest_poller, poller, sizeof(latest_poller));
-	spa_buffer_latest_poller_clear(&latest_poller);
-	*poller = PW_FILTER_BUFFER_LATEST_POLLER_INIT;
-}
-
-SPA_EXPORT
 struct pw_buffer *pw_filter_dequeue_buffer(void *port_data)
 {
 	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
-	struct buffer *b = NULL;
-	uint32_t id;
-	int res = -EPIPE;
+	struct buffer *b;
+	int res;
 
-	if (spa_buffer_latest_is_enabled(p->latest)) {
-		res = spa_buffer_latest_dequeue(p->latest, &id, NULL);
-		if (res <= 0)
-			goto error;
-		if (SPA_UNLIKELY(id >= p->n_buffers))
-			goto protocol_error;
-		b = &p->buffers[id];
-		if (SPA_UNLIKELY(SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED)))
-			goto protocol_error;
-	} else {
-		b = pop_queue(p, &p->dequeued);
-		if (b == NULL) {
-			res = -errno;
-			goto error;
-		}
+	if (SPA_UNLIKELY((b = pop_queue(p, &p->dequeued)) == NULL)) {
+		res = -errno;
+		pw_log_trace_fp("%p: no more buffers: %m", p->filter);
+		errno = -res;
+		return NULL;
 	}
-	SPA_FLAG_SET(b->flags, BUFFER_FLAG_DEQUEUED);
 	pw_log_trace_fp("%p: dequeue buffer %d", p->filter, b->id);
-	return &b->this;
+	SPA_FLAG_SET(b->flags, BUFFER_FLAG_DEQUEUED);
 
-protocol_error:
-	res = -EPROTO;
-error:
-	errno = -res;
-	pw_log_trace_fp("%p: no more buffers: %m", p->filter);
-	return NULL;
+	return &b->this;
 }
 
 SPA_EXPORT
@@ -2786,55 +2043,15 @@ int pw_filter_queue_buffer(void *port_data, struct pw_buffer *buffer)
 {
 	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
 	struct buffer *b = SPA_CONTAINER_OF(buffer, struct buffer, this);
-	int res;
 
 	if (!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED)) {
 		pw_log_warn("%p: tried to queue cleared buffer %d", p->filter, b->id);
 		return -EINVAL;
 	}
+	SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
+
 	pw_log_trace_fp("%p: queue buffer %d", p->filter, b->id);
-	if (spa_buffer_latest_is_enabled(p->latest)) {
-		if ((res = spa_buffer_latest_queue(p->latest, b->id)) < 0)
-			return res;
-		SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
-		return 0;
-	}
-	SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
 	return push_queue(p, &p->queued, b);
-}
-
-SPA_EXPORT
-int pw_filter_begin_progressive_buffer(void *port_data, struct pw_buffer *buffer)
-{
-	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
-	struct buffer *b = SPA_CONTAINER_OF(buffer, struct buffer, this);
-
-	if (SPA_UNLIKELY(!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED)))
-		return -EINVAL;
-	return spa_buffer_latest_begin_progressive(p->latest, b->id);
-}
-
-SPA_EXPORT
-int pw_filter_get_buffer_latest_fd(void *port_data)
-{
-	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
-
-	return spa_buffer_latest_get_fd(p->latest);
-}
-
-SPA_EXPORT
-int pw_filter_end_progressive_buffer(void *port_data, struct pw_buffer *buffer)
-{
-	struct port *p = SPA_CONTAINER_OF(port_data, struct port, user_data);
-	struct buffer *b = SPA_CONTAINER_OF(buffer, struct buffer, this);
-	int res;
-
-	if (SPA_UNLIKELY(!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED)))
-		return -EINVAL;
-	if ((res = spa_buffer_latest_end_progressive(p->latest, b->id)) < 0)
-		return res;
-	SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
-	return 0;
 }
 
 SPA_EXPORT

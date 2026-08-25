@@ -725,18 +725,7 @@ static int do_port_set_io(struct impl *impl,
 		return -EINVAL;
 	}
 
-	if (id == SPA_IO_BuffersLatestNotify) {
-		const struct spa_io_buffers_latest_notify *notify = data;
-
-		if (notify != NULL &&
-		    (size < sizeof(*notify) || notify->fd < 0)) {
-			pw_memmap_free(old);
-			return -EINVAL;
-		}
-		memid = notify == NULL ? SPA_ID_INVALID : (uint32_t)notify->fd;
-		mem_offset = 0;
-		mem_size = notify == NULL ? 0 : sizeof(*notify);
-	} else if (data) {
+	if (data) {
 		mm = pw_mempool_import_map(impl->client_pool,
 				impl->context_pool, data, size, tag);
 		if (mm == NULL)
@@ -994,10 +983,13 @@ static int impl_node_process(void *object)
 	 * directly */
 	pw_log_warn("exported node activation");
 	spa_system_clock_gettime(impl->data_system, CLOCK_MONOTONIC, &ts);
-	n->rt.target.activation->status = PW_NODE_ACTIVATION_TRIGGERED;
 	n->rt.target.activation->signal_time = SPA_TIMESPEC_TO_NSEC(&ts);
+	SPA_ATOMIC_STORE(n->rt.target.activation->status,
+			PW_NODE_ACTIVATION_TRIGGERED);
 
-	if (SPA_UNLIKELY(spa_system_eventfd_write(n->rt.target.system, n->rt.target.fd, 1) < 0))
+	if (!pw_node_activation_is_polling(n->rt.target.activation) &&
+			SPA_UNLIKELY(spa_system_eventfd_write(n->rt.target.system,
+				n->rt.target.fd, 1) < 0))
 		pw_log_warn("%p: write failed %m", impl);
 
 	return SPA_STATUS_OK;
@@ -1655,9 +1647,6 @@ static int impl_mix_port_set_io(void *object,
 		return -EINVAL;
 
 	switch (id) {
-	case SPA_IO_BuffersLatest:
-		mix->io[0] = mix->io[1] = NULL;
-		break;
 	case SPA_IO_Buffers:
 		if (data && size >= sizeof(struct spa_io_buffers))
 			mix->io[0] = mix->io[1] = data;
