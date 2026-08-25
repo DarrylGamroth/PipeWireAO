@@ -1,0 +1,379 @@
+captured-utc=2026-08-25T16:33:38.674733+00:00
+
+## uname
+exit=0
+Linux rtc-devel 6.12.57+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.57-1 (2025-11-05) x86_64 GNU/Linux
+
+## lscpu
+exit=0
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           48 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  16
+On-line CPU(s) list:                     0-15
+Vendor ID:                               AuthenticAMD
+Model name:                              AMD Ryzen 7 6800H with Radeon Graphics
+CPU family:                              25
+Model:                                   68
+Thread(s) per core:                      2
+Core(s) per socket:                      8
+Socket(s):                               1
+Stepping:                                1
+Frequency boost:                         enabled
+CPU(s) scaling MHz:                      64%
+CPU max MHz:                             4785.0000
+CPU min MHz:                             400.0000
+BogoMIPS:                                6388.20
+Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 x2apic movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpb cat_l3 cdp_l3 hw_pstate ssbd mba ibrs ibpb stibp vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif v_spec_ctrl umip pku ospke vaes vpclmulqdq rdpid overflow_recov succor smca fsrm debug_swap
+Virtualization:                          AMD-V
+L1d cache:                               256 KiB (8 instances)
+L1i cache:                               256 KiB (8 instances)
+L2 cache:                                4 MiB (8 instances)
+L3 cache:                                16 MiB (1 instance)
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-15
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Not affected
+Vulnerability Spec rstack overflow:      Mitigation; Safe RET
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; Retpolines; IBPB conditional; IBRS_FW; STIBP always-on; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Vulnerable: Clear CPU buffers attempted, no microcode
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Mitigation; IBPB before exit to userspace
+
+## perf-version
+exit=0
+perf version 6.12.101
+
+## perf-event-paranoid
+-1
+
+## meson-configuration
+exit=0
+Core properties:
+  Source dir /home/dgamroth/workspaces/codex/pipewire/pipewire
+  Build dir  /home/dgamroth/workspaces/codex/pipewire/pipewire/build
+
+Main project options:
+  
+  Core options                   Current Value                    Possible Values                  Description                                                  
+  --------------                 -------------                    ---------------                  -----------                                                  
+  auto_features                  disabled                         [enabled, disabled, auto]        Override value of all 'auto' features                        
+  backend                        ninja                            [ninja, vs, vs2010, vs2012,      Backend to use                                               
+                                                                   vs2013, vs2015, vs2017, vs2019,                                                              
+                                                                   vs2022, xcode, none]                                                                         
+  buildtype                      debugoptimized                   [plain, debug, debugoptimized,   Build type to use                                            
+                                                                   release, minsize, custom]                                                                    
+  cmake_prefix_path              []                               []                               List of additional prefixes for cmake to search              
+  debug                          true                             [true, false]                    Enable debug symbols and other information                   
+  default_both_libraries         shared                           [shared, static, auto]           Default library type for both_libraries                      
+  default_library                shared                           [shared, static, both]           Default library type                                         
+  force_fallback_for             []                               []                               Force fallback for those subprojects                         
+  genvslite                      vs2022                           [vs2022]                         Setup multiple buildtype-suffixed ninja-backend build        
+                                                                                                   directories, and a [builddir]_vs containing a Visual Studio  
+                                                                                                   meta-backend with multiple configurations that calls into    
+                                                                                                   them                                                         
+  install_umask                  0022                             [preserve, 0000-0777]            Default umask to apply on permissions of installed files     
+  layout                         mirror                           [mirror, flat]                   Build directory layout                                       
+  optimization                   2                                [plain, 0, g, 1, 2, 3, s]        Optimization level                                           
+  pkg_config_path                [/home/dgamroth/workspaces/codex []                               List of additional paths for pkg-config to search            
+                                  /aravis/build/meson-                                                                                                          
+                                  uninstalled]                                                                                                                  
+  prefer_static                  false                            [true, false]                    Whether to try static linking before shared linking          
+  strip                          false                            [true, false]                    Strip targets on install                                     
+  unity                          off                              [on, off, subprojects]           Unity build                                                  
+  unity_size                     4                                >=2                              Unity block size                                             
+  vsenv                          false                            [true, false]                    Activate Visual Studio environment                           
+  warning_level                  3                                [0, 1, 2, 3, everything]         Compiler warning level to use                                
+  werror                         false                            [true, false]                    Treat warnings as errors                                     
+  wrap_mode                      default                          [default, nofallback,            Wrap mode                                                    
+                                                                   nodownload, forcefallback,                                                                   
+                                                                   nopromote]                                                                                   
+  
+  Backend options                Current Value                    Possible Values                  Description                                                  
+  -----------------              -------------                    ---------------                  -----------                                                  
+  backend_max_links              0                                >=0                              Maximum number of linker processes to run or 0 for no limit  
+  
+  Base options                   Current Value                    Possible Values                  Description                                                  
+  --------------                 -------------                    ---------------                  -----------                                                  
+  b_asneeded                     true                             [true, false]                    Use -Wl,--as-needed when linking                             
+  b_colorout                     always                           [auto, always, never]            Use colored output                                           
+  b_coverage                     false                            [true, false]                    Enable coverage tracking.                                    
+  b_lto                          false                            [true, false]                    Use link time optimization                                   
+  b_lto_threads                  0                                                                 Use multiple threads for Link Time Optimization              
+  b_lundef                       true                             [true, false]                    Use -Wl,--no-undefined when linking                          
+  b_ndebug                       false                            [true, false, if-release]        Disable asserts                                              
+  b_pch                          true                             [true, false]                    Use precompiled headers                                      
+  b_pgo                          off                              [off, generate, use]             Use profile guided optimization                              
+  b_pie                          true                             [true, false]                    Build executables as position independent                    
+  b_sanitize                     none                             [none, address, thread,          Code sanitizer to use                                        
+                                                                   undefined, memory, leak,                                                                     
+                                                                   address,undefined]                                                                           
+  b_staticpic                    true                             [true, false]                    Build static libraries as position independent               
+  
+  Compiler options               Current Value                    Possible Values                  Description                                                  
+  ------------------             -------------                    ---------------                  -----------                                                  
+  c_args                         []                               []                               Extra arguments passed to the c compiler                     
+  c_link_args                    []                               []                               Extra arguments passed to the c linker                       
+  c_std                          gnu11                            [none, c89, c99, c11, c17, c18,  C language standard to use                                   
+                                                                   c2x, c23, gnu89, gnu99, gnu11,                                                               
+                                                                   gnu17, gnu18, gnu2x, gnu23]                                                                  
+  cpp_args                       []                               []                               Extra arguments passed to the cpp compiler                   
+  cpp_debugstl                   false                            [true, false]                    STL debug mode                                               
+  cpp_eh                         default                          [none, default, a, s, sc]        C++ exception handling type                                  
+  cpp_link_args                  []                               []                               Extra arguments passed to the cpp linker                     
+  cpp_rtti                       true                             [true, false]                    Enable RTTI                                                  
+  cpp_std                        c++20                            [none, c++98, c++03, c++11,      C++ language standard to use                                 
+                                                                   c++14, c++17, c++1z, c++2a,                                                                  
+                                                                   c++20, c++23, c++26, gnu++98,                                                                
+                                                                   gnu++03, gnu++11, gnu++14,                                                                   
+                                                                   gnu++17, gnu++1z, gnu++2a,                                                                   
+                                                                   gnu++20, gnu++23, gnu++26]                                                                   
+  
+  pkgconfig module options       Current Value                    Possible Values                  Description                                                  
+  --------------------------     -------------                    ---------------                  -----------                                                  
+  pkgconfig.relocatable          false                            [true, false]                    Generate pkgconfig files as relocatable                      
+  
+  Directories                    Current Value                    Possible Values                  Description                                                  
+  -------------                  -------------                    ---------------                  -----------                                                  
+  bindir                         bin                                                               Executable directory                                         
+  datadir                        share                                                             Data file directory                                          
+  includedir                     include                                                           Header file directory                                        
+  infodir                        share/info                                                        Info page directory                                          
+  libdir                         lib/x86_64-linux-gnu                                              Library directory                                            
+  libexecdir                     libexec                                                           Library executable directory                                 
+  licensedir                                                                                       Licenses directory                                           
+  localedir                      share/locale                                                      Locale data directory                                        
+  localstatedir                  /var/local                                                        Localstate data directory                                    
+  mandir                         share/man                                                         Manual page directory                                        
+  prefix                         /usr/local                                                        Installation prefix                                          
+  sbindir                        sbin                                                              System executable directory                                  
+  sharedstatedir                 /var/local/lib                                                    Architecture-independent data directory                      
+  sysconfdir                     etc                                                               Sysconf data directory                                       
+  
+  Testing options                Current Value                    Possible Values                  Description                                                  
+  -----------------              -------------                    ---------------                  -----------                                                  
+  errorlogs                      true                             [true, false]                    Whether to print the logs from failing tests                 
+  stdsplit                       true                             [true, false]                    Split stdout and stderr in test logs                         
+  
+  Project options                Current Value                    Possible Values                  Description                                                  
+  -----------------              -------------                    ---------------                  -----------                                                  
+  alsa                           disabled                         [enabled, disabled, auto]        Enable alsa spa plugin integration                           
+  audioconvert                   disabled                         [enabled, disabled, auto]        Enable audioconvert spa plugin integration                   
+  audiomixer                     disabled                         [enabled, disabled, auto]        Enable audiomixer spa plugin integration                     
+  audiotestsrc                   disabled                         [enabled, disabled, auto]        Enable audiotestsrc spa plugin integration                   
+  avahi                          disabled                         [enabled, disabled, auto]        Enable code that depends on avahi                            
+  avb                            disabled                         [enabled, disabled, auto]        Enable AVB code                                              
+  avb-virtual                    disabled                         [enabled, disabled, auto]        Enable AVB Virtual code for testing                          
+  bluez5                         disabled                         [enabled, disabled, auto]        Enable bluez5 spa plugin integration                         
+  bluez5-backend-hfp-native      enabled                          [enabled, disabled, auto]        Enable HFP in native backend in bluez5 spa plugin            
+  bluez5-backend-hsp-native      enabled                          [enabled, disabled, auto]        Enable HSP in native backend in bluez5 spa plugin            
+  bluez5-backend-hsphfpd         enabled                          [enabled, disabled, auto]        Enable hsphfpd backend in bluez5 spa plugin (no dependency on
+                                                                                                   hsphfpd)                                                     
+  bluez5-backend-native-mm       disabled                         [enabled, disabled, auto]        Enable ModemManager in native backend in bluez5 spa plugin   
+  bluez5-backend-ofono           enabled                          [enabled, disabled, auto]        Enable oFono HFP backend in bluez5 spa plugin (no dependency 
+                                                                                                   on oFono)                                                    
+  bluez5-codec-aac               disabled                         [enabled, disabled, auto]        Enable Fraunhofer FDK AAC open source codec implementation   
+  bluez5-codec-aptx              disabled                         [enabled, disabled, auto]        Enable AptX Qualcomm open source codec implementation        
+  bluez5-codec-g722              disabled                         [enabled, disabled, auto]        Enable G722 open source codec implementation                 
+  bluez5-codec-lc3               disabled                         [enabled, disabled, auto]        Enable LC3 open source codec implementation                  
+  bluez5-codec-lc3plus           disabled                         [enabled, disabled, auto]        Enable LC3plus open source codec implementation              
+  bluez5-codec-ldac              disabled                         [enabled, disabled, auto]        Enable LDAC Sony open source codec implementation            
+  bluez5-codec-ldac-dec          disabled                         [enabled, disabled, auto]        Enable LDAC Sony open source codec decoding                  
+  bluez5-codec-lhdc              disabled                         [enabled, disabled, auto]        Enable LHDC v5 open source codec implementation              
+  bluez5-codec-opus              disabled                         [enabled, disabled, auto]        Enable Opus open source codec implementation                 
+  bluez5-plc-spandsp             disabled                         [enabled, disabled, auto]        Enable SpanDSP for packet loss concealment                   
+  compress-offload               disabled                         [enabled, disabled, auto]        Enable ALSA Compress-Offload support                         
+  control                        disabled                         [enabled, disabled, auto]        Enable control spa plugin integration                        
+  dbus                           disabled                         [enabled, disabled, auto]        Enable code that depends on dbus                             
+  doc-prefix-value                                                                                 Installation prefix to show in documentation instead of the  
+                                                                                                   actual value.                                                
+  doc-sysconfdir-value                                                                             Sysconf data directory to show in documentation instead of   
+                                                                                                   the actual value.                                            
+  docdir                                                                                           Directory for installing documentation to (defaults to       
+                                                                                                   pipewire_datadir/doc/meson.project_name() )                  
+  docs                           disabled                         [enabled, disabled, auto]        Documentation                                                
+  ebur128                        disabled                         [enabled, disabled, auto]        Enable code that depends on ebur128                          
+  echo-cancel-webrtc             disabled                         [enabled, disabled, auto]        Enable WebRTC-based echo canceller                           
+  evl                            disabled                         [enabled, disabled, auto]        Enable EVL support spa plugin integration                    
+  examples                       disabled                         [enabled, disabled, auto]        Build examples                                               
+  ffmpeg                         disabled                         [enabled, disabled, auto]        Enable ffmpeg spa plugin integration                         
+  fftw                           disabled                         [enabled, disabled, auto]        Enable code that depends on fftw                             
+  flatpak                        enabled                          [enabled, disabled, auto]        Enable Flatpak support                                       
+  gsettings                      disabled                         [enabled, disabled, auto]        Enable code that depends on gsettings                        
+  gsettings-pulse-schema         disabled                         [enabled, disabled, auto]        Install gsettings schema for pulseaudio                      
+  gstreamer                      disabled                         [enabled, disabled, auto]        Build GStreamer plugins                                      
+  gstreamer-device-provider      disabled                         [enabled, disabled, auto]        Build GStreamer device provider plugin                       
+  installed_tests                disabled                         [enabled, disabled, auto]        Install manual and automated test executables                
+  jack                           disabled                         [enabled, disabled, auto]        Enable jack spa plugin integration                           
+  jack-devel                     false                            [true, false]                    Install jack development files                               
+  legacy-rtkit                   true                             [true, false]                    Build legacy rtkit module                                    
+  libcamera                      disabled                         [enabled, disabled, auto]        Enable libcamera spa plugin integration                      
+  libcanberra                    disabled                         [enabled, disabled, auto]        Enable code that depends on libcanberra                      
+  libffado                       disabled                         [enabled, disabled, auto]        Enable code that depends on libffado                         
+  libjack-path                                                                                     Where to install the libjack.so library                      
+  libmysofa                      disabled                         [enabled, disabled, auto]        Enable code that depends on libmysofa                        
+  libpulse                       disabled                         [enabled, disabled, auto]        Enable code that depends on libpulse                         
+  libsystemd                     disabled                         [enabled, disabled, auto]        Enable code that depends on libsystemd                       
+  libusb                         disabled                         [enabled, disabled, auto]        Enable code that depends on libusb                           
+  libv4l2-path                                                                                     Where to install the libpw-v4l2.so library                   
+  logind                         disabled                         [enabled, disabled, auto]        Enable logind integration                                    
+  logind-provider                libsystemd                       [libelogind, libsystemd]         Provider for logind integration                              
+  lv2                            disabled                         [enabled, disabled, auto]        Enable loading of LV2 plugins                                
+  man                            disabled                         [enabled, disabled, auto]        Manual pages                                                 
+  onnxruntime                    disabled                         [enabled, disabled, auto]        Enable code that depends on onnxruntime                      
+  opus                           disabled                         [enabled, disabled, auto]        Enable code that depends on opus                             
+  pam-defaults-install           false                            [true, false]                    Install limits.d file modifying defaults for all PAM users.  
+                                                                                                   Only for old kernels/systemd!                                
+  pam-memlock-default            8192                             >=640                            The default memlock value for any PAM user in kilobytes.     
+                                                                                                   Multiples of 64 recommended.                                 
+  pipewire-alsa                  disabled                         [enabled, disabled, auto]        Enable pipewire-alsa integration                             
+  pipewire-jack                  disabled                         [enabled, disabled, auto]        Enable pipewire-jack integration                             
+  pipewire-v4l2                  disabled                         [enabled, disabled, auto]        Enable pipewire-v4l2 integration                             
+  pulse-server                   disabled                         [enabled, disabled, auto]        Enable the PulseAudio compatibility server                   
+  pw-cat                         disabled                         [enabled, disabled, auto]        Build pw-cat/pw-play/pw-record                               
+  pw-cat-ffmpeg                  disabled                         [enabled, disabled, auto]        Enable FFmpeg integration in pw-cat/pw-play/pw-record        
+  raop                           disabled                         [enabled, disabled, auto]        Enable module for Remote Audio Output Protocol               
+  readline                       disabled                         [enabled, disabled, auto]        Enable code that depends on libreadline                      
+  resampler-precomp-tuples       [32000,44100, 32000,48000,       []                               Array of "inrate,outrate[,quality]" tuples to precompute     
+                                  48000,44100, 44100,48000]                                        resampler coefficients for                                   
+  rlimits-install                true                             [true, false]                    Install PAM limits.d file. Voids all following rlimits-*     
+                                                                                                   options, if false                                            
+  rlimits-match                  @pipewire                                                         PAM match rule for the generated limits.d file. @<name>      
+                                                                                                   denotes matching a group.                                    
+  rlimits-memlock                4194304                                                           kB of memory each process of the user matched by the rule can
+                                                                                                   lock. Can be unlimited .                                     
+  rlimits-nice                   -19                              >=-20, <=-1                      Not niceness permitted for non-realtime threads of the       
+                                                                                                   matching user(s)                                             
+  rlimits-rtprio                 95                               >=11, <=99                       RR and FIFO scheduler priority permitted for realtime threads
+                                                                                                   of the matching user(s)                                      
+  roc                            disabled                         [enabled, disabled, auto]        Enable code that depends on roc toolkit                      
+  rtprio-client                  83                               >=11, <=99                       PipeWire clients realtime priority                           
+  rtprio-server                  88                               >=11, <=99                       PipeWire server realtime priority                            
+  sdl2                           disabled                         [enabled, disabled, auto]        Enable code that depends on SDL 2                            
+  selinux                        disabled                         [enabled, disabled, auto]        Enable SELinux integration                                   
+  session-managers               []                               []                               Session managers to build (can be [] for none or an absolute 
+                                                                                                   path)                                                        
+  snap                           disabled                         [enabled, disabled, auto]        Enable Snap permissions support.                             
+  sndfile                        disabled                         [enabled, disabled, auto]        Enable code that depends on libsndfile                       
+  spa-plugins                    enabled                          [enabled, disabled, auto]        Enable spa plugins integration                               
+  support                        enabled                          [enabled, disabled, auto]        Enable support spa plugin integration                        
+  systemd-system-service         disabled                         [enabled, disabled, auto]        Install systemd system service file                          
+  systemd-system-unit-dir                                                                          Directory for system systemd units (defaults to              
+                                                                                                   /usr/lib/systemd/system)                                     
+  systemd-user-service           disabled                         [enabled, disabled, auto]        Install systemd user service file                            
+  systemd-user-unit-dir                                                                            Directory for user systemd units (defaults to                
+                                                                                                   /usr/lib/systemd/user)                                       
+  test                           enabled                          [enabled, disabled, auto]        Enable test spa plugin integration                           
+  tests                          enabled                          [enabled, disabled, auto]        Build tests                                                  
+  udev                           disabled                         [enabled, disabled, auto]        Enable Udev integration                                      
+  udevrulesdir                                                                                     Directory for udev rules (defaults to /lib/udev/rules.d)     
+  v4l2                           disabled                         [enabled, disabled, auto]        Enable v4l2 spa plugin integration                           
+  videoconvert                   disabled                         [enabled, disabled, auto]        Enable videoconvert spa plugin integration                   
+  videotestsrc                   disabled                         [enabled, disabled, auto]        Enable videotestsrc spa plugin integration                   
+  volume                         disabled                         [enabled, disabled, auto]        Build the legacy volume spa plugin                           
+  vulkan                         disabled                         [enabled, disabled, auto]        Enable vulkan spa plugin integration                         
+  x11                            disabled                         [enabled, disabled, auto]        Enable code that depends on X11                              
+  x11-xfixes                     disabled                         [enabled, disabled, auto]        Enable code that depends on XFixes
+
+## git-head
+exit=0
+8075b2f04e9de17c85198fa5404165e746e995e9
+
+## git-status
+exit=0
+M doc/dox/internals/index.dox
+ M doc/dox/internals/polling-data-loop-profiling.md
+ M doc/dox/internals/polling-data-loops.md
+ M src/tests/test-polling-remote-client.c
+?? doc/dox/internals/polling-remote-graph-benchmark.md
+?? src/tests/benchmark-polling-remote.py
+
+## kernel-command-line
+BOOT_IMAGE=/boot/vmlinuz-6.12.57+deb13-amd64 root=UUID=21a94d01-92a4-4488-bdfc-39e4eb353c68 ro quiet preempt=full
+
+## process-limits
+Limit                     Soft Limit           Hard Limit           Units     
+Max cpu time              unlimited            unlimited            seconds   
+Max file size             unlimited            unlimited            bytes     
+Max data size             unlimited            unlimited            bytes     
+Max stack size            8388608              unlimited            bytes     
+Max core file size        0                    unlimited            bytes     
+Max resident set          unlimited            unlimited            bytes     
+Max processes             124862               124862               processes 
+Max open files            524288               524288               files     
+Max locked memory         4294967296           4294967296           bytes     
+Max address space         unlimited            unlimited            bytes     
+Max file locks            unlimited            unlimited            locks     
+Max pending signals       124862               124862               signals   
+Max msgqueue size         819200               819200               bytes     
+Max nice priority         39                   39                   
+Max realtime priority     95                   95                   
+Max realtime timeout      unlimited            unlimited            us
+
+## cpu-isolated
+
+
+## nohz-full
+(null)
+
+## selected-cpus
+source=12 topology=('0', '6')
+sink=14 topology=('0', '7')
+allowed=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+
+## benchmark-runner
+/home/dgamroth/workspaces/codex/pipewire/pipewire/src/tests/benchmark-polling-remote.py
+sha256=3a7aa28df3acf40f279833b5c027d6aae33623df9e1861e1ad89237c5cd949b4
+
+## daemon
+/home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/daemon/pipewire-ao
+sha256=78a50f27a1b0b2d1858503b459fa0efb0f90baf02c3ef880439de577172c1822
+
+## link
+/home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tools/pwao-link
+sha256=9f52e9141e8e04eba31c54337400fd9e20b1d4ff5de5fa16817cf9cb36bc185b
+
+## client
+/home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client
+sha256=e12407a332e3a52fa1e47c49fcec69e1c291822e4c729a6ca9a01351eb4321b9
+
+## source-cpu-12-scaling_driver
+amd-pstate-epp
+
+## source-cpu-12-scaling_governor
+powersave
+
+## source-cpu-12-energy_performance_preference
+performance
+
+## source-cpu-12-scaling_min_freq
+400000
+
+## source-cpu-12-scaling_max_freq
+4785000
+
+## sink-cpu-14-scaling_driver
+amd-pstate-epp
+
+## sink-cpu-14-scaling_governor
+powersave
+
+## sink-cpu-14-energy_performance_preference
+performance
+
+## sink-cpu-14-scaling_min_freq
+400000
+
+## sink-cpu-14-scaling_max_freq
+4785000

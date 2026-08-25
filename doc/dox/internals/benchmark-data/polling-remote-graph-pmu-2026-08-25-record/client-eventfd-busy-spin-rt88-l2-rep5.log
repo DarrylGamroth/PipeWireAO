@@ -1,0 +1,3 @@
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-l2-rep5 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-l2-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499916877 source-tid=1774074 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1774075 sink-cpu=14 sink-policy=1 sink-priority=88

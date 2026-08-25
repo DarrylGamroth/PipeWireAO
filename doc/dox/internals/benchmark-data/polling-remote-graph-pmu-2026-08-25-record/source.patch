@@ -1,0 +1,624 @@
+diff --git a/doc/dox/internals/index.dox b/doc/dox/internals/index.dox
+index 5ec5e6166..a99e3d1bc 100644
+--- a/doc/dox/internals/index.dox
++++ b/doc/dox/internals/index.dox
+@@ -16,6 +16,7 @@
+ - \subpage page_polling_data_loops
+ - \subpage page_polling_data_loop_benchmark
+ - \subpage page_polling_data_loop_profiling
++- \subpage page_polling_remote_graph_benchmark
+ - \subpage page_row_block_ndarrays
+ - \subpage page_acquisition_metadata
+ - \subpage page_driver
+diff --git a/doc/dox/internals/polling-data-loop-profiling.md b/doc/dox/internals/polling-data-loop-profiling.md
+index 33466ae56..d65065e52 100644
+--- a/doc/dox/internals/polling-data-loop-profiling.md
++++ b/doc/dox/internals/polling-data-loop-profiling.md
+@@ -153,10 +153,13 @@ improvement for a new control-plane latency policy. Moving the activation
+ sequence field would break the shared activation layout. Neither change should
+ be made from these synthetic results.
+ 
+-The next useful profile is an end-to-end camera to algorithm to AO graph on
+-isolated deployment CPUs. That run should retain the same page-fault gate,
+-collect per-node CPU budgets, and—if system-wide collection is acceptable—use
+-IBS/c2c to verify the activation line and the queue ownership boundaries.
++An exported-node buffer graph has now been profiled with the same page-fault
++gate; see [Exported-node graph scheduling benchmark](polling-remote-graph-benchmark.md).
++It confirms the synthetic result and does not expose a scheduler hot function
++that warrants optimization. The next useful profile is an end-to-end camera to
++algorithm to AO graph on isolated deployment CPUs. That run should collect
++per-node CPU budgets and—if system-wide collection is acceptable—use IBS/c2c
++to verify the activation line and the queue ownership boundaries.
+ 
+ ## Reproduction and data
+ 
+diff --git a/doc/dox/internals/polling-data-loops.md b/doc/dox/internals/polling-data-loops.md
+index 6dae03c30..8e95d2d57 100644
+--- a/doc/dox/internals/polling-data-loops.md
++++ b/doc/dox/internals/polling-data-loops.md
+@@ -38,6 +38,8 @@ The benchmark method, raw histograms, environment record, and current host
+ results are documented in [Polling data-loop benchmark](polling-data-loop-benchmark.md).
+ Hardware-counter and call-graph results are documented in
+ [Polling data-loop profiling](polling-data-loop-profiling.md).
++Exported-node buffer-transit latency and counters are documented in
++[Exported-node graph scheduling benchmark](polling-remote-graph-benchmark.md).
+ 
+ ## Configuration
+ 
+diff --git a/src/tests/test-polling-remote-client.c b/src/tests/test-polling-remote-client.c
+index ab7ec83bf..3caec5de0 100644
+--- a/src/tests/test-polling-remote-client.c
++++ b/src/tests/test-polling-remote-client.c
+@@ -4,18 +4,48 @@
+ 
+ #include <errno.h>
+ #include <inttypes.h>
++#include <limits.h>
++#include <sched.h>
+ #include <signal.h>
+ #include <stdatomic.h>
+ #include <stdint.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <sys/syscall.h>
++#include <time.h>
++#include <unistd.h>
+ 
+ #include <pipewire/pipewire.h>
+ 
+ #include <spa/param/audio/format-utils.h>
+ #include <spa/utils/result.h>
+ 
++struct frame_payload {
++	uint64_t sequence;
++	uint64_t trigger_ns;
++	uint64_t source_ns;
++};
++
++struct latency_sample {
++	uint64_t trigger_to_source_ns;
++	uint64_t source_to_sink_ns;
++	uint64_t trigger_to_sink_ns;
++};
++
++struct profile_threads {
++	pid_t source_tid;
++	pid_t sink_tid;
++};
++
++struct benchmark_profile_gate {
++	int ready_fd;
++	int start_fd;
++	int done_fd;
++	int finish_fd;
++	bool enabled;
++};
++
+ struct data {
+ 	struct pw_main_loop *loop;
+ 	struct pw_context *context;
+@@ -34,13 +64,153 @@ struct data {
+ 	atomic_bool stopping;
+ 	atomic_uint produced;
+ 	atomic_uint received;
++	atomic_uint_fast64_t trigger_ns;
++	atomic_int source_tid;
++	atomic_int sink_tid;
++	atomic_int source_cpu;
++	atomic_int sink_cpu;
++	atomic_int source_policy;
++	atomic_int sink_policy;
++	atomic_int source_priority;
++	atomic_int sink_priority;
+ 	uint32_t frames;
++	uint32_t warmup;
++	uint32_t samples;
++	uint64_t measurement_start_ns;
++	uint64_t measurement_end_ns;
++	struct latency_sample *latencies;
++	struct benchmark_profile_gate profile_gate;
++	const char *latency_path;
++	bool benchmark;
++	bool measurement_started;
+ 	bool hold;
+ 	int result;
+ 	char source_name[128];
+ 	char sink_name[128];
+ };
+ 
++static uint64_t raw_time_nsec(void)
++{
++	struct timespec now;
++
++	if (clock_gettime(CLOCK_MONOTONIC_RAW, &now) < 0)
++		return 0;
++	return (uint64_t)now.tv_sec * SPA_NSEC_PER_SEC + (uint64_t)now.tv_nsec;
++}
++
++static int profile_gate_fd(const char *name)
++{
++	const char *value = getenv(name);
++	char *end = NULL;
++	long fd;
++
++	if (value == NULL)
++		return -1;
++	errno = 0;
++	fd = strtol(value, &end, 10);
++	if (errno != 0 || end == value || *end != '\0' || fd < 0 || fd > INT_MAX)
++		return -1;
++	return (int)fd;
++}
++
++static bool profile_gate_init(struct benchmark_profile_gate *gate)
++{
++	gate->ready_fd = profile_gate_fd("PW_BENCHMARK_PROFILE_READY_FD");
++	gate->start_fd = profile_gate_fd("PW_BENCHMARK_PROFILE_START_FD");
++	gate->done_fd = profile_gate_fd("PW_BENCHMARK_PROFILE_DONE_FD");
++	gate->finish_fd = profile_gate_fd("PW_BENCHMARK_PROFILE_FINISH_FD");
++	gate->enabled = gate->ready_fd >= 0 || gate->start_fd >= 0 ||
++			gate->done_fd >= 0 || gate->finish_fd >= 0;
++	return !gate->enabled || (gate->ready_fd >= 0 && gate->start_fd >= 0 &&
++			gate->done_fd >= 0 && gate->finish_fd >= 0);
++}
++
++static bool transfer_exact(int fd, void *data, size_t size, bool write_data)
++{
++	uint8_t *bytes = data;
++
++	while (size > 0) {
++		ssize_t result = write_data ? write(fd, bytes, size) :
++				read(fd, bytes, size);
++
++		if (result < 0 && errno == EINTR)
++			continue;
++		if (result <= 0)
++			return false;
++		bytes += result;
++		size -= (size_t)result;
++	}
++	return true;
++}
++
++static bool profile_gate_begin(struct data *data)
++{
++	struct profile_threads threads = {
++		.source_tid = atomic_load_explicit(&data->source_tid,
++				memory_order_acquire),
++		.sink_tid = atomic_load_explicit(&data->sink_tid,
++				memory_order_acquire),
++	};
++	uint8_t token;
++
++	if (!data->profile_gate.enabled)
++		return true;
++	return threads.source_tid > 0 && threads.sink_tid > 0 &&
++			transfer_exact(data->profile_gate.ready_fd, &threads,
++				sizeof(threads), true) &&
++			transfer_exact(data->profile_gate.start_fd, &token,
++				sizeof(token), false);
++}
++
++static bool profile_gate_end(struct data *data)
++{
++	const uint8_t token = 1;
++	uint8_t reply;
++
++	if (!data->profile_gate.enabled)
++		return true;
++	return transfer_exact(data->profile_gate.done_fd, (void *)&token,
++				sizeof(token), true) &&
++			transfer_exact(data->profile_gate.finish_fd, &reply,
++				sizeof(reply), false);
++}
++
++static void observe_loop_thread(atomic_int *tid, atomic_int *cpu,
++		atomic_int *policy, atomic_int *priority)
++{
++	struct sched_param parameters = { 0 };
++	int observed_policy;
++
++	if (atomic_load_explicit(tid, memory_order_relaxed) != 0)
++		return;
++	atomic_store_explicit(cpu, sched_getcpu(), memory_order_relaxed);
++	observed_policy = sched_getscheduler(0);
++#ifdef SCHED_RESET_ON_FORK
++	if (observed_policy >= 0)
++		observed_policy &= ~SCHED_RESET_ON_FORK;
++#endif
++	atomic_store_explicit(policy, observed_policy, memory_order_relaxed);
++	if (sched_getparam(0, &parameters) < 0)
++		parameters.sched_priority = -1;
++	atomic_store_explicit(priority, parameters.sched_priority,
++			memory_order_relaxed);
++	atomic_store_explicit(tid, (int)syscall(SYS_gettid), memory_order_release);
++}
++
++static void prefault_writable_pages(void *memory, size_t size)
++{
++	volatile uint8_t *bytes = memory;
++	long page_size = sysconf(_SC_PAGESIZE);
++	size_t offset;
++
++	if (page_size <= 0)
++		return;
++	for (offset = 0; offset < size; offset += (size_t)page_size)
++		bytes[offset] = 0;
++	if (size > 0)
++		bytes[size - 1u] = 0;
++}
++
+ static void quit_with_error(struct data *data, const char *message)
+ {
+ 	if (data->result == 0) {
+@@ -86,24 +256,37 @@ static void source_process(void *userdata)
+ 	struct data *data = userdata;
+ 	struct pw_buffer *buffer;
+ 	struct spa_data *block;
+-	uint64_t sequence;
++	struct frame_payload payload;
++
++	observe_loop_thread(&data->source_tid, &data->source_cpu,
++			&data->source_policy, &data->source_priority);
+ 
+ 	buffer = pw_stream_dequeue_buffer(data->source);
+ 	if (buffer == NULL)
+ 		return;
+ 	block = &buffer->buffer->datas[0];
+ 	if (block->data == NULL || block->chunk == NULL ||
+-			block->maxsize < sizeof(sequence)) {
++			block->maxsize < sizeof(payload)) {
+ 		(void)pw_stream_queue_buffer(data->source, buffer);
+ 		quit_with_error(data, "source received an invalid buffer");
+ 		return;
+ 	}
+-	sequence = atomic_fetch_add_explicit(&data->produced, 1,
++	payload.sequence = atomic_fetch_add_explicit(&data->produced, 1,
+ 			memory_order_relaxed) + 1u;
+-	memcpy(block->data, &sequence, sizeof(sequence));
++	payload.trigger_ns = data->benchmark ?
++			atomic_exchange_explicit(&data->trigger_ns, 0,
++				memory_order_acq_rel) : 0;
++	payload.source_ns = data->benchmark ? raw_time_nsec() : 0;
++	if (data->benchmark && (payload.trigger_ns == 0 ||
++			payload.source_ns < payload.trigger_ns)) {
++		(void)pw_stream_queue_buffer(data->source, buffer);
++		quit_with_error(data, "source observed an invalid trigger timestamp");
++		return;
++	}
++	memcpy(block->data, &payload, sizeof(payload));
+ 	block->chunk->offset = 0;
+-	block->chunk->size = sizeof(sequence);
+-	block->chunk->stride = sizeof(sequence);
++	block->chunk->size = sizeof(payload);
++	block->chunk->stride = sizeof(payload);
+ 	(void)pw_stream_queue_buffer(data->source, buffer);
+ }
+ 
+@@ -119,38 +302,65 @@ static void sink_process(void *userdata)
+ 	struct data *data = userdata;
+ 	struct pw_buffer *buffer;
+ 	struct spa_data *block;
+-	uint64_t sequence;
++	struct frame_payload payload;
++	uint64_t sink_ns = data->benchmark ? raw_time_nsec() : 0;
+ 	uint32_t received;
+ 
++	observe_loop_thread(&data->sink_tid, &data->sink_cpu,
++			&data->sink_policy, &data->sink_priority);
++
+ 	buffer = pw_stream_dequeue_buffer(data->sink);
+ 	if (buffer == NULL)
+ 		return;
+ 	block = &buffer->buffer->datas[0];
+ 	if (block->data == NULL || block->chunk == NULL ||
+-			block->chunk->size < sizeof(sequence)) {
++			block->chunk->size < sizeof(payload)) {
+ 		(void)pw_stream_queue_buffer(data->sink, buffer);
+ 		quit_with_error(data, "sink received an invalid buffer");
+ 		return;
+ 	}
+-	memcpy(&sequence, SPA_PTROFF(block->data, block->chunk->offset, void),
+-			sizeof(sequence));
++	memcpy(&payload, SPA_PTROFF(block->data, block->chunk->offset, void),
++			sizeof(payload));
+ 	received = atomic_fetch_add_explicit(&data->received, 1,
+ 			memory_order_relaxed) + 1u;
+-	if (sequence != received) {
++	if (payload.sequence != received) {
+ 		(void)pw_stream_queue_buffer(data->sink, buffer);
+ 		quit_with_error(data, "cross-process payload sequence mismatch");
+ 		return;
+ 	}
++	if (data->benchmark) {
++		if (sink_ns < payload.source_ns ||
++				payload.source_ns < payload.trigger_ns) {
++			(void)pw_stream_queue_buffer(data->sink, buffer);
++			quit_with_error(data, "sink observed invalid frame timestamps");
++			return;
++		}
++		if (received > data->warmup) {
++			uint32_t index = received - data->warmup - 1u;
++
++			if (index < data->samples) {
++				data->latencies[index].trigger_to_source_ns =
++						payload.source_ns - payload.trigger_ns;
++				data->latencies[index].source_to_sink_ns =
++						sink_ns - payload.source_ns;
++				data->latencies[index].trigger_to_sink_ns =
++						sink_ns - payload.trigger_ns;
++			}
++		}
++	}
+ 	if (data->hold && received == 1) {
+ 		data->held = buffer;
+-		printf("HOLDING sequence=%" PRIu64 "\n", sequence);
++		printf("HOLDING sequence=%" PRIu64 "\n", payload.sequence);
+ 		fflush(stdout);
+ 		pw_main_loop_quit(data->loop);
+ 		return;
+ 	}
+ 	(void)pw_stream_queue_buffer(data->sink, buffer);
+-	if (received == data->frames)
++	if (received == data->frames) {
++		if (data->benchmark)
++			data->measurement_end_ns = sink_ns;
+ 		pw_main_loop_quit(data->loop);
++	}
+ }
+ 
+ static const struct pw_stream_events source_events = {
+@@ -184,14 +394,36 @@ static void trigger_timer(void *userdata, uint64_t expirations)
+ 				data->sink_name);
+ 		fflush(stdout);
+ 	}
++	if (data->benchmark && !data->measurement_started &&
++			atomic_load_explicit(&data->received,
++				memory_order_acquire) >= data->warmup) {
++		if (!profile_gate_begin(data)) {
++			quit_with_error(data, "could not enter profile gate");
++			return;
++		}
++		data->measurement_start_ns = raw_time_nsec();
++		data->measurement_started = true;
++	}
+ 	if (source_state != PW_STREAM_STATE_STREAMING ||
+ 			sink_state != PW_STREAM_STATE_STREAMING ||
+ 			atomic_load_explicit(&data->stopping, memory_order_acquire) ||
+ 			atomic_load_explicit(&data->produced, memory_order_relaxed) >=
+ 				data->frames ||
++			(data->benchmark &&
++			 atomic_load_explicit(&data->produced, memory_order_acquire) !=
++			 atomic_load_explicit(&data->received, memory_order_acquire)) ||
+ 			!atomic_exchange_explicit(&data->trigger_ready, false,
+ 				memory_order_acq_rel))
+ 		return;
++	if (data->benchmark) {
++		uint64_t now = raw_time_nsec();
++
++		if (now == 0 || atomic_exchange_explicit(&data->trigger_ns, now,
++				memory_order_acq_rel) != 0) {
++			quit_with_error(data, "overlapping benchmark trigger");
++			return;
++		}
++	}
+ 	if (pw_stream_trigger_process(data->source) < 0)
+ 		quit_with_error(data, "could not trigger exported source stream");
+ }
+@@ -222,9 +454,53 @@ static const char *loop_name(const char *idle)
+ 	return NULL;
+ }
+ 
++static bool parse_u32(const char *value, uint32_t *result)
++{
++	char *end = NULL;
++	unsigned long parsed;
++
++	errno = 0;
++	parsed = strtoul(value, &end, 10);
++	if (errno != 0 || end == value || *end != '\0' || parsed > UINT32_MAX)
++		return false;
++	*result = (uint32_t)parsed;
++	return true;
++}
++
++static bool parse_u64(const char *value, uint64_t *result)
++{
++	char *end = NULL;
++	unsigned long long parsed;
++
++	errno = 0;
++	parsed = strtoull(value, &end, 10);
++	if (errno != 0 || end == value || *end != '\0')
++		return false;
++	*result = (uint64_t)parsed;
++	return true;
++}
++
++static bool write_latencies(const struct data *data)
++{
++	FILE *output;
++	uint32_t i;
++
++	output = fopen(data->latency_path, "w");
++	if (output == NULL)
++		return false;
++	fprintf(output, "iteration,trigger_to_source_ns,source_to_sink_ns,"
++			"trigger_to_sink_ns\n");
++	for (i = 0; i < data->samples; i++)
++		fprintf(output, "%u,%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", i,
++				data->latencies[i].trigger_to_source_ns,
++				data->latencies[i].source_to_sink_ns,
++				data->latencies[i].trigger_to_sink_ns);
++	return fclose(output) == 0;
++}
++
+ int main(int argc, char *argv[])
+ {
+-	static const char data_loops[] =
++	static const char test_data_loops[] =
+ 		"[ { loop.name=client-event loop.class=data.rt loop.idle=eventfd } "
+ 		"{ loop.name=client-poll loop.class=data.rt loop.idle=busy-spin } ]";
+ 	struct data data = { .result = 0 };
+@@ -235,20 +511,81 @@ int main(int argc, char *argv[])
+ 	struct timespec trigger_interval = { .tv_nsec = SPA_NSEC_PER_MSEC };
+ 	struct timespec timeout = { .tv_sec = 10 };
+ 	uint8_t pod_buffer[512];
++	char benchmark_data_loops[512];
++	const char *data_loops = test_data_loops;
+ 	const char *source_loop, *sink_loop;
++	uint32_t source_cpu = 0, sink_cpu = 0, rt_priority = 0;
++	uint64_t trigger_interval_ns = SPA_NSEC_PER_MSEC;
+ 	int result;
+ 
+-	if (argc < 5 || argc > 6)
++	if (argc < 5)
+ 		return 2;
+ 	pw_init(&argc, &argv);
+-	source_loop = loop_name(argv[2]);
+-	sink_loop = loop_name(argv[3]);
+-	data.frames = (uint32_t)strtoul(argv[4], NULL, 10);
+-	data.hold = argc == 6 && spa_streq(argv[5], "hold");
+-	if (source_loop == NULL || sink_loop == NULL || data.frames == 0) {
++	if (loop_name(argv[2]) == NULL || loop_name(argv[3]) == NULL) {
+ 		data.result = 2;
+ 		goto done;
+ 	}
++	data.benchmark = spa_streq(argv[4], "benchmark");
++	if (data.benchmark) {
++		uint64_t total_frames;
++
++		if (argc != 12 || !parse_u32(argv[5], &data.warmup) ||
++				!parse_u32(argv[6], &data.samples) || data.warmup == 0 ||
++				data.samples == 0 || !parse_u64(argv[7], &trigger_interval_ns) ||
++				trigger_interval_ns == 0 ||
++				!parse_u32(argv[8], &source_cpu) ||
++				!parse_u32(argv[9], &sink_cpu) || source_cpu == sink_cpu ||
++				!parse_u32(argv[10], &rt_priority) || rt_priority > 99 ||
++				!profile_gate_init(&data.profile_gate)) {
++			data.result = 2;
++			goto done;
++		}
++		total_frames = (uint64_t)data.warmup + data.samples;
++		if (total_frames > UINT32_MAX) {
++			data.result = 2;
++			goto done;
++		}
++		data.frames = (uint32_t)total_frames;
++		data.latency_path = argv[11];
++		data.latencies = calloc(data.samples, sizeof(*data.latencies));
++		if (data.latencies == NULL) {
++			data.result = 1;
++			goto done;
++		}
++		prefault_writable_pages(data.latencies,
++				data.samples * sizeof(*data.latencies));
++		if (snprintf(benchmark_data_loops, sizeof(benchmark_data_loops),
++				"[ { loop.name=client-source loop.class=data.rt "
++				"loop.idle=%s loop.rt-prio=%u thread.affinity=[ %u ] } "
++				"{ loop.name=client-sink loop.class=data.rt "
++				"loop.idle=%s loop.rt-prio=%u thread.affinity=[ %u ] } ]",
++				argv[2], rt_priority, source_cpu, argv[3], rt_priority,
++				sink_cpu) >= (int)sizeof(benchmark_data_loops)) {
++			data.result = 2;
++			goto done;
++		}
++		data_loops = benchmark_data_loops;
++		source_loop = "client-source";
++		sink_loop = "client-sink";
++		trigger_interval.tv_sec = (time_t)(trigger_interval_ns /
++				SPA_NSEC_PER_SEC);
++		trigger_interval.tv_nsec = (long)(trigger_interval_ns %
++				SPA_NSEC_PER_SEC);
++		timeout.tv_sec = 60;
++	} else {
++		if (argc > 6 || !parse_u32(argv[4], &data.frames) ||
++				data.frames == 0) {
++			data.result = 2;
++			goto done;
++		}
++		source_loop = loop_name(argv[2]);
++		sink_loop = loop_name(argv[3]);
++		data.hold = argc == 6 && spa_streq(argv[5], "hold");
++		if (argc == 6 && !data.hold) {
++			data.result = 2;
++			goto done;
++		}
++	}
+ 	if (snprintf(data.source_name, sizeof(data.source_name),
+ 			"polling-export-source-%s", argv[1]) >=
+ 			(int)sizeof(data.source_name) ||
+@@ -265,6 +602,15 @@ int main(int argc, char *argv[])
+ 	atomic_init(&data.stopping, false);
+ 	atomic_init(&data.produced, 0);
+ 	atomic_init(&data.received, 0);
++	atomic_init(&data.trigger_ns, 0);
++	atomic_init(&data.source_tid, 0);
++	atomic_init(&data.sink_tid, 0);
++	atomic_init(&data.source_cpu, -1);
++	atomic_init(&data.sink_cpu, -1);
++	atomic_init(&data.source_policy, -1);
++	atomic_init(&data.sink_policy, -1);
++	atomic_init(&data.source_priority, -1);
++	atomic_init(&data.sink_priority, -1);
+ 
+ 	data.loop = pw_main_loop_new(NULL);
+ 	if (data.loop == NULL) {
+@@ -348,6 +694,10 @@ int main(int argc, char *argv[])
+ 	pw_loop_add_signal(pw_main_loop_get_loop(data.loop), SIGTERM, signal_quit,
+ 			&data);
+ 	pw_main_loop_run(data.loop);
++	if (data.result == 0 && data.benchmark && !profile_gate_end(&data)) {
++		fprintf(stderr, "could not finish profile gate\n");
++		data.result = 1;
++	}
+ 	if (data.result == 0 && !data.hold &&
+ 			atomic_load_explicit(&data.received, memory_order_relaxed) !=
+ 				data.frames) {
+@@ -361,6 +711,37 @@ int main(int argc, char *argv[])
+ 				atomic_load_explicit(&data.produced, memory_order_relaxed),
+ 				atomic_load_explicit(&data.received, memory_order_relaxed),
+ 				data.held != NULL);
++	if (data.result == 0 && data.benchmark) {
++		if (!data.measurement_started ||
++				data.measurement_end_ns <= data.measurement_start_ns ||
++				!write_latencies(&data)) {
++			fprintf(stderr, "could not write complete benchmark results\n");
++			data.result = 1;
++		} else {
++			printf("BENCHMARK samples=%u measurement-ns=%" PRIu64
++					" source-tid=%d source-cpu=%d source-policy=%d "
++					"source-priority=%d sink-tid=%d sink-cpu=%d "
++					"sink-policy=%d sink-priority=%d\n",
++					data.samples,
++					data.measurement_end_ns - data.measurement_start_ns,
++					atomic_load_explicit(&data.source_tid,
++						memory_order_relaxed),
++					atomic_load_explicit(&data.source_cpu,
++						memory_order_relaxed),
++					atomic_load_explicit(&data.source_policy,
++						memory_order_relaxed),
++					atomic_load_explicit(&data.source_priority,
++						memory_order_relaxed),
++					atomic_load_explicit(&data.sink_tid,
++						memory_order_relaxed),
++					atomic_load_explicit(&data.sink_cpu,
++						memory_order_relaxed),
++					atomic_load_explicit(&data.sink_policy,
++						memory_order_relaxed),
++					atomic_load_explicit(&data.sink_priority,
++						memory_order_relaxed));
++		}
++	}
+ 
+ done:
+ 	if (data.source != NULL)
+@@ -373,6 +754,7 @@ done:
+ 		pw_context_destroy(data.context);
+ 	if (data.loop != NULL)
+ 		pw_main_loop_destroy(data.loop);
++	free(data.latencies);
+ 	pw_deinit();
+ 	return data.result;
+ }

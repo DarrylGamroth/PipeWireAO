@@ -1,0 +1,2 @@
+[W][1774738][09:42:50.759816] pw.context   | [       context.c:  548 pw_context_new()] 0x5653ee901bf0: can't load dbus library: support/libspa-dbus
+[W][1774738][09:42:50.774305] pw.buffers   | [       buffers.c:  374 pw_buffers_negotiate()] 0x5653ee991638: no buffers param
