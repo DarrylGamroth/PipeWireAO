@@ -259,9 +259,6 @@ extern "C" {
 #define PW_KEY_PORT_GROUP		"port.group"		/**< the port group of the port 1.2.0 */
 #define PW_KEY_PORT_EXCLUSIVE		"port.exclusive"	/**< link port only once 1.6.0 */
 #define PW_KEY_PORT_RELIABLE		"port.reliable"		/**< port uses reliable transport 1.6.0 */
-#define PW_KEY_PORT_BUFFER_LATEST	"port.buffer-latest"	/**< require graph-independent latest-buffer links */
-#define PW_KEY_PORT_BUFFER_LATEST_WAIT	"port.buffer-latest.wait" /**< latest-buffer receiver wait policy:
-								  *  "busy-spin", "eventfd", or "hybrid" */
 
 /** link properties */
 #define PW_KEY_LINK_ID			"link.id"		/**< a link id */
@@ -277,9 +274,6 @@ extern "C" {
 								  *  link and the target will receive data
 								  *  in the next cycle */
 #define PW_KEY_LINK_ASYNC		"link.async"		/**< the link is using async io */
-#define PW_KEY_LINK_BUFFER_LATEST	"link.buffer-latest"	/**< the link exchanges completed buffers
-							  *  independently of graph cycles */
-#define PW_KEY_LINK_BUFFER_LATEST_WAIT	"link.buffer-latest.wait" /**< selected receiver wait policy */
 
 /** device properties */
 #define PW_KEY_DEVICE_ID		"device.id"		/**< device id */

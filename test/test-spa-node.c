@@ -25,7 +25,6 @@ PWTEST(node_io_abi_sizes)
 
 	pwtest_int_eq(sizeof(struct spa_io_position), 1688U);
 	pwtest_int_eq(sizeof(struct spa_io_rate_match), 48U);
-	pwtest_int_eq(sizeof(struct spa_io_buffers_latest), 448U);
 
 	spa_assert_se(sizeof(struct spa_node_info) == 48);
 	spa_assert_se(sizeof(struct spa_port_info) == 48);
@@ -47,8 +46,6 @@ PWTEST(node_io_abi_sizes)
 
 	fprintf(stderr, "%zd\n", sizeof(struct spa_io_position));
 	fprintf(stderr, "%zd\n", sizeof(struct spa_io_rate_match));
-	fprintf(stderr, "%zd\n", sizeof(struct spa_io_buffers_latest));
-	fprintf(stderr, "%zd\n", sizeof(struct spa_io_buffers_latest_notify));
 
 	fprintf(stderr, "%zd\n", sizeof(struct spa_node_info));
 	fprintf(stderr, "%zd\n", sizeof(struct spa_port_info));
@@ -75,81 +72,11 @@ PWTEST(node_io_abi)
 	pwtest_int_eq(SPA_IO_RateMatch, 8);
 	pwtest_int_eq(SPA_IO_Memory, 9);
 	pwtest_int_eq(SPA_IO_AsyncBuffers, 10);
-	pwtest_int_eq(SPA_IO_BuffersLatest, 0x1000000);
-	pwtest_int_eq(SPA_IO_BuffersLatestNotify, 0x1000001);
-	pwtest_int_eq(SPA_IO_BuffersLatestLink, 0x1000002);
-	pwtest_int_eq(sizeof(struct spa_io_buffers_latest_notify), 8U);
-	pwtest_int_eq(offsetof(struct spa_io_buffers_latest_link, id), 0U);
-	pwtest_int_eq(offsetof(struct spa_io_buffers_latest_link, io), 8U);
-	pwtest_int_eq(SPA_ALIGNOF(struct spa_io_buffers_latest), SPA_CACHE_LINE_SIZE);
-	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, submission), 0U);
-	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, completion) +
-			offsetof(struct spa_ringbuffer_shared, readindex),
-		SPA_CACHE_LINE_SIZE);
-	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, completion) +
-			offsetof(struct spa_ringbuffer_shared, writeindex),
-		2U * SPA_CACHE_LINE_SIZE);
-	pwtest_int_eq(offsetof(struct spa_io_buffers_latest, completion_ids),
-		3U * SPA_CACHE_LINE_SIZE);
 
 	/* position state */
 	pwtest_int_eq(SPA_IO_POSITION_STATE_STOPPED, 0);
 	pwtest_int_eq(SPA_IO_POSITION_STATE_STARTING, 1);
 	pwtest_int_eq(SPA_IO_POSITION_STATE_RUNNING, 2);
-
-	return PWTEST_PASS;
-}
-
-PWTEST(node_io_buffers_latest)
-{
-	struct spa_io_buffers_latest latest = SPA_IO_BUFFERS_LATEST_INIT;
-	uint64_t sequence, overflow_sequence;
-	uint32_t id, overflow_id, i;
-
-	pwtest_int_eq(spa_io_buffers_latest_receive(&latest, &sequence, &id), -EPIPE);
-	pwtest_int_eq(spa_io_buffers_latest_withdraw_submission(&latest,
-			&sequence, &id), -EPIPE);
-	pwtest_int_eq(spa_io_buffers_latest_reclaim_completion(&latest, &id), -EPIPE);
-	pwtest_int_eq(spa_io_buffers_latest_submit(&latest, 0, 0,
-			NULL, NULL), -EINVAL);
-	pwtest_int_eq(spa_io_buffers_latest_submit(&latest,
-			SPA_IO_BUFFERS_LATEST_SEQUENCE_MAX + 1u, 0,
-			NULL, NULL), -EINVAL);
-	pwtest_int_eq(spa_io_buffers_latest_submit(&latest, 1,
-			SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY, NULL, NULL), -EINVAL);
-	pwtest_int_eq(spa_io_buffers_latest_receive(&latest, NULL, &id), -EINVAL);
-	pwtest_int_eq(spa_io_buffers_latest_receive(&latest, &sequence, NULL), -EINVAL);
-
-	pwtest_int_eq(spa_io_buffers_latest_submit(&latest, 1, 3,
-			NULL, NULL), 0);
-	pwtest_int_eq(spa_io_buffers_latest_receive(&latest, &sequence, &id), 0);
-	pwtest_int_eq(sequence, 1U);
-	pwtest_int_eq(id, 3U);
-
-	pwtest_int_eq(spa_io_buffers_latest_submit(&latest, 2, 5,
-			NULL, NULL), 0);
-	pwtest_int_eq(spa_io_buffers_latest_submit(&latest, 3, 7,
-			&overflow_sequence, &overflow_id), 1);
-	pwtest_int_eq(overflow_sequence, 2U);
-	pwtest_int_eq(overflow_id, 5U);
-	pwtest_int_eq(SPA_ATOMIC_LOAD(latest.submission.overflows), 1U);
-	pwtest_int_eq(spa_io_buffers_latest_withdraw_submission(&latest,
-			&sequence, &id), 0);
-	pwtest_int_eq(sequence, 3U);
-	pwtest_int_eq(id, 7U);
-	pwtest_int_eq(SPA_ATOMIC_LOAD(latest.submission.overflows), 2U);
-
-	for (i = 0; i < SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY; i++)
-		pwtest_int_eq(spa_io_buffers_latest_complete(&latest, i), 0);
-	pwtest_int_eq(spa_io_buffers_latest_complete(&latest, 0), -ENOSPC);
-	pwtest_int_eq(spa_io_buffers_latest_complete(&latest,
-			SPA_ID_INVALID), -EINVAL);
-
-	for (i = 0; i < SPA_IO_BUFFERS_LATEST_COMPLETION_CAPACITY; i++) {
-		pwtest_int_eq(spa_io_buffers_latest_reclaim_completion(&latest, &id), 0);
-		pwtest_int_eq(id, i);
-	}
-	pwtest_int_eq(spa_io_buffers_latest_reclaim_completion(&latest, &id), -EPIPE);
 
 	return PWTEST_PASS;
 }
@@ -297,7 +224,6 @@ PWTEST_SUITE(spa_node)
 {
 	pwtest_add(node_io_abi_sizes, PWTEST_NOARG);
 	pwtest_add(node_io_abi, PWTEST_NOARG);
-	pwtest_add(node_io_buffers_latest, PWTEST_NOARG);
 	pwtest_add(node_command_abi, PWTEST_NOARG);
 	pwtest_add(node_event_abi, PWTEST_NOARG);
 	pwtest_add(node_node_abi, PWTEST_NOARG);

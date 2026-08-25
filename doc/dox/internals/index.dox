@@ -12,6 +12,10 @@
 - \subpage page_dma_buf
 - \subpage page_running
 - \subpage page_scheduling
+- \subpage page_scheduling_detail
+- \subpage page_polling_data_loops
+- \subpage page_row_block_ndarrays
+- \subpage page_acquisition_metadata
 - \subpage page_driver
 - \subpage page_latency
 - \subpage page_tag
