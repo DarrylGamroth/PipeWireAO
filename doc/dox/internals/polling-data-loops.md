@@ -34,6 +34,9 @@ Polling changes wake-up latency and CPU use. It does not create an asynchronous
 queue, overlap adjacent synchronous graph cycles, replace semantic joins, or
 make a slow algorithm meet a deadline.
 
+The benchmark method, raw histograms, environment record, and current host
+results are documented in [Polling data-loop benchmark](polling-data-loop-benchmark.md).
+
 ## Configuration
 
 Set `loop.idle = busy-spin` on a context data loop and assign nodes with the

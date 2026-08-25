@@ -201,7 +201,7 @@ static int client_node_transport(void *_data,
 	/* Publish the implementation-side wake policy in the shared activation so
 	 * triggers in this or another process can skip eventfd safely. */
 	pw_node_activation_set_polling(node->rt.target.activation,
-			polling && node->rt.target.activation->server_version >= 1);
+			polling && node->rt.target.activation->server_version >= 2);
 
 	pw_impl_node_set_io(node, SPA_IO_Clock,
 			&node->rt.target.activation->position.clock,
@@ -863,7 +863,9 @@ client_node_set_activation(void *_data,
 		link->target.system = data->data_system;
 		link->target.fd = signalfd;
 		link->target.trigger = link->target.activation->server_version < 1 ?
-			trigger_target_v0 : trigger_target_v1;
+			trigger_target_v0 :
+			link->target.activation->server_version < 2 ?
+			trigger_target_v1 : trigger_target_v2;
 		spa_list_append(&data->links, &link->link);
 
 		pw_impl_node_add_target(node, &link->target);

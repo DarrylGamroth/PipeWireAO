@@ -218,7 +218,6 @@ enum spa_meta_acquisition_constant {
 	SPA_META_ACQUISITION_VERSION_2 = 2u,
 	SPA_META_ACQUISITION_VERSION = SPA_META_ACQUISITION_VERSION_2,
 	SPA_META_ACQUISITION_SIZE = 96u,
-	SPA_META_ACQUISITION_WIRE_SIZE = 96u,
 	SPA_META_ACQUISITION_DOMAIN_SIZE = 16u,
 	SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE = 8u,
 	SPA_META_FEATURE_ACQUISITION_VERSION_1 = (1u << 0),
@@ -319,40 +318,6 @@ static inline bool _spa_meta_acquisition_bytes_are_zero(const uint8_t *data,
 	for (i = 0; i < size; i++)
 		value |= data[i];
 	return value == 0;
-}
-
-static inline void _spa_meta_acquisition_store_u32_be(uint8_t *data,
-		uint32_t value)
-{
-	data[0] = (uint8_t)(value >> 24);
-	data[1] = (uint8_t)(value >> 16);
-	data[2] = (uint8_t)(value >> 8);
-	data[3] = (uint8_t)value;
-}
-
-static inline void _spa_meta_acquisition_store_u64_be(uint8_t *data,
-		uint64_t value)
-{
-	uint32_t i;
-
-	for (i = 0; i < 8; i++)
-		data[i] = (uint8_t)(value >> (56u - 8u * i));
-}
-
-static inline uint32_t _spa_meta_acquisition_load_u32_be(const uint8_t *data)
-{
-	return ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) |
-		((uint32_t)data[2] << 8) | (uint32_t)data[3];
-}
-
-static inline uint64_t _spa_meta_acquisition_load_u64_be(const uint8_t *data)
-{
-	uint64_t value = 0;
-	uint32_t i;
-
-	for (i = 0; i < 8; i++)
-		value = (value << 8) | data[i];
-	return value;
 }
 
 static inline bool _spa_meta_acquisition_fields_are_valid(
@@ -535,79 +500,6 @@ SPA_API_META bool spa_meta_acquisition_is_valid(const struct spa_meta *meta)
 		meta->data != NULL && meta->size >= sizeof(struct spa_meta_acquisition) &&
 		_spa_meta_acquisition_fields_are_valid(
 				(const struct spa_meta_acquisition *)meta->data);
-}
-
-/** Serialize Version 2 metadata to the canonical big-endian wire record. */
-SPA_API_META bool spa_meta_acquisition_serialize(
-		const struct spa_meta_acquisition *acquisition,
-		uint8_t *wire, uint32_t wire_size)
-{
-	if (!_spa_meta_acquisition_fields_are_valid(acquisition) || wire == NULL ||
-	    wire_size != SPA_META_ACQUISITION_WIRE_SIZE ||
-	    acquisition->version != SPA_META_ACQUISITION_VERSION_2)
-		return false;
-
-	memset(wire, 0, wire_size);
-	_spa_meta_acquisition_store_u32_be(&wire[0], acquisition->version);
-	_spa_meta_acquisition_store_u32_be(&wire[4], acquisition->abi_size);
-	_spa_meta_acquisition_store_u32_be(&wire[8], acquisition->flags);
-	_spa_meta_acquisition_store_u32_be(&wire[12], acquisition->timebase);
-	memcpy(&wire[16], acquisition->domain, sizeof(acquisition->domain));
-	_spa_meta_acquisition_store_u64_be(&wire[32], acquisition->generation);
-	_spa_meta_acquisition_store_u64_be(&wire[40], acquisition->sequence);
-	_spa_meta_acquisition_store_u64_be(&wire[48],
-			(uint64_t)acquisition->exposure_start_nsec);
-	_spa_meta_acquisition_store_u64_be(&wire[56],
-			acquisition->exposure_duration_nsec);
-	_spa_meta_acquisition_store_u64_be(&wire[64],
-			acquisition->timestamp_uncertainty_nsec);
-	memcpy(&wire[72], acquisition->ptp_grandmaster_id,
-			sizeof(acquisition->ptp_grandmaster_id));
-	wire[80] = acquisition->ptp_domain_number;
-	return true;
-}
-
-/** Deserialize and validate a canonical big-endian Version 2 wire record. */
-SPA_API_META bool spa_meta_acquisition_deserialize(
-		struct spa_meta_acquisition *acquisition,
-		const uint8_t *wire, uint32_t wire_size)
-{
-	struct spa_meta_acquisition decoded;
-	uint64_t exposure_start;
-
-	if (acquisition == NULL || !SPA_IS_ALIGNED(acquisition, 8) || wire == NULL ||
-	    wire_size != SPA_META_ACQUISITION_WIRE_SIZE ||
-	    !_spa_meta_acquisition_bytes_are_zero(&wire[81], 15))
-		return false;
-
-	memset(&decoded, 0, sizeof(decoded));
-	decoded.version = _spa_meta_acquisition_load_u32_be(&wire[0]);
-	decoded.abi_size = _spa_meta_acquisition_load_u32_be(&wire[4]);
-	decoded.flags = _spa_meta_acquisition_load_u32_be(&wire[8]);
-	decoded.timebase = _spa_meta_acquisition_load_u32_be(&wire[12]);
-	memcpy(decoded.domain, &wire[16], sizeof(decoded.domain));
-	decoded.generation = _spa_meta_acquisition_load_u64_be(&wire[32]);
-	decoded.sequence = _spa_meta_acquisition_load_u64_be(&wire[40]);
-	exposure_start = _spa_meta_acquisition_load_u64_be(&wire[48]);
-	if (exposure_start == ~(uint64_t)0)
-		decoded.exposure_start_nsec = SPA_TIME_INVALID;
-	else if (exposure_start > (uint64_t)INT64_MAX)
-		return false;
-	else
-		decoded.exposure_start_nsec = (int64_t)exposure_start;
-	decoded.exposure_duration_nsec =
-			_spa_meta_acquisition_load_u64_be(&wire[56]);
-	decoded.timestamp_uncertainty_nsec =
-			_spa_meta_acquisition_load_u64_be(&wire[64]);
-	memcpy(decoded.ptp_grandmaster_id, &wire[72],
-			sizeof(decoded.ptp_grandmaster_id));
-	decoded.ptp_domain_number = wire[80];
-	if (decoded.version != SPA_META_ACQUISITION_VERSION_2 ||
-	    !_spa_meta_acquisition_fields_are_valid(&decoded))
-		return false;
-
-	*acquisition = decoded;
-	return true;
 }
 
 /** Compare two complete, valid acquisition identity tuples. */

@@ -983,7 +983,8 @@ static int impl_node_process(void *object)
 	 * directly */
 	pw_log_warn("exported node activation");
 	spa_system_clock_gettime(impl->data_system, CLOCK_MONOTONIC, &ts);
-	n->rt.target.activation->signal_time = SPA_TIMESPEC_TO_NSEC(&ts);
+	pw_node_activation_set_signal_time(n->rt.target.activation,
+			SPA_TIMESPEC_TO_NSEC(&ts));
 	SPA_ATOMIC_STORE(n->rt.target.activation->status,
 			PW_NODE_ACTIVATION_TRIGGERED);
 

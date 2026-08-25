@@ -1,0 +1,18 @@
+{
+  "started_utc": "2026-08-25T07:29:15.229935+00:00",
+  "ended_utc": "2026-08-25T07:29:49.000463+00:00",
+  "duration_seconds": 33.770528,
+  "random_seed": 20260824,
+  "repetitions": 5,
+  "activation_samples": 100000,
+  "activation_warmup": 10000,
+  "scan_samples": 1000000,
+  "scan_warmup": 100000,
+  "caller_cpu": 12,
+  "loop_cpu": 14,
+  "rt_priorities": [
+    0,
+    88
+  ],
+  "histogram_format": "exact run-length counts of integer nanoseconds"
+}

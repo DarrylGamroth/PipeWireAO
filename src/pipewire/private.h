@@ -581,8 +581,9 @@ static inline void copy_target(struct pw_node_target *dst, const struct pw_node_
  * 1 the activation status needs to be CAS
  *   async nodes, driver resumes async nodes
  *   transport with sync.group properties instead of client command
+ * 2 signal_time publication is protected by signal_time_seq
  */
-#define PW_VERSION_NODE_ACTIVATION	1
+#define PW_VERSION_NODE_ACTIVATION	2
 
 #define PW_NODE_ACTIVATION_PENDING_TRIGGER(status) ((status) <= PW_NODE_ACTIVATION_AWAKE)
 
@@ -634,7 +635,8 @@ struct pw_node_activation {
 							 * CAS their node id in this array. */
 	uint64_t prev_awake_time;
 	uint64_t prev_finish_time;
-	uint32_t padding[7];				/* must be 0 */
+	uint32_t signal_time_seq;			/* sequence lock for signal_time */
+	uint32_t padding[6];				/* must be 0 */
 
 	uint32_t client_version;			/* verions of client, see above */
 	uint32_t server_version;			/* verions of server, see above */
@@ -710,6 +712,44 @@ static inline uint64_t get_time_ns(struct spa_system *system)
 	return SPA_TIMESPEC_TO_NSEC(&ts);
 }
 
+static inline bool pw_node_activation_signal_time_ready(
+		const struct pw_node_activation *a)
+{
+	return a->server_version < 2 ||
+			(SPA_SEQ_READ(a->signal_time_seq) & 1u) == 0;
+}
+
+static inline uint64_t pw_node_activation_get_signal_time(
+		const struct pw_node_activation *a)
+{
+	uint32_t seq1, seq2;
+	uint64_t signal_time;
+
+	if (a->server_version < 2)
+		return a->signal_time;
+	for (;;) {
+		seq1 = SPA_SEQ_READ(a->signal_time_seq);
+		if (SPA_UNLIKELY((seq1 & 1u) != 0)) {
+			pw_data_loop_relax();
+			continue;
+		}
+		signal_time = a->signal_time;
+		seq2 = SPA_SEQ_READ(a->signal_time_seq);
+		if (SPA_SEQ_READ_SUCCESS(seq1, seq2))
+			return signal_time;
+	}
+}
+
+static inline void pw_node_activation_set_signal_time(
+		struct pw_node_activation *a, uint64_t signal_time)
+{
+	if (a->server_version >= 2)
+		SPA_SEQ_WRITE(a->signal_time_seq);
+	a->signal_time = signal_time;
+	if (a->server_version >= 2)
+		SPA_SEQ_WRITE(a->signal_time_seq);
+}
+
 /* called from data-loop decrement the dependency counter of the target and when
  * there are no more dependencies, trigger the node. */
 static inline int trigger_target_v1(struct pw_node_target *t, uint64_t nsec)
@@ -747,6 +787,49 @@ static inline int trigger_target_v1(struct pw_node_target *t, uint64_t nsec)
 					t->name, t->id, a->status);
 			res = -EIO;
 		}
+	}
+	return res;
+}
+
+/* Version 2 claims signal_time publication before exposing TRIGGERED. This
+ * leaves signal_time unchanged when the status CAS fails while allowing a
+ * polling owner to wait for the successful writer's complete publication. */
+static inline int trigger_target_v2(struct pw_node_target *t, uint64_t nsec)
+{
+	struct pw_node_activation *a = t->activation;
+	struct pw_node_activation_state *state = &a->state[0];
+	uint32_t seq;
+	bool polling;
+	int32_t pending = SPA_ATOMIC_DEC(state->pending);
+	int res = pending == 0, r;
+
+	pw_log_trace_fp("%p: (%s-%u) state:%p pending:%d/%d", t->node,
+				t->name, t->id, state, pending, state->required);
+
+	if (!res)
+		return res;
+
+	seq = SPA_SEQ_READ(a->signal_time_seq);
+	if (SPA_UNLIKELY((seq & 1u) != 0 ||
+			!SPA_ATOMIC_CAS(a->signal_time_seq, seq, seq + 1u)))
+		return -EBUSY;
+
+	polling = pw_node_activation_is_polling(a);
+	if (SPA_LIKELY(SPA_ATOMIC_CAS(a->status,
+				PW_NODE_ACTIVATION_NOT_TRIGGERED,
+				PW_NODE_ACTIVATION_TRIGGERED))) {
+		a->signal_time = nsec;
+		SPA_SEQ_WRITE(a->signal_time_seq);
+		if (!polling && SPA_UNLIKELY((r = spa_system_eventfd_write(t->system,
+					t->fd, 1)) < 0)) {
+			pw_log_warn("%p: write failed %s", t->node, spa_strerror(r));
+			res = r;
+		}
+	} else {
+		SPA_SEQ_WRITE(a->signal_time_seq);
+		pw_log_trace_fp("%p: (%s-%u) not ready %d", t->node,
+				t->name, t->id, a->status);
+		res = -EIO;
 	}
 	return res;
 }
