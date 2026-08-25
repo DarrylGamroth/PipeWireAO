@@ -1,0 +1,6 @@
+# started on Tue Aug 25 00:44:11 2026
+
+197073881;;cycles:u;45434564;100.00;;
+362000712;;instructions:u;45434564;100.00;1.84;insn per cycle
+102000168;;branches:u;45434564;100.00;;
+132;;branch-misses:u;45434564;100.00;0.00;of all branches

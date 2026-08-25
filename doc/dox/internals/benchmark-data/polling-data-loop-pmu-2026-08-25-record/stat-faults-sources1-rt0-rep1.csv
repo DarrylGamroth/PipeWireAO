@@ -1,0 +1,7 @@
+# started on Tue Aug 25 00:44:23 2026
+
+0;;page-faults;42026323;100.00;;
+0;;minor-faults;42026323;100.00;;
+0;;major-faults;42026323;100.00;;
+1;;context-switches;42026323;100.00;;
+0;;cpu-migrations;42026323;100.00;;

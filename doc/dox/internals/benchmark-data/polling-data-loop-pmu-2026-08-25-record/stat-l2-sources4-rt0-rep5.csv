@@ -1,0 +1,6 @@
+# started on Tue Aug 25 00:48:27 2026
+
+197938547;;cycles:u;46204277;100.00;;
+362000901;;instructions:u;46204277;100.00;1.83;insn per cycle
+132467;;l2_request_g1.all_no_prefetch:u;46204277;100.00;;
+4009;;l2_cache_req_stat.ic_dc_miss_in_l2:u;46204277;100.00;;
