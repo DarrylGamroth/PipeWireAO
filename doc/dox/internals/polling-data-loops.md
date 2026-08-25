@@ -38,6 +38,8 @@ The benchmark method, raw histograms, environment record, and current host
 results are documented in [Polling data-loop benchmark](polling-data-loop-benchmark.md).
 Hardware-counter and call-graph results are documented in
 [Polling data-loop profiling](polling-data-loop-profiling.md).
+Exported-node buffer-transit latency and counters are documented in
+[Exported-node graph scheduling benchmark](polling-remote-graph-benchmark.md).
 
 ## Configuration
 
