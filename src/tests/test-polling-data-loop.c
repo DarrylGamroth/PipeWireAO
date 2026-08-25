@@ -4,6 +4,7 @@
 
 #include <errno.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <pthread.h>
 #include <sched.h>
 #include <stdatomic.h>
@@ -12,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -85,6 +87,7 @@ struct synthetic_node {
 	int benchmark_process_cpu;
 	int benchmark_process_policy;
 	int benchmark_process_priority;
+	pid_t benchmark_process_tid;
 	int benchmark_scheduler_error;
 	uint32_t benchmark_observe_after_calls;
 	int process_result;
@@ -191,12 +194,14 @@ static int synthetic_process(void *object)
 	SPA_ATOMIC_INC(node->processing);
 	SPA_ATOMIC_STORE(node->process_thread, (uintptr_t)pthread_self());
 	if (node->benchmark_requested_rt_priority >= 0 &&
-			node->benchmark_process_cpu == -1)
+			node->benchmark_process_cpu == -1) {
+		node->benchmark_process_tid = (pid_t)syscall(SYS_gettid);
 		configure_benchmark_scheduler(node->benchmark_requested_rt_priority,
 				&node->benchmark_process_cpu,
 				&node->benchmark_process_policy,
 				&node->benchmark_process_priority,
 				&node->benchmark_scheduler_error);
+	}
 	if (node->benchmark_requested_rt_priority >= 0 &&
 			SPA_ATOMIC_LOAD(node->process_calls) ==
 			node->benchmark_observe_after_calls)
@@ -232,6 +237,7 @@ static void synthetic_init_regular(struct synthetic_node *node)
 	node->benchmark_process_cpu = -1;
 	node->benchmark_process_policy = -1;
 	node->benchmark_process_priority = -1;
+	node->benchmark_process_tid = -1;
 	node->benchmark_scheduler_error = 0;
 	node->node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
 			SPA_VERSION_NODE, &synthetic_methods, node);
@@ -814,6 +820,99 @@ enum scan_contention {
 	SCAN_CONTENTION_BURST,
 };
 
+struct benchmark_profile_gate {
+	int ready_fd;
+	int start_fd;
+	int done_fd;
+	int finish_fd;
+	bool enabled;
+};
+
+static int profile_gate_fd(const char *name)
+{
+	const char *value = getenv(name);
+	char *end = NULL;
+	long fd;
+
+	if (value == NULL)
+		return -1;
+	errno = 0;
+	fd = strtol(value, &end, 10);
+	spa_assert_se(errno == 0 && end != value && *end == '\0' &&
+			fd >= 0 && fd <= INT_MAX);
+	return (int)fd;
+}
+
+static void profile_gate_init(struct benchmark_profile_gate *gate)
+{
+	gate->ready_fd = profile_gate_fd("PW_BENCHMARK_PROFILE_READY_FD");
+	gate->start_fd = profile_gate_fd("PW_BENCHMARK_PROFILE_START_FD");
+	gate->done_fd = profile_gate_fd("PW_BENCHMARK_PROFILE_DONE_FD");
+	gate->finish_fd = profile_gate_fd("PW_BENCHMARK_PROFILE_FINISH_FD");
+	gate->enabled = gate->ready_fd >= 0 || gate->start_fd >= 0 ||
+			gate->done_fd >= 0 || gate->finish_fd >= 0;
+	spa_assert_se(!gate->enabled || (gate->ready_fd >= 0 &&
+			gate->start_fd >= 0 && gate->done_fd >= 0 &&
+			gate->finish_fd >= 0));
+}
+
+static void profile_gate_write(int fd, const void *data, size_t size)
+{
+	const uint8_t *bytes = data;
+
+	while (size > 0) {
+		ssize_t written = write(fd, bytes, size);
+
+		if (written < 0 && errno == EINTR)
+			continue;
+		spa_assert_se(written > 0);
+		bytes += written;
+		size -= (size_t)written;
+	}
+}
+
+static void profile_gate_read(int fd, void *data, size_t size)
+{
+	uint8_t *bytes = data;
+
+	while (size > 0) {
+		ssize_t received = read(fd, bytes, size);
+
+		if (received < 0 && errno == EINTR)
+			continue;
+		spa_assert_se(received > 0);
+		bytes += received;
+		size -= (size_t)received;
+	}
+}
+
+static void profile_gate_begin_tid(struct benchmark_profile_gate *gate, pid_t tid)
+{
+	uint8_t token;
+
+	if (!gate->enabled)
+		return;
+	spa_assert_se(tid > 0);
+	profile_gate_write(gate->ready_fd, &tid, sizeof(tid));
+	profile_gate_read(gate->start_fd, &token, sizeof(token));
+}
+
+static void profile_gate_begin(struct benchmark_profile_gate *gate)
+{
+	profile_gate_begin_tid(gate, (pid_t)syscall(SYS_gettid));
+}
+
+static void profile_gate_end(struct benchmark_profile_gate *gate)
+{
+	const uint8_t token = 1;
+	uint8_t reply;
+
+	if (!gate->enabled)
+		return;
+	profile_gate_write(gate->done_fd, &token, sizeof(token));
+	profile_gate_read(gate->finish_fd, &reply, sizeof(reply));
+}
+
 struct scan_benchmark {
 	struct pw_data_loop *loop;
 	uint64_t *gaps;
@@ -834,6 +933,7 @@ struct scan_benchmark {
 	int observed_loop_policy;
 	int observed_loop_priority;
 	int scheduler_error;
+	struct benchmark_profile_gate profile_gate;
 };
 
 static int scan_probe(void *data)
@@ -853,10 +953,13 @@ static int scan_probe(void *data)
 				&benchmark->observed_loop_policy,
 				&benchmark->observed_loop_priority,
 				&benchmark->scheduler_error);
-	if (probe == benchmark->warmup)
+	if (probe == benchmark->warmup) {
 		observe_benchmark_scheduler(&benchmark->observed_loop_cpu,
 				&benchmark->observed_loop_policy,
 				&benchmark->observed_loop_priority);
+		profile_gate_begin(&benchmark->profile_gate);
+		now = raw_time_nsec();
+	}
 
 	if (probe > benchmark->warmup) {
 		uint32_t index = probe - benchmark->warmup - 1u;
@@ -865,8 +968,10 @@ static int scan_probe(void *data)
 			benchmark->gaps[index] = now - benchmark->previous;
 	}
 	benchmark->previous = now;
-	if (probe >= benchmark->warmup + benchmark->samples)
+	if (probe >= benchmark->warmup + benchmark->samples) {
+		profile_gate_end(&benchmark->profile_gate);
 		pw_data_loop_exit(benchmark->loop);
+	}
 	return 0;
 }
 
@@ -974,6 +1079,7 @@ static void benchmark_empty_scans(uint32_t work_sources,
 	benchmark.observed_loop_policy = -1;
 	benchmark.observed_loop_priority = -1;
 	benchmark.scheduler_error = 0;
+	profile_gate_init(&benchmark.profile_gate);
 	benchmark.gaps = calloc(samples, sizeof(*benchmark.gaps));
 	sources = calloc(work_sources + 1u, sizeof(*sources));
 	spa_assert_se(benchmark.gaps != NULL && sources != NULL);
@@ -1082,12 +1188,14 @@ static void benchmark_regular_activation(const char *idle, uint32_t samples,
 	struct synthetic_node synthetic;
 	struct pw_impl_node *node;
 	struct pw_properties *properties;
+	struct benchmark_profile_gate profile_gate;
 	uint64_t *latency, start, end;
 	uint32_t i;
 
 	spa_assert_se(spa_streq(idle, "eventfd") || spa_streq(idle, "busy-spin"));
 	spa_assert_se(samples > 0 && caller_cpu != loop_cpu);
 	pin_current_thread(caller_cpu);
+	profile_gate_init(&profile_gate);
 	snprintf(data_loops, sizeof(data_loops),
 			"[ { loop.name = benchmark-loop thread.name = benchmark-loop "
 			"loop.class = data.rt loop.rt-prio = 0 "
@@ -1116,6 +1224,7 @@ static void benchmark_regular_activation(const char *idle, uint32_t samples,
 	latency = calloc(samples, sizeof(*latency));
 	spa_assert_se(latency != NULL);
 	prefault_writable_pages(latency, (size_t)samples * sizeof(*latency));
+	profile_gate_begin_tid(&profile_gate, synthetic.benchmark_process_tid);
 	synthetic.benchmark_latency = latency;
 	synthetic.benchmark_system = node->rt.target.system;
 	start = get_time_ns(node->rt.target.system);
@@ -1129,6 +1238,7 @@ static void benchmark_regular_activation(const char *idle, uint32_t samples,
 	}
 	end = get_time_ns(node->rt.target.system);
 	synthetic.benchmark_latency = NULL;
+	profile_gate_end(&profile_gate);
 
 	write_histogram(histogram_path, latency, samples);
 	printf("activation idle=%s samples=%u warmup=%u model=closed-loop "

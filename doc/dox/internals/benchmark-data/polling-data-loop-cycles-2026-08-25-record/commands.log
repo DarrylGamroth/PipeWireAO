@@ -1,0 +1,31 @@
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 0 none 5000000 1000000 12 14 88 /tmp/pw-polling-sample-jch34fic/cycles-sources0-rt88.csv
+$ perf record --output /tmp/pw-polling-sample-jch34fic/cycles-sources0-rt88.data --delay=-1 --control=fd:4,9 --event cycles:u --freq 4999 --call-graph dwarf,8192 --tid 1225145
+$ perf report --input /tmp/pw-polling-sample-jch34fic/cycles-sources0-rt88.data --stdio --percent-limit 0.1 --sort comm,dso,symbol --no-children
+$ perf report --input /tmp/pw-polling-sample-jch34fic/cycles-sources0-rt88.data --stdio --percent-limit 0.1 --sort comm,dso,symbol --children
+benchmark-stdout:
+scan work-sources=0 probe-sources=1 contention=none samples=5000000 warmup=1000000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=23426753.0/s p50=0.040us p90=0.050us p99=0.060us p99.9=0.090us max=21.360us control-submitted=0 control-completed=0 control-failed=0
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+[ perf record: Woken up 37 times to write data ]
+[ perf record: Captured and wrote 8.725 MB /tmp/pw-polling-sample-jch34fic/cycles-sources0-rt88.data (1082 samples) ]
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-scan 64 none 5000000 1000000 12 14 88 /tmp/pw-polling-sample-jch34fic/cycles-sources64-rt88.csv
+$ perf record --output /tmp/pw-polling-sample-jch34fic/cycles-sources64-rt88.data --delay=-1 --control=fd:4,9 --event cycles:u --freq 4999 --call-graph dwarf,8192 --tid 1225209
+$ perf report --input /tmp/pw-polling-sample-jch34fic/cycles-sources64-rt88.data --stdio --percent-limit 0.1 --sort comm,dso,symbol --no-children
+$ perf report --input /tmp/pw-polling-sample-jch34fic/cycles-sources64-rt88.data --stdio --percent-limit 0.1 --sort comm,dso,symbol --children
+benchmark-stdout:
+scan work-sources=64 probe-sources=1 contention=none samples=5000000 warmup=1000000 caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=6480492.6/s p50=0.150us p90=0.151us p99=0.211us p99.9=0.331us max=15.368us control-submitted=0 control-completed=0 control-failed=0
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+[ perf record: Woken up 128 times to write data ]
+[ perf record: Captured and wrote 31.212 MB /tmp/pw-polling-sample-jch34fic/cycles-sources64-rt88.data (3873 samples) ]
+
