@@ -228,7 +228,7 @@ do_node_prepare(struct spa_loop *loop, bool async, uint32_t seq,
 	 * owner advertises the wake policy in the shared activation. Local and
 	 * exported implementations own their policy and their process source. */
 	if (!this->remote) {
-		if (polling && this->rt.target.activation->server_version < 1)
+		if (polling && this->rt.target.activation->server_version < 2)
 			return -EPROTONOSUPPORT;
 		pw_node_activation_set_polling(this->rt.target.activation, polling);
 	}
@@ -1455,10 +1455,10 @@ static inline void debug_xrun_target(struct pw_impl_node *driver,
 		" waiting:%"PRIu64" process:%"PRIu64" status:%s (%d suppressed)",
 		t->name, t->id, state,
 		state->pending, state->required,
-		a->signal_time,
+		pw_node_activation_get_signal_time(a),
 		a->awake_time,
 		a->finish_time,
-		a->awake_time - a->signal_time,
+		a->awake_time - pw_node_activation_get_signal_time(a),
 		a->finish_time - a->awake_time,
 		str_status(status), suppressed);
 }
@@ -1486,10 +1486,10 @@ static inline void debug_xrun_graph(struct pw_impl_node *driver, uint64_t nsec, 
 					" waiting:%"PRIu64" process:%"PRIu64" status:%s",
 					t->name, t->id, state,
 					state->pending, state->required,
-					a->signal_time,
+					pw_node_activation_get_signal_time(a),
 					a->awake_time,
 					a->finish_time,
-					a->awake_time - a->signal_time,
+					a->awake_time - pw_node_activation_get_signal_time(a),
 					a->finish_time - a->awake_time,
 					str_status(status));
 
@@ -1521,10 +1521,10 @@ static void debug_sync_timeout(struct pw_impl_node *driver, uint64_t nsec)
 				" waiting:%"PRIu64" process:%"PRIu64" status:%s",
 				t->name, t->id, state,
 				state->pending, state->required,
-				a->signal_time,
+				pw_node_activation_get_signal_time(a),
 				a->awake_time,
 				a->finish_time,
-				a->awake_time - a->signal_time,
+				a->awake_time - pw_node_activation_get_signal_time(a),
 				a->finish_time - a->awake_time,
 				str_status(status));
 	}
@@ -1532,9 +1532,9 @@ static void debug_sync_timeout(struct pw_impl_node *driver, uint64_t nsec)
 
 static inline void calculate_stats(struct pw_impl_node *this,  struct pw_node_activation *a)
 {
-	uint64_t signal_time = a->signal_time;
+	uint64_t signal_time = pw_node_activation_get_signal_time(a);
 	uint64_t prev_signal_time = a->prev_signal_time;
-	uint64_t process_time = a->finish_time - a->signal_time;
+	uint64_t process_time = a->finish_time - signal_time;
 	uint64_t period_time = signal_time - prev_signal_time;
 
 	if (SPA_LIKELY(signal_time > prev_signal_time)) {
@@ -1565,7 +1565,8 @@ static inline int process_node(void *data, uint64_t nsec)
 	int status;
 	bool was_awake;
 
-	if (!SPA_ATOMIC_CAS(a->status,
+	if (!pw_node_activation_signal_time_ready(a) ||
+	    !SPA_ATOMIC_CAS(a->status,
 				PW_NODE_ACTIVATION_TRIGGERED,
 				PW_NODE_ACTIVATION_AWAKE))
 		return 0;
@@ -1573,7 +1574,7 @@ static inline int process_node(void *data, uint64_t nsec)
 	a->awake_time = nsec;
 	pw_log_trace_fp("%p: %s-%d process remote:%u exported:%u %"PRIu64" %"PRIu64,
 			this, this->name, this->info.id, this->remote, this->exported,
-			a->signal_time, nsec);
+			pw_node_activation_get_signal_time(a), nsec);
 
 	/* when transport sync is not supported, just clear the flag */
 	if (SPA_UNLIKELY(!this->transport_sync))
@@ -1628,7 +1629,7 @@ static inline int process_node(void *data, uint64_t nsec)
 			trigger_targets(this, status, nsec);
 	} else {
 		/* calculate CPU time when finished */
-		a->signal_time = this->driver_start;
+		pw_node_activation_set_signal_time(a, this->driver_start);
 		calculate_stats(this, a);
 		pw_impl_node_rt_emit_complete(this);
 	}
@@ -1844,10 +1845,10 @@ struct pw_impl_node *pw_context_create_node(struct pw_context *context,
 	this->rt.target.node = this;
 	this->rt.target.system = this->data_loop->system;
 	this->rt.target.fd = this->source.fd;
-	/* Version-1 targets select eventfd or polling from the destination's
-	 * shared activation flag. This also works when the owner is in another
-	 * process and its server-side representation uses a different loop. */
-	this->rt.target.trigger = trigger_target_v1;
+	/* Version-2 targets select eventfd or polling from the destination's
+	 * shared activation flag and publish signal_time before a polling owner
+	 * processes the activation. This also works across processes. */
+	this->rt.target.trigger = trigger_target_v2;
 
 	reset_position(this, &this->rt.target.activation->position);
 	this->rt.target.activation->sync_timeout = DEFAULT_SYNC_TIMEOUT;
@@ -2335,7 +2336,7 @@ retry_status:
 		} else {
 			all_ready &= ta->pending_sync == false;
 		}
-		ta->prev_signal_time = ta->signal_time;
+		ta->prev_signal_time = pw_node_activation_get_signal_time(ta);
 		ta->prev_awake_time = ta->awake_time;
 		ta->prev_finish_time = ta->finish_time;
 	}

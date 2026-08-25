@@ -215,16 +215,18 @@ static void context_do_profile(void *data)
 	struct pw_node_activation *a = node->rt.target.activation;
 	struct spa_io_position *pos = &a->position;
 	struct pw_node_target *t;
+	uint64_t signal_time;
 	int32_t filled;
 	uint32_t idx, avail;
 
 	if (SPA_FLAG_IS_SET(pos->clock.flags, SPA_IO_CLOCK_FLAG_FREEWHEEL))
 		return;
 
-	if (a->signal_time - n->last_profile_time < impl->interval)
+	signal_time = pw_node_activation_get_signal_time(a);
+	if (signal_time - n->last_profile_time < impl->interval)
 		goto done;
 
-	n->last_profile_time = a->signal_time;
+	n->last_profile_time = signal_time;
 
 	spa_pod_builder_init(&b, n->tmp, sizeof(n->tmp));
 	spa_pod_builder_push_object(&b, &f[0],
@@ -259,7 +261,7 @@ static void context_do_profile(void *data)
 			SPA_POD_Int(id),
 			SPA_POD_String(node->name),
 			SPA_POD_Long(a->prev_signal_time),
-			SPA_POD_Long(a->signal_time),
+			SPA_POD_Long(signal_time),
 			SPA_POD_Long(a->awake_time),
 			SPA_POD_Long(a->finish_time),
 			SPA_POD_Int(a->status),
@@ -271,7 +273,7 @@ static void context_do_profile(void *data)
 		struct pw_node_activation *ta = t->activation;
 		struct spa_fraction latency;
 		bool async;
-		int64_t prev_signal_time;
+		int64_t prev_signal_time, target_signal_time;
 
 		if (t->id == id)
 			continue;
@@ -291,13 +293,15 @@ static void context_do_profile(void *data)
 			async = false;
 			prev_signal_time = ta->prev_signal_time;
 		}
+		target_signal_time = async ? ta->prev_signal_time :
+			pw_node_activation_get_signal_time(ta);
 
 		spa_pod_builder_prop(&b, SPA_PROFILER_followerBlock, 0);
 		spa_pod_builder_add_struct(&b,
 			SPA_POD_Int(t->id),
 			SPA_POD_String(t->name),
 			SPA_POD_Long(prev_signal_time),
-			SPA_POD_Long(async ? ta->prev_signal_time : ta->signal_time),
+			SPA_POD_Long(target_signal_time),
 			SPA_POD_Long(async ? ta->prev_awake_time : ta->awake_time),
 			SPA_POD_Long(async ? ta->prev_finish_time : ta->finish_time),
 			SPA_POD_Int(ta->status),

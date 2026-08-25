@@ -14,6 +14,7 @@
 - \subpage page_scheduling
 - \subpage page_scheduling_detail
 - \subpage page_polling_data_loops
+- \subpage page_polling_data_loop_benchmark
 - \subpage page_row_block_ndarrays
 - \subpage page_acquisition_metadata
 - \subpage page_driver
