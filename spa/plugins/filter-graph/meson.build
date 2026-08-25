@@ -1,3 +1,53 @@
+ndarray_filter_graph = static_library('spa-filter-graph-ndarray',
+  [ 'ndarray-graph.c' ],
+  include_directories : [configinc],
+  dependencies : [ spa_dep, dl_lib ],
+  install : false,
+)
+
+if get_option('tests').allowed()
+  spa_filter_graph_plugin_ndarray_example = shared_library('spa-filter-graph-ndarray-example',
+    [ 'plugin_ndarray_example.c' ],
+    include_directories : [configinc],
+    dependencies : [ spa_dep, mathlib ],
+    install : false,
+  )
+
+  ndarray_filter_graph_test = executable('test-filter-graph-ndarray',
+    [ 'test-ndarray-graph.c' ],
+    include_directories : [configinc],
+    dependencies : [ spa_dep, dl_lib, mathlib ],
+    link_with : ndarray_filter_graph,
+    install : false,
+  )
+
+  test('spa-filter-graph-ndarray-c',
+    ndarray_filter_graph_test,
+    args : [ spa_filter_graph_plugin_ndarray_example.full_path() ],
+    depends : [ spa_filter_graph_plugin_ndarray_example ],
+  )
+
+  rustc = find_program('rustc', required : false)
+  if rustc.found()
+    spa_filter_graph_plugin_ndarray_example_rust = custom_target(
+      'spa-filter-graph-ndarray-example-rust',
+      input : 'plugin_ndarray_example.rs',
+      output : 'libspa-filter-graph-ndarray-example-rust.so',
+      command : [ rustc, '--edition=2024', '--crate-type=cdylib',
+                  '-C', 'panic=unwind', '-o', '@OUTPUT@', '@INPUT@' ],
+    )
+    test('spa-filter-graph-ndarray-rust',
+      ndarray_filter_graph_test,
+      args : [ spa_filter_graph_plugin_ndarray_example_rust.full_path() ],
+      depends : [ spa_filter_graph_plugin_ndarray_example_rust ],
+    )
+  endif
+endif
+
+if not get_option('audioconvert').allowed()
+  subdir_done()
+endif
+
 plugin_dependencies = []
 if get_option('spa-plugins').allowed()
   plugin_dependencies += audioconvert_dep
@@ -134,5 +184,3 @@ spa_filter_graph_plugin_onnx = shared_library('spa-filter-graph-plugin-onnx',
   dependencies : [ filter_graph_dependencies, onnxruntime_dep]
 )
 endif
-
-
