@@ -15,6 +15,7 @@
 - \subpage page_scheduling_detail
 - \subpage page_polling_data_loops
 - \subpage page_row_block_ndarrays
+- \subpage page_ndarray_filter_graph
 - \subpage page_acquisition_metadata
 - \subpage page_driver
 - \subpage page_latency

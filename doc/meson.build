@@ -72,6 +72,7 @@ extra_docs = [
   'dox/internals/scheduling.md',
   'dox/internals/polling-data-loops.md',
   'dox/internals/row-block-ndarrays.md',
+  'dox/internals/ndarray-filter-graph.md',
   'dox/internals/acquisition-metadata.md',
   'dox/internals/driver.dox',
   'dox/internals/protocol.dox',
