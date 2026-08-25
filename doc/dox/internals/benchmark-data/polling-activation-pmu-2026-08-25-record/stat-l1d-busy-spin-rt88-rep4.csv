@@ -1,0 +1,6 @@
+# started on Tue Aug 25 00:57:08 2026
+
+155254452;;cycles:u;35540910;100.00;;
+191333503;;instructions:u;35540910;100.00;1.23;insn per cycle
+72143910;;L1-dcache-loads;35540910;100.00;;
+798378;;L1-dcache-load-misses;35540910;100.00;1.11;of all L1-dcache accesses

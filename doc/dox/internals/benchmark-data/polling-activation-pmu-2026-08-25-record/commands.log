@@ -1,0 +1,1199 @@
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/dtlb-busy-spin-rt0-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-busy-spin-rt0-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1230329
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2877229.0/s p50=0.231us p90=0.271us p99=0.331us p99.9=1.152us max=20.048us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l1d-eventfd-rt88-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-eventfd-rt88-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1230333
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=122428.2/s p50=8.045us p90=8.106us p99=10.420us p99.9=15.780us max=27.692us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l1d-busy-spin-rt88-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-busy-spin-rt88-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1230370
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2836245.2/s p50=0.231us p90=0.281us p99=0.351us p99.9=1.012us max=13.345us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/dtlb-busy-spin-rt88-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-busy-spin-rt88-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1230374
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2820834.4/s p50=0.231us p90=0.290us p99=0.351us p99.9=1.072us max=5.571us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/faults-eventfd-rt88-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-eventfd-rt88-rep1.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1230422
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=225444.0/s p50=4.198us p90=4.268us p99=7.464us p99.9=8.326us max=302.035us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l1d-busy-spin-rt0-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-busy-spin-rt0-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1230438
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2885547.9/s p50=0.231us p90=0.280us p99=0.331us p99.9=1.112us max=5.871us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/core-busy-spin-rt0-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-busy-spin-rt0-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1230455
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2868627.4/s p50=0.230us p90=0.280us p99=0.351us p99.9=0.902us max=8.846us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l2-eventfd-rt88-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-eventfd-rt88-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1230480
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=119251.9/s p50=8.125us p90=9.407us p99=11.913us p99.9=15.830us max=30.006us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l2-eventfd-rt0-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-eventfd-rt0-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1230496
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=103246.4/s p50=9.508us p90=9.588us p99=12.904us p99.9=16.621us max=3144.126us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l1d-eventfd-rt0-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-eventfd-rt0-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1230528
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=103942.5/s p50=9.477us p90=9.578us p99=12.063us p99.9=17.072us max=124.012us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/faults-eventfd-rt0-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-eventfd-rt0-rep1.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1230544
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=173418.3/s p50=5.650us p90=5.711us p99=7.373us p99.9=10.118us max=119.975us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/dtlb-eventfd-rt0-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-eventfd-rt0-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1230576
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=100166.2/s p50=9.578us p90=9.719us p99=14.307us p99.9=20.969us max=6274.064us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/core-eventfd-rt88-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-eventfd-rt88-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1230614
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=121439.2/s p50=8.105us p90=8.235us p99=10.710us p99.9=15.048us max=33.743us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l2-busy-spin-rt0-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-busy-spin-rt0-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1230631
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2925331.5/s p50=0.230us p90=0.280us p99=0.331us p99.9=0.912us max=6.712us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/faults-busy-spin-rt0-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-busy-spin-rt0-rep1.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1230660
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2898944.6/s p50=0.231us p90=0.271us p99=0.331us p99.9=0.832us max=5.410us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l2-busy-spin-rt88-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-busy-spin-rt88-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1230691
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2885039.2/s p50=0.230us p90=0.280us p99=0.350us p99.9=1.112us max=6.903us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/core-eventfd-rt0-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-eventfd-rt0-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1230698
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=103272.8/s p50=9.508us p90=9.628us p99=12.483us p99.9=19.226us max=174.787us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/core-busy-spin-rt88-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-busy-spin-rt88-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1230733
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2804007.9/s p50=0.240us p90=0.291us p99=0.371us p99.9=1.122us max=6.622us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/faults-busy-spin-rt88-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-busy-spin-rt88-rep1.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1230749
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2876243.4/s p50=0.231us p90=0.271us p99=0.330us p99.9=0.691us max=10.149us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/dtlb-eventfd-rt88-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-eventfd-rt88-rep1.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1230777
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=121160.4/s p50=8.085us p90=8.225us p99=11.081us p99.9=15.820us max=35.717us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/core-eventfd-rt88-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-eventfd-rt88-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1230810
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=121809.7/s p50=8.075us p90=8.125us p99=10.259us p99.9=13.475us max=52.949us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/faults-busy-spin-rt88-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-busy-spin-rt88-rep2.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1230821
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2855314.0/s p50=0.240us p90=0.271us p99=0.331us p99.9=0.971us max=7.945us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l2-busy-spin-rt88-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-busy-spin-rt88-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1230853
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2789288.2/s p50=0.231us p90=0.291us p99=0.370us p99.9=0.872us max=5.531us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l1d-busy-spin-rt88-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-busy-spin-rt88-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1230865
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2837867.9/s p50=0.231us p90=0.290us p99=0.351us p99.9=1.042us max=7.254us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l2-eventfd-rt88-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-eventfd-rt88-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1230875
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=122004.8/s p50=8.095us p90=8.165us p99=10.149us p99.9=13.926us max=30.938us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/faults-eventfd-rt88-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-eventfd-rt88-rep2.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1230906
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=230657.2/s p50=4.208us p90=4.258us p99=5.631us p99.9=8.476us max=31.629us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/core-busy-spin-rt88-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-busy-spin-rt88-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1230923
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2824615.3/s p50=0.240us p90=0.281us p99=0.360us p99.9=1.042us max=4.218us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/core-eventfd-rt0-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-eventfd-rt0-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1230971
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=102879.2/s p50=9.528us p90=9.638us p99=12.193us p99.9=20.979us max=222.066us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/faults-eventfd-rt0-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-eventfd-rt0-rep2.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1230982
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=169949.2/s p50=5.691us p90=5.821us p99=7.794us p99.9=12.703us max=69.400us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/dtlb-eventfd-rt0-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-eventfd-rt0-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1231014
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=102727.1/s p50=9.538us p90=9.648us p99=12.343us p99.9=18.875us max=144.461us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/dtlb-busy-spin-rt0-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-busy-spin-rt0-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1231033
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2811060.0/s p50=0.231us p90=0.290us p99=0.370us p99.9=1.032us max=12.303us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/dtlb-eventfd-rt88-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-eventfd-rt88-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1231074
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=120005.3/s p50=8.155us p90=8.245us p99=10.820us p99.9=17.012us max=50.765us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l1d-eventfd-rt0-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-eventfd-rt0-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1231091
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=103862.2/s p50=9.487us p90=9.538us p99=11.903us p99.9=17.834us max=124.923us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l2-eventfd-rt0-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-eventfd-rt0-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1231116
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=103710.0/s p50=9.488us p90=9.568us p99=11.692us p99.9=20.959us max=126.307us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l2-busy-spin-rt0-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-busy-spin-rt0-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1231139
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2860586.5/s p50=0.230us p90=0.280us p99=0.340us p99.9=0.862us max=17.633us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/core-busy-spin-rt0-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-busy-spin-rt0-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1231162
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2865243.4/s p50=0.231us p90=0.271us p99=0.340us p99.9=1.082us max=9.628us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/dtlb-busy-spin-rt88-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-busy-spin-rt88-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1231180
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2801161.8/s p50=0.230us p90=0.291us p99=0.351us p99.9=1.032us max=6.352us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l1d-eventfd-rt88-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-eventfd-rt88-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1231190
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=121341.4/s p50=8.095us p90=8.145us p99=10.279us p99.9=17.733us max=50.645us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l1d-busy-spin-rt0-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-busy-spin-rt0-rep2.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1231221
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2875348.0/s p50=0.231us p90=0.270us p99=0.331us p99.9=0.912us max=6.542us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/faults-busy-spin-rt0-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-busy-spin-rt0-rep2.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1231232
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2913916.9/s p50=0.230us p90=0.271us p99=0.321us p99.9=0.841us max=6.141us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/core-busy-spin-rt88-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-busy-spin-rt88-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1231243
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2857139.3/s p50=0.231us p90=0.271us p99=0.380us p99.9=0.921us max=8.175us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/faults-busy-spin-rt88-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-busy-spin-rt88-rep3.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1231274
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2901612.1/s p50=0.230us p90=0.270us p99=0.330us p99.9=0.731us max=5.240us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l1d-busy-spin-rt88-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-busy-spin-rt88-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1231284
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2777616.6/s p50=0.240us p90=0.291us p99=0.370us p99.9=1.062us max=7.103us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/dtlb-busy-spin-rt88-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-busy-spin-rt88-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1231315
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2837848.8/s p50=0.240us p90=0.281us p99=0.371us p99.9=1.072us max=6.392us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/faults-busy-spin-rt0-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-busy-spin-rt0-rep3.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1231326
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2886026.4/s p50=0.230us p90=0.280us p99=0.331us p99.9=0.952us max=4.499us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/core-eventfd-rt0-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-eventfd-rt0-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1231342
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=103048.4/s p50=9.528us p90=9.658us p99=12.182us p99.9=17.312us max=126.998us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/faults-eventfd-rt88-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-eventfd-rt88-rep3.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1231369
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=223776.9/s p50=4.288us p90=4.388us p99=6.112us p99.9=9.117us max=25.918us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l1d-busy-spin-rt0-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-busy-spin-rt0-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1231384
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2869936.1/s p50=0.231us p90=0.271us p99=0.330us p99.9=0.922us max=6.573us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l1d-eventfd-rt88-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-eventfd-rt88-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1231415
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=121209.8/s p50=8.086us p90=8.135us p99=10.290us p99.9=15.750us max=21.600us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/core-busy-spin-rt0-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-busy-spin-rt0-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1231426
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2875124.5/s p50=0.231us p90=0.271us p99=0.331us p99.9=1.022us max=6.211us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/core-eventfd-rt88-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-eventfd-rt88-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1231442
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=118475.0/s p50=8.156us p90=8.266us p99=12.253us p99.9=14.387us max=27.532us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/dtlb-eventfd-rt88-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-eventfd-rt88-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1231469
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=120675.9/s p50=8.125us p90=8.216us p99=10.359us p99.9=16.040us max=26.560us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l2-busy-spin-rt88-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-busy-spin-rt88-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1231485
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2878081.7/s p50=0.230us p90=0.271us p99=0.331us p99.9=0.902us max=2.424us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/dtlb-busy-spin-rt0-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-busy-spin-rt0-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1231532
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2904431.6/s p50=0.230us p90=0.280us p99=0.341us p99.9=0.942us max=8.556us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/faults-eventfd-rt0-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-eventfd-rt0-rep3.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1231546
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=171002.9/s p50=5.681us p90=5.770us p99=7.585us p99.9=12.523us max=123.330us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/dtlb-eventfd-rt0-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-eventfd-rt0-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1231594
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=102377.2/s p50=9.608us p90=9.679us p99=12.263us p99.9=20.899us max=321.652us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l2-busy-spin-rt0-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-busy-spin-rt0-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1231608
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2882546.8/s p50=0.231us p90=0.281us p99=0.331us p99.9=0.881us max=3.707us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l1d-eventfd-rt0-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-eventfd-rt0-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1231639
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=102726.9/s p50=9.568us p90=9.648us p99=12.303us p99.9=20.950us max=162.384us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l2-eventfd-rt0-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-eventfd-rt0-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1231676
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=101830.0/s p50=9.588us p90=9.718us p99=12.954us p99.9=14.357us max=5054.410us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l2-eventfd-rt88-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-eventfd-rt88-rep3.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1231681
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=119898.1/s p50=8.166us p90=8.246us p99=10.509us p99.9=17.703us max=34.104us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l1d-busy-spin-rt0-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-busy-spin-rt0-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1231718
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2753550.0/s p50=0.240us p90=0.300us p99=0.371us p99.9=1.062us max=5.931us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l2-busy-spin-rt88-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-busy-spin-rt88-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1231722
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2897636.5/s p50=0.230us p90=0.280us p99=0.340us p99.9=0.922us max=4.278us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l1d-eventfd-rt0-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-eventfd-rt0-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1231759
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=104503.8/s p50=9.558us p90=9.698us p99=13.145us p99.9=20.950us max=828.601us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l1d-eventfd-rt88-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-eventfd-rt88-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1231792
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=121020.9/s p50=8.125us p90=8.185us p99=10.410us p99.9=17.663us max=31.088us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l2-busy-spin-rt0-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-busy-spin-rt0-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1231820
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2860000.8/s p50=0.231us p90=0.280us p99=0.331us p99.9=1.182us max=2.995us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/core-eventfd-rt88-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-eventfd-rt88-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1231830
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=121925.5/s p50=8.086us p90=8.155us p99=10.209us p99.9=13.516us max=29.485us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l1d-busy-spin-rt88-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-busy-spin-rt88-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1231847
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2835256.6/s p50=0.240us p90=0.280us p99=0.340us p99.9=0.922us max=2.715us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/faults-eventfd-rt0-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-eventfd-rt0-rep4.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1231872
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=168826.3/s p50=5.730us p90=5.931us p99=7.715us p99.9=12.673us max=237.835us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/dtlb-eventfd-rt88-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-eventfd-rt88-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1231908
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=120309.6/s p50=8.146us p90=8.235us p99=10.509us p99.9=15.770us max=31.399us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/faults-busy-spin-rt88-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-busy-spin-rt88-rep4.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1231937
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2800563.2/s p50=0.231us p90=0.291us p99=0.351us p99.9=0.802us max=3.517us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/dtlb-eventfd-rt0-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-eventfd-rt0-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1231953
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=102924.5/s p50=9.557us p90=9.638us p99=12.323us p99.9=20.990us max=80.020us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l2-eventfd-rt88-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-eventfd-rt88-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1231995
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=120851.0/s p50=8.125us p90=8.196us p99=10.510us p99.9=17.472us max=42.169us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/dtlb-busy-spin-rt0-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-busy-spin-rt0-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1232012
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2888825.8/s p50=0.231us p90=0.271us p99=0.331us p99.9=0.872us max=4.168us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/faults-busy-spin-rt0-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-busy-spin-rt0-rep4.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1232037
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2905640.0/s p50=0.230us p90=0.271us p99=0.331us p99.9=1.022us max=4.078us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/core-busy-spin-rt0-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-busy-spin-rt0-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1232070
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2768716.3/s p50=0.240us p90=0.291us p99=0.371us p99.9=1.032us max=5.851us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/core-busy-spin-rt88-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-busy-spin-rt88-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1232080
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2782932.7/s p50=0.240us p90=0.290us p99=0.381us p99.9=1.283us max=7.454us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/core-eventfd-rt0-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-eventfd-rt0-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1232111
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=102459.4/s p50=9.578us p90=9.678us p99=12.163us p99.9=21.119us max=176.450us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l2-eventfd-rt0-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-eventfd-rt0-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1232128
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=102596.2/s p50=9.518us p90=9.618us p99=12.734us p99.9=15.939us max=6491.891us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/dtlb-busy-spin-rt88-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-busy-spin-rt88-rep4.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1232153
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2871147.6/s p50=0.230us p90=0.271us p99=0.331us p99.9=0.882us max=6.732us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/faults-eventfd-rt88-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-eventfd-rt88-rep4.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1232169
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=229153.6/s p50=4.228us p90=4.288us p99=5.861us p99.9=8.506us max=20.779us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/dtlb-eventfd-rt88-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-eventfd-rt88-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1232182
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=120247.2/s p50=8.175us p90=8.215us p99=10.330us p99.9=15.890us max=30.126us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l2-eventfd-rt0-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-eventfd-rt0-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1232219
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=101712.8/s p50=9.568us p90=9.699us p99=12.333us p99.9=20.829us max=2127.873us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l1d-eventfd-rt0-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-eventfd-rt0-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1232247
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=102697.5/s p50=9.557us p90=9.848us p99=12.754us p99.9=16.191us max=214.682us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/core-eventfd-rt0-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-eventfd-rt0-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1232310
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=102636.3/s p50=9.578us p90=9.668us p99=12.142us p99.9=21.090us max=183.564us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/dtlb-busy-spin-rt0-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-busy-spin-rt0-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1232338
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2878396.6/s p50=0.231us p90=0.280us p99=0.331us p99.9=0.962us max=20.849us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l2-eventfd-rt88-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-eventfd-rt88-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1232369
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=119987.3/s p50=8.175us p90=8.255us p99=10.420us p99.9=13.866us max=28.173us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/faults-eventfd-rt0-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-eventfd-rt0-rep5.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1232379
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=167265.8/s p50=5.701us p90=6.522us p99=7.945us p99.9=11.211us max=46.026us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/faults-busy-spin-rt0-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-busy-spin-rt0-rep5.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1232412
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2875418.9/s p50=0.231us p90=0.280us p99=0.331us p99.9=0.832us max=13.996us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/core-busy-spin-rt0-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-busy-spin-rt0-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1232422
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2860304.4/s p50=0.231us p90=0.271us p99=0.331us p99.9=1.002us max=8.225us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l1d-busy-spin-rt88-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-busy-spin-rt88-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1232453
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2792912.8/s p50=0.240us p90=0.291us p99=0.371us p99.9=0.972us max=2.935us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/faults-busy-spin-rt88-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-busy-spin-rt88-rep5.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1232464
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2880032.0/s p50=0.230us p90=0.270us p99=0.331us p99.9=0.871us max=14.247us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l1d-busy-spin-rt0-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-busy-spin-rt0-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1232570
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2861472.1/s p50=0.231us p90=0.271us p99=0.351us p99.9=0.931us max=2.625us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l2-busy-spin-rt88-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-busy-spin-rt88-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1232589
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2811875.6/s p50=0.240us p90=0.290us p99=0.351us p99.9=0.971us max=10.189us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/dtlb-busy-spin-rt88-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-busy-spin-rt88-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1232628
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2836183.4/s p50=0.231us p90=0.280us p99=0.331us p99.9=0.912us max=6.101us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/l2-busy-spin-rt0-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l2-busy-spin-rt0-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1232632
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=2850710.5/s p50=0.231us p90=0.280us p99=0.331us p99.9=0.722us max=3.136us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/faults-eventfd-rt88-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-faults-eventfd-rt88-rep5.csv --delay=-1 --control=fd:4,9 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1232683
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=219262.7/s p50=4.248us p90=6.151us p99=6.602us p99.9=8.456us max=20.949us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/core-eventfd-rt88-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-eventfd-rt88-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1232697
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=116851.9/s p50=8.135us p90=10.219us p99=12.333us p99.9=16.821us max=43.903us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 0 /tmp/pw-activation-profile-jgkcy0y_/dtlb-eventfd-rt0-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-dtlb-eventfd-rt0-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1232756
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=0 observed-loop-cpu=14 observed-policy=0 observed-priority=0 scheduler-error=0 rate=98589.2/s p50=9.588us p90=10.660us p99=15.368us p99.9=17.022us max=124.573us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation eventfd 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/l1d-eventfd-rt88-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-l1d-eventfd-rt88-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1232815
+benchmark-stdout:
+activation idle=eventfd samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=119833.4/s p50=8.145us p90=8.236us p99=10.830us p99.9=16.130us max=35.807us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-data-loop --benchmark-activation busy-spin 100000 100000 12 14 88 /tmp/pw-activation-profile-jgkcy0y_/core-busy-spin-rt88-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-activation-pmu-2026-08-25-record/stat-core-busy-spin-rt88-rep5.csv --delay=-1 --control=fd:4,9 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1233000
+benchmark-stdout:
+activation idle=busy-spin samples=100000 warmup=100000 model=closed-loop caller-cpu=12 loop-cpu=14 requested-rt-priority=88 observed-loop-cpu=14 observed-policy=1 observed-priority=88 scheduler-error=0 rate=2851232.5/s p50=0.240us p90=0.270us p99=0.331us p99.9=0.952us max=4.128us
+benchmark-stderr:
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+

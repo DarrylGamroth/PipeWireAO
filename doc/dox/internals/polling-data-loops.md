@@ -36,6 +36,8 @@ make a slow algorithm meet a deadline.
 
 The benchmark method, raw histograms, environment record, and current host
 results are documented in [Polling data-loop benchmark](polling-data-loop-benchmark.md).
+Hardware-counter and call-graph results are documented in
+[Polling data-loop profiling](polling-data-loop-profiling.md).
 
 ## Configuration
 

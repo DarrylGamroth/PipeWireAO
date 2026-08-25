@@ -1,0 +1,6 @@
+# started on Tue Aug 25 00:45:06 2026
+
+196978355;;cycles:u;45484998;100.00;;
+362000720;;instructions:u;45484998;100.00;1.84;insn per cycle
+2047;;l1_dtlb_misses:u;45484998;100.00;;
+1969;;l2_dtlb_misses:u;45484998;100.00;;
