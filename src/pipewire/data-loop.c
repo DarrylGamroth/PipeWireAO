@@ -17,9 +17,6 @@
 PW_LOG_TOPIC_EXTERN(log_data_loop);
 #define PW_LOG_TOPIC_DEFAULT log_data_loop
 
-#define START_GATE_CLOSED 0u
-#define START_GATE_OPEN 1u
-
 SPA_EXPORT
 int pw_data_loop_wait(struct pw_data_loop *this, int timeout)
 {
@@ -96,10 +93,15 @@ static void *do_poll_loop(void *user_data)
 			if (!source->enabled)
 				continue;
 			res = source->process(source->data);
-			if (SPA_UNLIKELY(res < 0))
+			if (SPA_UNLIKELY(res < 0)) {
+				pw_log_error("%p: polling source %p failed: %s",
+						this, source, spa_strerror(res));
 				source->enabled = false;
-			else if (res > 0)
+			} else if (res > 0) {
+				pw_log_trace_fp("%p: polling source %p produced work",
+						this, source);
 				work = true;
+			}
 		}
 
 		/* Let administrative callers take the loop lock between bounded
@@ -118,17 +120,6 @@ static void *do_poll_loop(void *user_data)
 	pw_log_debug("%p: leave polling thread", this);
 	pw_loop_leave(this->loop);
 	return NULL;
-}
-
-static void *run_thread(void *data)
-{
-	struct pw_data_loop *this = data;
-
-	while (SPA_ATOMIC_LOAD(this->start_gate) == START_GATE_CLOSED)
-		pw_data_loop_relax();
-	if (!SPA_ATOMIC_LOAD(this->running))
-		return NULL;
-	return this->run(this->run_data);
 }
 
 static int do_stop(struct spa_loop *loop, bool async, uint32_t seq,
@@ -180,10 +171,6 @@ static struct pw_data_loop *loop_new(struct pw_loop *loop, const struct spa_dict
 	}
 	this->loop = loop;
 	this->rt_prio = -1;
-	this->rt_policy = PW_DATA_LOOP_RT_POLICY_DEFAULT;
-	this->wake_on_stop = true;
-	this->run = do_loop;
-	this->run_data = this;
 	this->reset_on_fork = true;
 
 	if (props != NULL) {
@@ -214,9 +201,6 @@ static struct pw_data_loop *loop_new(struct pw_loop *loop, const struct spa_dict
 				}
 				this->polling = true;
 				this->cancel = false;
-				this->wake_on_stop = false;
-				this->run = do_poll_loop;
-				this->run_data = this;
 			} else if (!spa_streq(str, "eventfd")) {
 				res = -EINVAL;
 				pw_log_error("invalid %s value '%s'", PW_KEY_LOOP_IDLE, str);
@@ -337,9 +321,7 @@ int pw_data_loop_start(struct pw_data_loop *loop)
 		struct spa_thread *thr;
 		struct spa_dict_item items[3];
 		uint32_t n_items = 0;
-		int res = 0;
 
-		SPA_ATOMIC_STORE(loop->start_gate, START_GATE_CLOSED);
 		SPA_ATOMIC_STORE(loop->running, true);
 
 		if ((utils = loop->thread_utils) == NULL)
@@ -353,8 +335,7 @@ int pw_data_loop_start(struct pw_data_loop *loop)
 				loop->reset_on_fork ? "true" : "false");
 
 		thr = spa_thread_utils_create(utils, &SPA_DICT_INIT(items, n_items),
-				loop->strict_rt ? run_thread : loop->run,
-				loop->strict_rt ? loop : loop->run_data);
+				loop->polling ? do_poll_loop : do_loop, loop);
 		loop->thread = (pthread_t)thr;
 		if (thr == NULL) {
 			pw_log_error("%p: can't create thread: %m", loop);
@@ -362,23 +343,8 @@ int pw_data_loop_start(struct pw_data_loop *loop)
 			return -errno;
 		}
 		loop->thread_started = true;
-		if (loop->rt_policy == PW_DATA_LOOP_RT_POLICY_OTHER)
-			res = spa_thread_utils_drop_rt(utils, thr);
-		else if (loop->rt_prio != 0)
-			res = spa_thread_utils_acquire_rt(utils, thr, loop->rt_prio);
-		if (res < 0 && loop->strict_rt) {
-			int join_res;
-
-			SPA_ATOMIC_STORE(loop->running, false);
-			SPA_ATOMIC_STORE(loop->start_gate, START_GATE_OPEN);
-			join_res = spa_thread_utils_join(utils, thr, NULL);
-			if (join_res < 0)
-				return join_res;
-			loop->thread_started = false;
-			loop->thread = (pthread_t)0;
-			return res;
-		}
-		SPA_ATOMIC_STORE(loop->start_gate, START_GATE_OPEN);
+		if (loop->rt_prio != 0)
+			spa_thread_utils_acquire_rt(utils, thr, loop->rt_prio);
 	}
 	return 0;
 }
@@ -399,11 +365,10 @@ int pw_data_loop_stop(struct pw_data_loop *loop)
 		bool was_running = SPA_ATOMIC_XCHG(loop->running, false);
 		int res;
 
-		SPA_ATOMIC_STORE(loop->start_gate, START_GATE_OPEN);
 		if (was_running && loop->cancel) {
 			pw_log_debug("%p cancel", loop);
 			pthread_cancel(loop->thread);
-		} else if (was_running && loop->wake_on_stop) {
+		} else if (was_running && !loop->polling) {
 			pw_log_debug("%p signal", loop);
 			pw_loop_invoke(loop->loop, do_stop, 1, NULL, 0, false, loop);
 		}
@@ -466,45 +431,7 @@ void pw_data_loop_set_thread_utils(struct pw_data_loop *loop,
 	loop->thread_utils = impl;
 }
 
-int pw_data_loop_set_runner(struct pw_data_loop *loop,
-		void *(*run) (void *data), void *data, bool wake_on_stop)
-{
-	if (loop == NULL || run == NULL)
-		return -EINVAL;
-	if (loop->thread_started)
-		return -EBUSY;
-	loop->run = run;
-	loop->run_data = data;
-	loop->wake_on_stop = wake_on_stop;
-	loop->cancel = false;
-	return 0;
-}
-
-int pw_data_loop_set_rt_policy(struct pw_data_loop *loop,
-		enum pw_data_loop_rt_policy policy, int priority, bool strict)
-{
-	if (loop == NULL || policy < PW_DATA_LOOP_RT_POLICY_DEFAULT ||
-			policy > PW_DATA_LOOP_RT_POLICY_FIFO)
-		return -EINVAL;
-	if (loop->thread_started)
-		return -EBUSY;
-	if (policy == PW_DATA_LOOP_RT_POLICY_OTHER && priority != 0)
-		return -EINVAL;
-	if (policy == PW_DATA_LOOP_RT_POLICY_FIFO &&
-			(priority < -1 || priority == 0))
-		return -EINVAL;
-	loop->rt_policy = policy;
-	if (policy != PW_DATA_LOOP_RT_POLICY_DEFAULT)
-		loop->rt_prio = priority;
-	loop->strict_rt = strict;
-	return 0;
-}
-
-bool pw_data_loop_is_running(struct pw_data_loop *loop)
-{
-	return loop != NULL && SPA_ATOMIC_LOAD(loop->running);
-}
-
+SPA_EXPORT
 bool pw_data_loop_is_polling(struct pw_data_loop *loop)
 {
 	return loop != NULL && loop->polling;
@@ -522,8 +449,24 @@ int pw_data_loop_add_poll_source(struct pw_data_loop *loop,
 		return -EEXIST;
 
 	spa_list_append(&loop->poll_source_list, &source->link);
-	source->enabled = true;
+	/* The scheduler enables the source only after the SPA Start command has
+	 * completed. This prevents a poll probe from racing driver startup. */
+	source->enabled = false;
 	source->added = true;
+	return 0;
+}
+
+int pw_data_loop_enable_poll_source(struct pw_data_loop *loop,
+		struct pw_data_loop_source *source)
+{
+	/* The caller owns loop->loop. */
+	if (loop == NULL || source == NULL)
+		return -EINVAL;
+	if (!loop->polling)
+		return -ENOTSUP;
+	if (!source->added)
+		return -ENOENT;
+	source->enabled = true;
 	return 0;
 }
 

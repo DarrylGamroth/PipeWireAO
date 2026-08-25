@@ -51,13 +51,7 @@ struct impl {
 	struct spa_pod *format_filter;
 	struct pw_properties *properties;
 
-	struct spa_io_async_buffers io;
-	struct pw_memblock *latest_mem;
-	struct spa_system *latest_notify_system;
-	struct spa_io_buffers_latest_notify latest_notify;
-	int latest_notify_fd;
-	bool use_latest_notify;
-	uint32_t io_type;
+	struct spa_io_buffers io[2];
 };
 
 /** \endcond */
@@ -139,8 +133,6 @@ static void link_update_state(struct pw_impl_link *link, enum pw_link_state stat
 	if (old < PW_LINK_STATE_PAUSED && state == PW_LINK_STATE_PAUSED) {
 		link->prepared = true;
 		link->preparing = false;
-		if (link->buffer_latest)
-			pw_impl_link_activate(link);
 		pw_context_recalc_graph(link->context, "link prepared");
 	} else if (old >= PW_LINK_STATE_PAUSED && state < PW_LINK_STATE_PAUSED) {
 		link->prepared = false;
@@ -652,27 +644,17 @@ static int port_set_io(struct pw_impl_link *this, struct port_info *info, uint32
 static void select_io(struct pw_impl_link *this)
 {
 	struct impl *impl = SPA_CONTAINER_OF(this, struct impl, this);
-	void *io;
+	struct spa_io_buffers *io;
 
-	if (this->buffer_latest) {
-		io = impl->latest_mem->map->ptr;
-	} else {
-		io = this->rt.in_mix.io_data;
-		if (io == NULL)
-			io = this->rt.out_mix.io_data;
-		if (io == NULL)
-			io = &impl->io;
-	}
+	io = this->rt.in_mix.io_data;
+	if (io == NULL)
+		io = this->rt.out_mix.io_data;
+	if (io == NULL)
+		io = impl->io;
 
 	this->io = io;
-	if (this->buffer_latest) {
-		struct spa_io_buffers_latest *latest = io;
-		*latest = SPA_IO_BUFFERS_LATEST_INIT;
-	} else {
-		struct spa_io_async_buffers *async = io;
-		async->buffers[0] = SPA_IO_BUFFERS_INIT;
-		async->buffers[1] = SPA_IO_BUFFERS_INIT;
-	}
+	this->io[0] = SPA_IO_BUFFERS_INIT;
+	this->io[1] = SPA_IO_BUFFERS_INIT;
 }
 
 static int do_allocation(struct pw_impl_link *this)
@@ -819,8 +801,7 @@ int pw_impl_link_activate(struct pw_impl_link *this)
 			pw_link_state_as_string(this->info.state));
 
 	if (this->destroyed || impl->activated || !this->prepared ||
-	    (!this->buffer_latest &&
-	     (!impl->input.node->runnable || !impl->output.node->runnable)))
+		!impl->input.node->runnable || !impl->output.node->runnable)
 		return 0;
 
 	/* check if the output node is a driver for the input node and if
@@ -831,32 +812,18 @@ int pw_impl_link_activate(struct pw_impl_link *this)
 	reliable_driver = (impl->output.node == impl->input.node->driver_node) &&
 		impl->output.node->reliable;
 
-	if (this->buffer_latest) {
-		io_type = SPA_IO_BuffersLatest;
-		io_size = sizeof(struct spa_io_buffers_latest);
-	} else if (this->async && !reliable_driver) {
+	if (this->async && !reliable_driver) {
 		io_type = SPA_IO_AsyncBuffers;
 		io_size = sizeof(struct spa_io_async_buffers);
 	} else {
 		io_type = SPA_IO_Buffers;
 		io_size = sizeof(struct spa_io_buffers);
 	}
-	impl->io_type = io_type;
 
 	if ((res = port_set_io(this, &impl->input, io_type, this->io, io_size)) < 0)
 		goto error;
 	if ((res = port_set_io(this, &impl->output, io_type, this->io, io_size)) < 0)
-		goto error_clean_all;
-	if (impl->use_latest_notify) {
-		if ((res = port_set_io(this, &impl->input,
-				SPA_IO_BuffersLatestNotify,
-				&impl->latest_notify, sizeof(impl->latest_notify))) < 0)
-			goto error_clean_all;
-		if ((res = port_set_io(this, &impl->output,
-				SPA_IO_BuffersLatestNotify,
-				&impl->latest_notify, sizeof(impl->latest_notify))) < 0)
-			goto error_clean_all;
-	}
+		goto error_clean;
 
 	impl->activated = true;
 	pw_log_debug("(%s) activated", this->name);
@@ -864,12 +831,7 @@ int pw_impl_link_activate(struct pw_impl_link *this)
 
 	return 0;
 
-error_clean_all:
-	if (impl->use_latest_notify) {
-		port_set_io(this, &impl->output, SPA_IO_BuffersLatestNotify, NULL, 0);
-		port_set_io(this, &impl->input, SPA_IO_BuffersLatestNotify, NULL, 0);
-	}
-	port_set_io(this, &impl->output, io_type, NULL, 0);
+error_clean:
 	port_set_io(this, &impl->input, io_type, NULL, 0);
 error:
 	pw_log_error("%p: can't activate link: %s", this, spa_strerror(res));
@@ -1044,12 +1006,8 @@ int pw_impl_link_deactivate(struct pw_impl_link *this)
 	if (!impl->activated)
 		return 0;
 
-	if (impl->use_latest_notify) {
-		port_set_io(this, &impl->output, SPA_IO_BuffersLatestNotify, NULL, 0);
-		port_set_io(this, &impl->input, SPA_IO_BuffersLatestNotify, NULL, 0);
-	}
-	port_set_io(this, &impl->output, impl->io_type, NULL, 0);
-	port_set_io(this, &impl->input, impl->io_type, NULL, 0);
+	port_set_io(this, &impl->output, SPA_IO_Buffers, NULL, 0);
+	port_set_io(this, &impl->input, SPA_IO_Buffers, NULL, 0);
 
 	impl->activated = false;
 	pw_log_debug("(%s) deactivated", this->name);
@@ -1518,79 +1476,6 @@ static const struct pw_global_events input_global_events = {
 	.permissions_changed = input_permissions_changed,
 };
 
-static bool port_has_buffer_latest_link(struct pw_impl_port *port)
-{
-	struct pw_impl_link *link;
-
-	if (port->direction == PW_DIRECTION_OUTPUT) {
-		spa_list_for_each(link, &port->links, output_link)
-			if (link->buffer_latest)
-				return true;
-	} else {
-		spa_list_for_each(link, &port->links, input_link)
-			if (link->buffer_latest)
-				return true;
-	}
-	return false;
-}
-
-static uint32_t port_count_buffer_latest_links(struct pw_impl_port *port)
-{
-	struct pw_impl_link *link;
-	uint32_t count = 0;
-
-	if (port->direction == PW_DIRECTION_OUTPUT) {
-		spa_list_for_each(link, &port->links, output_link)
-			count += link->buffer_latest;
-	} else {
-		spa_list_for_each(link, &port->links, input_link)
-			count += link->buffer_latest;
-	}
-	return count;
-}
-
-static bool rtc_node_has_other_runnable_link(struct pw_impl_node *node,
-		struct pw_impl_link *removed)
-{
-	struct pw_impl_port *port;
-	struct pw_impl_link *link;
-
-	spa_list_for_each(port, &node->output_ports, link) {
-		spa_list_for_each(link, &port->links, output_link) {
-			if (link != removed && !link->destroyed && link->prepared &&
-					link->input != NULL && link->input->node->active)
-				return true;
-		}
-	}
-	spa_list_for_each(port, &node->input_ports, link) {
-		spa_list_for_each(link, &port->links, input_link) {
-			if (link != removed && !link->destroyed && link->prepared &&
-					link->output != NULL && link->output->node->active)
-				return true;
-		}
-	}
-	return false;
-}
-
-static void quiesce_final_rtc_link(struct pw_impl_link *link)
-{
-	struct pw_impl_node *output = link->output->node;
-	struct pw_impl_node *input = link->input->node;
-	int res;
-
-	if (SPA_FLAG_IS_SET(output->spa_flags, SPA_NODE_FLAG_RTC_PROCESS) &&
-			!rtc_node_has_other_runnable_link(output, link) &&
-			(res = pw_impl_node_set_state(output, PW_NODE_STATE_IDLE)) < 0)
-		pw_log_warn("%p: failed to quiesce RTC output node %s: %s",
-				link, output->name, spa_strerror(res));
-	if (input != output &&
-			SPA_FLAG_IS_SET(input->spa_flags, SPA_NODE_FLAG_RTC_PROCESS) &&
-			!rtc_node_has_other_runnable_link(input, link) &&
-			(res = pw_impl_node_set_state(input, PW_NODE_STATE_IDLE)) < 0)
-		pw_log_warn("%p: failed to quiesce RTC input node %s: %s",
-				link, input->name, spa_strerror(res));
-}
-
 SPA_EXPORT
 struct pw_impl_link *pw_context_create_link(struct pw_context *context,
 			    struct pw_impl_port *output,
@@ -1628,7 +1513,6 @@ struct pw_impl_link *pw_context_create_link(struct pw_context *context,
 	impl = calloc(1, sizeof(struct impl) + user_data_size);
 	if (impl == NULL)
 		goto error_no_mem;
-	impl->latest_notify_fd = -1;
 
 	impl->input.busy_id = SPA_ID_INVALID;
 	impl->output.busy_id = SPA_ID_INVALID;
@@ -1651,105 +1535,13 @@ struct pw_impl_link *pw_context_create_link(struct pw_context *context,
 
 	this->output = output;
 	this->input = input;
-	this->buffer_latest = pw_properties_get_bool(properties,
-			PW_KEY_LINK_BUFFER_LATEST, false) ||
-		pw_properties_get_bool(pw_impl_port_get_properties(output),
-			PW_KEY_PORT_BUFFER_LATEST, false) ||
-		pw_properties_get_bool(pw_impl_port_get_properties(input),
-			PW_KEY_PORT_BUFFER_LATEST, false);
-	if (!this->buffer_latest &&
-	    (SPA_FLAG_IS_SET(output_node->spa_flags, SPA_NODE_FLAG_RTC_PROCESS) ||
-	     SPA_FLAG_IS_SET(input_node->spa_flags, SPA_NODE_FLAG_RTC_PROCESS))) {
-		res = -ENOTSUP;
-		pw_log_error("RTC-owned nodes require buffer latest links");
-		goto error_free;
-	}
-	if (this->buffer_latest &&
-	    (input->n_mix != 0 ||
-	     (output->n_mix != 0 && !port_has_buffer_latest_link(output)))) {
-		res = -EBUSY;
-		pw_log_error("buffer latest io requires an exclusive input and an unmixed output");
-		goto error_free;
-	}
-	if (!this->buffer_latest &&
-	    (port_has_buffer_latest_link(output) ||
-	     port_has_buffer_latest_link(input))) {
-		res = -EBUSY;
-		pw_log_error("ordinary and buffer latest links cannot share a port");
-		goto error_free;
-	}
-	if (this->buffer_latest && port_has_buffer_latest_link(output) &&
-	    !SPA_FLAG_IS_SET(output->flags,
-		    PW_IMPL_PORT_FLAG_BUFFERS_LATEST_FANOUT)) {
-		res = -ENOTSUP;
-		pw_log_error("buffer latest output does not support fan-out");
-		goto error_free;
-	}
-	if (this->buffer_latest &&
-	    port_count_buffer_latest_links(output) >=
-		    SPA_IO_BUFFERS_LATEST_MAX_LINKS) {
-		res = -ENOSPC;
-		pw_log_error("buffer latest output reached its subscriber limit");
-		goto error_free;
-	}
-	if (this->buffer_latest &&
-	    (!SPA_FLAG_IS_SET(output->flags, PW_IMPL_PORT_FLAG_BUFFERS_LATEST) ||
-	     !SPA_FLAG_IS_SET(input->flags, PW_IMPL_PORT_FLAG_BUFFERS_LATEST))) {
-		res = -ENOTSUP;
-		pw_log_error("buffer latest io is not supported by both ports");
-		goto error_free;
-	}
-	if (this->buffer_latest) {
-		const struct pw_properties *input_props = pw_impl_port_get_properties(input);
-		const char *wait_policy = pw_properties_get(input_props,
-				PW_KEY_PORT_BUFFER_LATEST_WAIT);
 
-		if (wait_policy == NULL)
-			wait_policy = "busy-spin";
-		if (spa_streq(wait_policy, "eventfd") || spa_streq(wait_policy, "hybrid"))
-			impl->use_latest_notify = true;
-		else if (!spa_streq(wait_policy, "busy-spin")) {
-			res = -EINVAL;
-			pw_log_error("unsupported buffer latest wait policy '%s'", wait_policy);
-			goto error_free;
-		}
-		pw_properties_set(properties, PW_KEY_LINK_BUFFER_LATEST_WAIT, wait_policy);
-
-		impl->latest_mem = pw_mempool_alloc(pw_context_get_mempool(context),
-				PW_MEMBLOCK_FLAG_READWRITE |
-				PW_MEMBLOCK_FLAG_SEAL |
-				PW_MEMBLOCK_FLAG_MAP,
-				SPA_DATA_MemFd, sizeof(struct spa_io_buffers_latest));
-		if (impl->latest_mem == NULL) {
-			res = -errno;
-			pw_log_error("can't allocate buffer latest io: %m");
-			goto error_free;
-		}
-		if (impl->use_latest_notify) {
-			impl->latest_notify_system = output_node->data_loop->system;
-			impl->latest_notify_fd = spa_system_eventfd_create(
-					impl->latest_notify_system,
-					SPA_FD_CLOEXEC | SPA_FD_NONBLOCK);
-			if (impl->latest_notify_fd < 0) {
-				res = impl->latest_notify_fd;
-				pw_log_error("can't allocate buffer latest eventfd: %s",
-						spa_strerror(res));
-				goto error_free;
-			}
-			impl->latest_notify.fd = impl->latest_notify_fd;
-			impl->latest_notify.reserved = 0;
-		}
-	}
-
-	this->async = !this->buffer_latest &&
-		(output_node->async || input_node->async) &&
+	this->async = (output_node->async || input_node->async) &&
 		SPA_FLAG_IS_SET(output->flags, PW_IMPL_PORT_FLAG_ASYNC) &&
 		SPA_FLAG_IS_SET(input->flags, PW_IMPL_PORT_FLAG_ASYNC);
 
 	if (this->async)
 		 pw_properties_set(properties, PW_KEY_LINK_ASYNC, "true");
-	if (this->buffer_latest)
-		pw_properties_set(properties, PW_KEY_LINK_BUFFER_LATEST, "true");
 
 	spa_hook_list_init(&this->listener_list);
 
@@ -1849,10 +1641,6 @@ error_input_mix:
 	pw_impl_port_release_mix(output, &this->rt.out_mix);
 	goto error_free;
 error_free:
-	if (impl->latest_notify_fd >= 0)
-		spa_system_close(impl->latest_notify_system, impl->latest_notify_fd);
-	if (impl->latest_mem != NULL)
-		pw_memblock_unref(impl->latest_mem);
 	free(impl);
 error_exit:
 	pw_properties_free(properties);
@@ -1950,7 +1738,6 @@ void pw_impl_link_destroy(struct pw_impl_link *link)
 	pw_log_debug("%p: destroy", impl);
 	pw_log_info("(%s) destroy", link->name);
 
-	quiesce_final_rtc_link(link);
 	link->destroyed = true;
 	pw_impl_link_emit_destroy(link);
 
@@ -1987,10 +1774,6 @@ void pw_impl_link_destroy(struct pw_impl_link *link)
 	free(link->name);
 	free(link->info.format);
 	free((char *) link->info.error);
-	if (impl->latest_notify_fd >= 0)
-		spa_system_close(impl->latest_notify_system, impl->latest_notify_fd);
-	if (impl->latest_mem != NULL)
-		pw_memblock_unref(impl->latest_mem);
 	free(impl);
 }
 

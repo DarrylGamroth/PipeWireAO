@@ -28,8 +28,6 @@ if find.found()
 endif
 
 test_apps = [
-  ['test-buffer-latest', []],
-  ['test-image-source', []],
   ['test-ump-utils', []],
 ]
 

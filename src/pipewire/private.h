@@ -439,12 +439,6 @@ struct pw_data_loop {
 	struct spa_thread_utils *thread_utils;
 
 	pthread_t thread;
-	void *(*run) (void *data);
-	void *run_data;
-	uint32_t start_gate;
-	int rt_policy;
-	unsigned int strict_rt:1;
-	unsigned int wake_on_stop:1;
 	unsigned int thread_started:1;
 	unsigned int cancel:1;
 	unsigned int created:1;
@@ -461,12 +455,6 @@ struct pw_data_loop_source {
 	unsigned int enabled:1;
 };
 
-enum pw_data_loop_rt_policy {
-	PW_DATA_LOOP_RT_POLICY_DEFAULT,
-	PW_DATA_LOOP_RT_POLICY_OTHER,
-	PW_DATA_LOOP_RT_POLICY_FIFO,
-};
-
 static inline void pw_data_loop_relax(void)
 {
 #if defined(__x86_64__) || defined(__i386__)
@@ -478,13 +466,10 @@ static inline void pw_data_loop_relax(void)
 #endif
 }
 
-int pw_data_loop_set_runner(struct pw_data_loop *loop,
-		void *(*run) (void *data), void *data, bool wake_on_stop);
-int pw_data_loop_set_rt_policy(struct pw_data_loop *loop,
-		enum pw_data_loop_rt_policy policy, int priority, bool strict);
-bool pw_data_loop_is_running(struct pw_data_loop *loop);
 bool pw_data_loop_is_polling(struct pw_data_loop *loop);
 int pw_data_loop_add_poll_source(struct pw_data_loop *loop,
+		struct pw_data_loop_source *source);
+int pw_data_loop_enable_poll_source(struct pw_data_loop *loop,
 		struct pw_data_loop_source *source);
 int pw_data_loop_remove_poll_source(struct pw_data_loop *loop,
 		struct pw_data_loop_source *source);
@@ -611,8 +596,9 @@ static inline void copy_target(struct pw_node_target *dst, const struct pw_node_
  *   * -> INACTIVE (node can not be scheduled anymore)
  *
  *   !INACTIVE -> NOT_TRIGGERED (node is prepared by the driver)
- *   NOT_TRIGGERED -> TRIGGERED (eventfd is written)
- *   TRIGGERED -> AWAKE (eventfd is read, node starts processing)
+ *   NOT_TRIGGERED -> TRIGGERED (eventfd is written unless the owner polls)
+ *   TRIGGERED -> AWAKE (eventfd is read or the polling owner observes the
+ *                       activation, then the node starts processing)
  *   AWAKE -> FINISHED (node completed processing and triggered the peers)
  */
 struct pw_node_activation {
@@ -658,6 +644,8 @@ struct pw_node_activation {
 #define PW_NODE_ACTIVATION_FLAG_NONE		0
 #define PW_NODE_ACTIVATION_FLAG_PROFILER	(1<<0)	/* the profiler is running */
 #define PW_NODE_ACTIVATION_FLAG_ASYNC		(1<<1)	/* the node is async */
+#define PW_NODE_ACTIVATION_FLAG_POLLING		(1<<2)	/* the activation owner polls status;
+							 * producers must not signal its eventfd */
 	uint32_t flags;					/* extra flags */
 	struct spa_io_position position;		/* contains current position and segment info.
 							 * extra info is updated by nodes that have set
@@ -683,6 +671,38 @@ struct pw_node_activation {
 							 * to update wins */
 };
 
+static inline bool pw_node_activation_has_flag(const struct pw_node_activation *a,
+		uint32_t flag)
+{
+	return SPA_FLAG_IS_SET(SPA_ATOMIC_LOAD(a->flags), flag);
+}
+
+/* Activation flags have independent writers in the server and implementation
+ * process. An atomic read-modify-write prevents one owner from losing another
+ * owner's concurrently published bits. */
+static inline void pw_node_activation_update_flag(struct pw_node_activation *a,
+		uint32_t flag, bool enabled)
+{
+	if (enabled)
+		__atomic_fetch_or(&a->flags, flag, __ATOMIC_SEQ_CST);
+	else
+		__atomic_fetch_and(&a->flags, ~flag, __ATOMIC_SEQ_CST);
+}
+
+static inline bool pw_node_activation_is_polling(const struct pw_node_activation *a)
+{
+	return pw_node_activation_has_flag(a, PW_NODE_ACTIVATION_FLAG_POLLING);
+}
+
+/* The activation owner changes its wake policy only while the activation is
+ * inactive. */
+static inline void pw_node_activation_set_polling(struct pw_node_activation *a,
+		bool polling)
+{
+	pw_node_activation_update_flag(a, PW_NODE_ACTIVATION_FLAG_POLLING,
+			polling);
+}
+
 static inline uint64_t get_time_ns(struct spa_system *system)
 {
 	struct timespec ts;
@@ -696,6 +716,7 @@ static inline int trigger_target_v1(struct pw_node_target *t, uint64_t nsec)
 {
 	struct pw_node_activation *a = t->activation;
 	struct pw_node_activation_state *state = &a->state[0];
+	bool polling;
 	int32_t pending = SPA_ATOMIC_DEC(state->pending);
 	int res = pending == 0, r;
 
@@ -703,13 +724,23 @@ static inline int trigger_target_v1(struct pw_node_target *t, uint64_t nsec)
 				t->name, t->id, state, pending, state->required);
 
 	if (res) {
+		polling = pw_node_activation_is_polling(a);
+		/* A polling owner can observe TRIGGERED immediately. Publish the
+		 * timestamp before the release CAS in that mode. The eventfd path
+		 * retains its existing ordering and diagnostics on a failed CAS. */
+		if (polling)
+			a->signal_time = nsec;
 		if (SPA_LIKELY(SPA_ATOMIC_CAS(a->status,
 					PW_NODE_ACTIVATION_NOT_TRIGGERED,
 					PW_NODE_ACTIVATION_TRIGGERED))) {
-			a->signal_time = nsec;
-			if (SPA_UNLIKELY((r = spa_system_eventfd_write(t->system, t->fd, 1)) < 0)) {
-				pw_log_warn("%p: write failed %s", t->node, spa_strerror(r));
-				res = r;
+			if (!polling) {
+				a->signal_time = nsec;
+				if (SPA_UNLIKELY((r = spa_system_eventfd_write(t->system,
+							t->fd, 1)) < 0)) {
+					pw_log_warn("%p: write failed %s", t->node,
+							spa_strerror(r));
+					res = r;
+				}
 			}
 		} else {
 			pw_log_trace_fp("%p: (%s-%u) not ready %d", t->node,
@@ -719,33 +750,6 @@ static inline int trigger_target_v1(struct pw_node_target *t, uint64_t nsec)
 	}
 	return res;
 }
-
-/* Polling-loop activation publication. The signal timestamp is written before
- * the status transition so the successful CAS publishes it to the polling
- * thread that claims TRIGGERED with its own CAS. No eventfd is touched. */
-static inline int trigger_target_poll_v1(struct pw_node_target *t, uint64_t nsec)
-{
-	struct pw_node_activation *a = t->activation;
-	struct pw_node_activation_state *state = &a->state[0];
-	int32_t pending = SPA_ATOMIC_DEC(state->pending);
-	int res = pending == 0;
-
-	pw_log_trace_fp("%p: (%s-%u) polling state:%p pending:%d/%d", t->node,
-			t->name, t->id, state, pending, state->required);
-
-	if (res) {
-		a->signal_time = nsec;
-		if (SPA_UNLIKELY(!SPA_ATOMIC_CAS(a->status,
-					PW_NODE_ACTIVATION_NOT_TRIGGERED,
-					PW_NODE_ACTIVATION_TRIGGERED))) {
-			pw_log_trace_fp("%p: (%s-%u) not ready %d", t->node,
-					t->name, t->id, a->status);
-			res = -EIO;
-		}
-	}
-	return res;
-}
-
 static inline int trigger_target_v0(struct pw_node_target *t, uint64_t nsec)
 {
 	struct pw_node_activation *a = t->activation;
@@ -893,9 +897,6 @@ struct pw_impl_node {
 	struct pw_loop *data_loop;		/**< the data loop for this node */
 	struct pw_data_loop *data_loop_impl;	/**< owning data-loop implementation, or NULL */
 	struct pw_data_loop_source poll_source;	/**< polling-loop process source */
-	struct pw_rtc_data_loop *rtc_loop;	/**< exclusive process owner for RTC nodes */
-	struct spa_source rtc_error_source;	/**< terminal RTC result on the main loop */
-	int rtc_error;
 
 	struct spa_fraction latency;		/**< requested latency */
 	struct spa_fraction max_latency;	/**< maximum latency */
@@ -942,8 +943,6 @@ struct pw_impl_port_mix {
 	} port;
 	struct spa_io_buffers *io[2];
 	void *io_data;
-	struct spa_io_buffers_latest *latest_io;
-	int latest_notify_fd;
 	uint32_t id;
 	uint32_t peer_id;
 	bool have_buffers;
@@ -1005,8 +1004,6 @@ struct pw_impl_port {
 #define PW_IMPL_PORT_FLAG_CONTROL		(1<<2)		/**< port has control */
 #define PW_IMPL_PORT_FLAG_NO_MIXER		(1<<3)		/**< don't try to add mixer to port */
 #define PW_IMPL_PORT_FLAG_ASYNC			(1<<4)		/**< port support async io */
-#define PW_IMPL_PORT_FLAG_BUFFERS_LATEST		(1<<5)		/**< port supports buffer latest io */
-#define PW_IMPL_PORT_FLAG_BUFFERS_LATEST_FANOUT	(1<<6)		/**< port accepts per-mix latest io */
 	uint32_t flags;
 	uint64_t spa_flags;
 
@@ -1128,7 +1125,7 @@ struct pw_impl_link {
 	struct pw_link_info info;		/**< introspectable link info */
 	struct pw_properties *properties;	/**< extra link properties */
 
-	void *io;				/**< link io area */
+	struct spa_io_buffers *io;		/**< link io area */
 
 	struct pw_impl_port *output;		/**< output port */
 	struct spa_list output_link;		/**< link in output port links */
@@ -1150,7 +1147,6 @@ struct pw_impl_link {
 	void *user_data;
 
 	unsigned int async:1;
-	unsigned int buffer_latest:1;
 	unsigned int registered:1;
 	unsigned int feedback:1;
 	unsigned int preparing:1;

@@ -1,39 +1,49 @@
+\page page_polling_data_loops Polling data loops
+
 # Polling data loops
 
 ## Purpose
 
-A polling data loop removes the per-activation eventfd write, kernel wakeup,
-eventfd read, and epoll dispatch from a local PipeWire graph path. It is an
-opt-in execution policy for a named data loop. It is not a second graph
-scheduler and it does not change the dependency rules maintained by
-`module-scheduler-v1`.
+A polling data loop is an opt-in idle policy for a normal PipeWire data loop.
+It busy-polls graph activation state instead of blocking in epoll. The graph is
+still calculated by `module-scheduler-v1`, nodes still obey the normal
+dependency counters, and buffers still use their negotiated SPA I/O contract.
 
-The repeated path is:
+On the repeated path, a dependency publishes `TRIGGERED` and the destination
+loop observes it directly:
 
-```text
-triggering thread                         polling data-loop thread
-
-write cycle state
-decrement dependency count
-write signal timestamp
-CAS NOT_TRIGGERED -> TRIGGERED  ------->  observe TRIGGERED
-                                           CAS TRIGGERED -> AWAKE
-                                           process node and peers
-                                           CAS AWAKE -> FINISHED
+```mermaid
+sequenceDiagram
+    participant U as Upstream data loop
+    participant A as Shared activation
+    participant P as Polling data loop
+    U->>A: decrement pending
+    U->>A: publish signal time
+    U->>A: CAS NOT_TRIGGERED to TRIGGERED
+    P->>A: observe TRIGGERED
+    P->>A: CAS TRIGGERED to AWAKE
+    P->>P: mix inputs and call process()
+    P->>A: publish FINISHED
 ```
 
-There is no eventfd operation or timeout-zero kernel poll in this path.
+The successful status transition is the publication boundary. A polling target
+does not require an eventfd write, eventfd read, or a timeout-zero kernel poll
+for each activation.
 
-## Configuration and ownership
+Polling changes wake-up latency and CPU use. It does not create an asynchronous
+queue, overlap adjacent synchronous graph cycles, replace semantic joins, or
+make a slow algorithm meet a deadline.
 
-Set `loop.idle = busy-spin` on a context data loop. Assign nodes to that loop
-with the existing `node.loop.name` or `node.loop.class` properties.
+## Configuration
+
+Set `loop.idle = busy-spin` on a context data loop and assign nodes with the
+existing `node.loop.name` or `node.loop.class` properties.
 
 ```ini
 context.data-loops = [
     {
-        loop.name = rtc-input
-        thread.name = rtc-input
+        loop.name = rtc
+        thread.name = rtc
         loop.class = data.rt
         loop.idle = busy-spin
         loop.rt-prio = -1
@@ -50,120 +60,140 @@ context.data-loops = [
 ]
 ```
 
-For the bounded queue module, place the producer graph and queue input on
-`rtc-input`. Place the queue output and telemetry or GUI observer on
-`observer`. The queue is the asynchronous graph boundary; merely placing two
-nodes from one synchronous graph cycle on different threads does not create
-pipeline overlap.
+`eventfd` is the default idle policy. `busy-spin` reserves a CPU while the
+loop is running. Put independent latency-critical loops on distinct physical
+cores. An observer loop normally remains eventfd-driven behind a bounded
+asynchronous queue.
 
-Each prepared local node has exactly one owning data loop. A polling loop scans
-only its own bounded list of prepared nodes. Two polling threads never scan the
-same list or process the same node.
+The public `pw_data_loop_is_polling()` query reports the configured policy.
+No private RTC data-loop type or per-node polling thread exists.
 
-Use different physical cores, not two SMT siblings, for two latency-critical
-polling loops. A telemetry or GUI loop normally remains eventfd- or
-clock-driven because the queue already prevents it from delaying the producer.
+## Bounded polling work
 
-## Supported sources
+A polling loop owns a bounded list of prepared local nodes. Each scan:
 
-A busy-spin data loop supports:
+1. examines each enabled node once;
+2. claims and processes activations already in `TRIGGERED`;
+3. probes eligible polling graph drivers once;
+4. executes queued control invocations; and
+5. releases and reacquires the loop lock so lifecycle operations can modify the
+   list.
 
-- local graph activation records;
-- loop control invocations; and
-- transitional `SPA_NODE_FLAG_RTC_PROCESS` nodes that return a bounded work
-  count from `spa_node_process()`.
+The loop uses a processor relax instruction when a scan found no work. It does
+not dispatch arbitrary fd, timer, signal, or idle sources. Adding a poll driver
+to a non-polling loop, or relying on fd dispatch from a polling loop, is
+rejected instead of silently changing the latency contract.
 
-It does not poll arbitrary file descriptors, timers, signals, or idle eventfd
-sources. Registering such a source on a busy-spin loop fails with `-ENOTSUP`
-instead of silently starving the source. Keep fd-driven nodes on an eventfd
-loop, or adapt their completion path to publish a graph activation without a
-file-descriptor wakeup.
+The lock handoff is an administrative boundary. It permits Pause, Suspend,
+port changes, and destruction to remove a source without racing `process()`.
+It is not a kernel wait in the uncontended activation path.
 
-Control invocations are flushed by the polling thread during its lock handoff
-without calling epoll. The loop releases and reacquires its administrative
-lock once per bounded scan. When an administrative caller is actually waiting and the
-polling thread uses `SCHED_FIFO`, the loop performs a one-nanosecond sleep so a
-lower-policy control thread can run. That syscall is confined to lifecycle or
-control contention; it is not executed on the uncontended repeated path.
+## Ordinary followers
 
-## Activation publication
+A normal local follower on a polling loop uses the same activation lifecycle as
+an eventfd follower:
 
-For a version-1 local activation target:
-
-1. The graph driver prepares the cycle state and publishes
-   `NOT_TRIGGERED`.
-2. Each dependency atomically decrements `pending`.
-3. The final dependency writes `signal_time` and uses a successful atomic CAS
-   to publish `TRIGGERED`.
-4. The polling owner uses an atomic CAS from `TRIGGERED` to `AWAKE` before it
-   reads cycle state or calls the node.
-5. The polling owner publishes `FINISHED` after node processing and peer
-   activation.
-
-The successful status CAS is the publication boundary. `signal_time` is
-written before the publishing CAS so the poller cannot observe a new status
-with the preceding cycle's timestamp. The existing atomic dependency counter
-continues to prevent a node from running before all required inputs signal it.
-
-## RTC data-loop migration
-
-`pw_rtc_data_loop` remains available as a compatibility fallback.
-
-When an `SPA_NODE_FLAG_RTC_PROCESS` node is assigned to a busy-spin context
-data loop, `impl-node` registers that node with the selected polling loop and
-does not create a private `pw_rtc_data_loop`. Lifecycle commands add and remove
-the node while holding the data-loop lock, so Pause, Suspend, and destruction
-cannot overlap its process call. Several RTC nodes may share a named polling
-loop; separate `node.loop.name` values give them separate threads.
-
-When the same node is assigned to an eventfd data loop, the existing private
-`pw_rtc_data_loop` path remains unchanged. Removing that fallback requires all
-remaining RTC-process plugins and deployments to select context-owned polling
-loops, and requires complete-buffer graph sources to replace any remaining
-latest-buffer-specific execution contracts.
-
-Thus the current change replaces `pw_rtc_data_loop` for configured polling
-deployments, but does not yet remove its public API or compatibility tests.
-
-## Measured activation cost
-
-The integration benchmark invokes one ordinary local node in a closed loop.
-It records from activation publication immediately before the trigger CAS to
-entry into `spa_node_process()`. It uses 1,000 warmup cycles followed by 10,000
-measured cycles. These results are development evidence, not deployment
-qualification.
-
-Test host on 2026-08-24:
-
-- AMD Ryzen 7 6800H, 8 cores and 16 hardware threads;
-- Linux 6.12.57 with `PREEMPT_DYNAMIC`;
-- GCC 14.2.0 release build;
-- shared, unpinned cores with frequency scaling enabled; and
-- closed-loop arrivals.
-
-Five runs produced:
-
-| Idle policy | Rate | p50 | p99 | p99.9 | Per-run maximum range |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `eventfd` | 307.3-318.1 kcycles/s | 2.986-3.085 us | 4.138-5.189 us | 7.083-9.548 us | 8.556-28.192 us |
-| `busy-spin` | 3.79-4.25 Mcycles/s | 0.140-0.160 us | 0.201-0.220 us | 0.240-0.260 us | 0.271-8.085 us |
-
-Run the benchmark with:
-
-```sh
-./build/src/tests/pw-test-rtc-data-loop \
-    --benchmark-activation eventfd 10000
-./build/src/tests/pw-test-rtc-data-loop \
-    --benchmark-activation busy-spin 10000
+```mermaid
+stateDiagram-v2
+    direction LR
+    INACTIVE --> FINISHED: data loop prepared
+    FINISHED --> NOT_TRIGGERED: driver prepares cycle
+    NOT_TRIGGERED --> TRIGGERED: pending reaches zero
+    TRIGGERED --> AWAKE: polling owner claims work
+    AWAKE --> FINISHED: process completes
+    FINISHED --> INACTIVE: node removed
+    NOT_TRIGGERED --> INACTIVE: node removed
+    TRIGGERED --> INACTIVE: node removed
+    AWAKE --> INACTIVE: node removed
 ```
 
-A syscall-count comparison with 100 and 10,000 measured polling cycles found
-the same setup-only counts in both runs: five `eventfd2` calls, three writes,
-and twenty-three reads. The counts did not scale with polling activations. The
-eventfd case added one write, one read, and one epoll wait per warmup or
-measured activation.
+Input mixing, the SPA `process()` call, output teeing, peer activation, xrun
+recovery, and profiler timestamps are unchanged. Only the wait mechanism is
+different.
 
-Deployment qualification must additionally pin distinct physical cores,
-control IRQ placement and frequency policy, use fixed-rate open-loop arrivals,
-exercise overload, and report p99.9 and maximum latency together with graph
-completion, queue age, drops, CPU consumption, and lifecycle interference.
+## Polling graph drivers
+
+`SPA_NODE_FLAG_POLL_DRIVER` identifies a source whose nonblocking
+`process()` method discovers one new driver quantum. Such a node must:
+
+- advertise `node.driver = true`;
+- be selected as its own graph driver;
+- run on a `busy-spin` data loop; and
+- return `SPA_STATUS_OK` when no quantum is ready.
+
+A positive data status starts the ordinary driver-ready path. PipeWire resets
+dependencies, publishes the source output, and runs one normal graph cycle.
+The polling source is registered in a disabled state while the node is
+prepared, then enabled only after its SPA `Start` command completes. This
+prevents the polling thread from entering a device SDK while startup is still
+mutating that device.
+
+The source is not probed again until its followers complete that cycle. Its
+self-activation closes the cycle without invoking the source a second time.
+
+This contract permits the camera or device to continue DMA while downstream
+nodes process the last published quantum. It deliberately permits at most one
+published quantum per completed synchronous graph cycle. If adjacent cycles
+must overlap or overload must drop work, put an explicit bounded asynchronous
+queue at that topology boundary.
+
+The flag describes process ownership and is immutable after the node first
+reports its flags. A poll driver cannot be assigned an external driver.
+
+## Exported and remote nodes
+
+Activation version 1 is shared between the daemon and an exported node's
+implementation process. The process that owns `process()` sets
+`PW_NODE_ACTIVATION_FLAG_POLLING` in that shared record when its assigned
+loop is polling.
+
+Every updated producer checks the destination record after the final dependency
+arrives:
+
+- for an eventfd target, publish `TRIGGERED` and write the target eventfd;
+- for a polling target, publish `TRIGGERED` and omit the eventfd write.
+
+The decision is per destination. Polling and eventfd nodes can coexist in one
+graph and can share an upstream producer. The eventfd remains part of the
+transport so the inactive node can later be assigned an eventfd loop without a
+protocol extension.
+
+The daemon-side remote node represents topology; it does not execute or poll
+the client implementation. Each process that owns polling nodes needs its own
+configured polling loop and CPU reservation.
+
+Version-0 activation records are rejected for polling because they lack the
+atomic publication contract. An older version-1 producer remains functionally
+correct but may continue writing the eventfd because it does not understand the
+polling flag; the path is syscall-free only when every possible trigger honors
+the flag.
+
+## Memory ordering
+
+For a polling target, the final producer writes cycle state and `signal_time`
+before a successful atomic transition to `TRIGGERED`. The owner claims
+`TRIGGERED -> AWAKE` before reading that state. Activation flags use atomic
+read-modify-write because the daemon owns ASYNC and profiler bits while the
+implementation process owns the polling bit.
+
+These rules preserve the same dependency happens-before relationship across
+threads and processes without using the eventfd as the wake-up operation.
+
+## Limitations and qualification
+
+Busy polling has important costs:
+
+- one continuously active CPU per polling loop;
+- sensitivity to CPU affinity, SMT sharing, IRQ placement, frequency policy,
+  and thermal throttling;
+- possible starvation of lower-priority administrative threads under
+  `SCHED_FIFO`; and
+- no automatic isolation from a slow node or slow observer.
+
+Qualification must measure source-ready-to-`process()` latency, end-to-end
+cycle latency, p50, p99, p99.9, maximum, xruns, deadline misses, CPU use, queue
+age, and drops. Use fixed-rate open-loop arrivals and overload tests in addition
+to closed-loop microbenchmarks.
+
+Use eventfd loops when CPU efficiency matters more than the wake-up tail. Use a
+polling loop only for the measured latency-critical process owner.
