@@ -33,6 +33,38 @@ foreach a : test_apps
   endif
 endforeach
 
+polling_remote_client = executable(
+  'pw-test-polling-remote-client',
+  'test-polling-remote-client.c',
+  dependencies: [pipewire_dep],
+)
+polling_remote_env = environment()
+polling_remote_env.set(
+  'PIPEWIREAO_SPA_PLUGIN_DIR',
+  spa_dep.get_variable('plugindir'),
+)
+polling_remote_env.set(
+  'PIPEWIREAO_CONFIG_DIR',
+  pipewire_dep.get_variable('confdatadir'),
+)
+polling_remote_env.set(
+  'PIPEWIREAO_MODULE_DIR',
+  pipewire_dep.get_variable('moduledir'),
+)
+test(
+  'pw-test-polling-remote',
+  find_program('python3'),
+  args: [
+    files('test-polling-remote.py'),
+    pipewire_exec.full_path(),
+    meson.project_build_root() / 'src/tools/pwao-link',
+    polling_remote_client.full_path(),
+  ],
+  depends: [pipewire_exec, polling_remote_client],
+  env: polling_remote_env,
+  timeout: 45,
+)
+
 if have_cpp
   test_cpp = executable('pw-test-cpp', 'test-cpp.cpp',
                           dependencies : [pipewire_dep],

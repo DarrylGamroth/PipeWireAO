@@ -108,14 +108,13 @@ PWTEST(buffer_acquisition_meta)
 	const uint8_t grandmaster_a[SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE] = { 1 };
 	const uint8_t grandmaster_b[SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE] = { 2 };
 	const uint8_t zero_grandmaster[SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE] = { 0 };
-	struct spa_meta_acquisition acquisition, same, peer, legacy, decoded, malformed;
+	struct spa_meta_acquisition acquisition, same, peer, legacy, malformed;
 	struct spa_meta meta = {
 		.type = SPA_META_Acquisition,
 		.size = sizeof(acquisition),
 		.data = &acquisition,
 	};
 	uint8_t unaligned[sizeof(acquisition) + 1] = { 0 };
-	uint8_t wire[SPA_META_ACQUISITION_WIRE_SIZE];
 	int64_t difference;
 	uint64_t uncertainty;
 
@@ -123,7 +122,6 @@ PWTEST(buffer_acquisition_meta)
 	pwtest_int_eq(SPA_META_ACQUISITION_VERSION_2, 2);
 	pwtest_int_eq(SPA_META_ACQUISITION_VERSION, 2);
 	pwtest_int_eq(SPA_META_ACQUISITION_SIZE, 96);
-	pwtest_int_eq(SPA_META_ACQUISITION_WIRE_SIZE, 96);
 	pwtest_int_eq(SPA_META_ACQUISITION_DOMAIN_SIZE, 16);
 	pwtest_int_eq(SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE, 8);
 	pwtest_int_eq(SPA_META_FEATURE_ACQUISITION_VERSION_1, 1 << 0);
@@ -198,25 +196,6 @@ PWTEST(buffer_acquisition_meta)
 			sizeof(peer.ptp_grandmaster_id));
 	pwtest_bool_false(spa_meta_acquisition_time_difference(
 			&same, &peer, NULL, NULL));
-	peer = same;
-	peer.exposure_start_nsec = 123500;
-	peer.timestamp_uncertainty_nsec = 11;
-	pwtest_bool_false(spa_meta_acquisition_serialize(&peer, NULL, sizeof(wire)));
-	pwtest_bool_false(spa_meta_acquisition_serialize(
-			&peer, wire, sizeof(wire) - 1));
-	pwtest_bool_true(spa_meta_acquisition_serialize(&peer, wire, sizeof(wire)));
-	pwtest_int_eq(wire[0], 0);
-	pwtest_int_eq(wire[3], SPA_META_ACQUISITION_VERSION_2);
-	pwtest_bool_true(spa_meta_acquisition_deserialize(
-			&decoded, wire, sizeof(wire)));
-	pwtest_bool_true(spa_meta_acquisition_time_difference(
-			&peer, &decoded, &difference, &uncertainty));
-	pwtest_int_eq(difference, 0);
-	pwtest_int_eq(uncertainty, 22U);
-	wire[81] = 1;
-	pwtest_bool_false(spa_meta_acquisition_deserialize(
-			&decoded, wire, sizeof(wire)));
-	wire[81] = 0;
 	pwtest_bool_true(spa_meta_acquisition_set_exposure_start(&same, 123456, 9));
 	pwtest_int_eq(same.timebase,
 			(uint32_t)SPA_META_ACQUISITION_TIMEBASE_MONOTONIC);
@@ -306,8 +285,6 @@ PWTEST(buffer_acquisition_meta_exports)
 			"spa_meta_acquisition_set_exposure_start_ptp"));
 	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_set_exposure_duration"));
 	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_is_valid"));
-	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_serialize"));
-	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_deserialize"));
 	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_identity_equal"));
 	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT,
 			"spa_meta_acquisition_time_difference"));

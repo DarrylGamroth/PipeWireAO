@@ -4,8 +4,8 @@
 
 ## Status and authority
 
-This document defines the PipeWireAO acquisition identity, timing, wire, and
-join contract. It applies to complete frames and to complete row-block ndarray
+This document defines the PipeWireAO acquisition identity, timing, and join
+contract. It applies to complete frames and to complete row-block ndarray
 micro-buffers. It does not make the PipeWire scheduler a semantic join engine.
 
 The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**,
@@ -14,8 +14,8 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**,
 (RFC 2119 and RFC 8174) when, and only when, they appear in all capitals.
 
 `spa/include/spa/buffer/meta.h` is the ABI authority. This document is the
-semantic authority. A transport profile may define how the canonical wire
-record is carried, but it MUST NOT change these field meanings.
+semantic authority. A transport profile defines its own encoding and carriage,
+but it MUST NOT change these field meanings.
 
 ## System boundary
 
@@ -29,10 +29,10 @@ flowchart LR
     CameraB[Camera on host B] --> SourceB[Source B]
     SourceA --> MetaA[Acquisition version 2]
     SourceB --> MetaB[Acquisition version 2]
-    MetaA --> Encode[Canonical wire encoding]
-    Encode --> Transport[Network transport]
-    Transport --> Decode[Canonical wire decoding]
-    Decode --> Join[Bounded semantic join]
+    MetaA --> SendAdapter[Transport send adapter]
+    SendAdapter --> Transport[Network transport]
+    Transport --> ReceiveAdapter[Transport receive adapter]
+    ReceiveAdapter --> Join[Bounded semantic join]
     MetaB --> Join
     Join --> Algorithm[Multi-input algorithm]
 ```
@@ -175,47 +175,30 @@ Verification: cover exact matches, different identity fields, matching and
 different PTP authorities, the uncertainty boundary, adjacent acquisitions,
 duplicates, missing inputs, reordering, deadline release, and overload.
 
-## Canonical wire record
+## Transport boundary
 
-SPA metadata is native shared-memory state and is not automatically serialized
-by RTP, AVB, or another network transport. Version 2 therefore defines a
-canonical 96-byte wire record. Integers are unsigned big-endian values, except
-that `exposure_start_nsec` uses its signed 64-bit two's-complement bit pattern.
-Byte arrays are copied unchanged.
+SPA metadata is native shared-memory state. PipeWire does not serialize it
+across hosts, and an application MUST NOT send the bytes of the native C
+structure as a network protocol. The network adapter is the correct owner of
+transport versioning, byte order, framing, authentication, and association
+with fragmented payload data. No transport codec is exposed by the core SPA
+metadata API until a concrete transport profile requires one.
 
-| Offset | Size | Field |
-| ---: | ---: | --- |
-| 0 | 4 | version |
-| 4 | 4 | ABI size |
-| 8 | 4 | flags |
-| 12 | 4 | timebase |
-| 16 | 16 | acquisition domain |
-| 32 | 8 | generation |
-| 40 | 8 | sequence |
-| 48 | 8 | exposure start |
-| 56 | 8 | exposure duration |
-| 64 | 8 | timestamp uncertainty |
-| 72 | 8 | PTP grandmaster identity |
-| 80 | 1 | PTP domain number |
-| 81 | 15 | zero, reserved |
+**ACQ-WIRE-001:** A cross-host adapter **MUST** carry one acquisition record with
+the corresponding payload according to its transport profile and **MUST**
+preserve their association through loss, reordering, duplication, and
+fragmentation. It **MUST NOT** copy the native C structure directly onto the
+wire.
 
-`spa_meta_acquisition_serialize()` and
-`spa_meta_acquisition_deserialize()` are the authoritative codecs. They accept
-only Version 2 and reject nonzero reserved bytes or invalid field
-combinations.
-
-**ACQ-WIRE-001:** A cross-host adapter **MUST** carry one canonical record with
-the corresponding payload and **MUST** preserve their association through
-loss, reordering, duplication, and fragmentation. It **MUST NOT** copy the
-native C structure directly onto the wire.
-
-**ACQ-WIRE-002:** A receiving adapter **MUST** decode and validate the record
-before publishing local `SPA_META_Acquisition`. Invalid or missing records
+**ACQ-WIRE-002:** A receiving adapter **MUST** decode the transport record,
+construct native metadata through the public acquisition helpers, and validate
+it before publishing local `SPA_META_Acquisition`. Invalid or missing records
 **MUST NOT** be synthesized from packet arrival time.
 
-Verification: perform golden-vector and round-trip tests on both endian
-architectures where available, then exercise loss, reordering, duplication,
-and malformed records in the selected transport profile.
+Verification belongs to the selected transport implementation. It must include
+golden vectors and round trips on both endian architectures where available,
+then exercise loss, reordering, duplication, fragmentation, and malformed
+records.
 
 ## eGrabber status
 
@@ -236,7 +219,6 @@ mapping and therefore does not set the Version 2 PTP fields.
 | --- | --- |
 | Version 1 compatibility and Version 2 ABI validation | Implemented and unit-tested |
 | PTP authority comparison and uncertainty matching | Implemented and unit-tested |
-| Canonical Version 2 wire codec | Implemented and unit-tested |
 | eGrabber shared-generation fail-closed behavior | Implemented and unit-tested |
 | Hardware-qualified eGrabber PTP exposure timestamp | Not implemented or qualified |
 | RTP, AVB, or other network carriage profile | Not implemented or qualified |
@@ -252,7 +234,7 @@ The current requirement evidence is:
 | ACQ-TIME-001 through ACQ-TIME-003 | Contract defined; hardware producer qualification remains open |
 | ACQ-JOIN-001 and ACQ-JOIN-002 | Identity and PTP comparison helpers with boundary tests in C and Rust |
 | ACQ-JOIN-003 | Contract defined; consuming join implementation and overload tests remain open |
-| ACQ-WIRE-001 and ACQ-WIRE-002 | Canonical C codec, exported-symbol checks, malformed-record tests, and Rust round trip |
+| ACQ-WIRE-001 and ACQ-WIRE-002 | Contract defined; selected transport implementation and verification remain open |
 
 The implemented capabilities make the contract executable and prevent false
 cross-host matches. A deployment may claim operational multi-host joins only
