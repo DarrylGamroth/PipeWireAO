@@ -1,0 +1,55 @@
+diff --git a/doc/dox/internals/polling-data-loop-benchmark.md b/doc/dox/internals/polling-data-loop-benchmark.md
+index 2e1ea9c3f..d67bba66d 100644
+--- a/doc/dox/internals/polling-data-loop-benchmark.md
++++ b/doc/dox/internals/polling-data-loop-benchmark.md
+@@ -46,6 +46,8 @@ Each campaign records:
+ - `SCHED_OTHER` and `SCHED_FIFO` priority 88 loop policies;
+ - exact run-length histograms of integer nanoseconds, without reservoir
+   sampling;
++- result storage pre-faulted before warmup so first-write minor faults do not
++  contaminate the measured latency distribution;
+ - individual summaries, aggregates, commands, the executable hash, source
+   diff, build options, CPU topology and frequency policy, kernel configuration,
+   and before/after system counters; and
+diff --git a/src/tests/test-polling-data-loop.c b/src/tests/test-polling-data-loop.c
+index 34d59fbd9..fc5beca52 100644
+--- a/src/tests/test-polling-data-loop.c
++++ b/src/tests/test-polling-data-loop.c
+@@ -767,6 +767,20 @@ static uint64_t raw_time_nsec(void)
+ 	return (uint64_t)now.tv_sec * SPA_NSEC_PER_SEC + (uint64_t)now.tv_nsec;
+ }
+ 
++static void prefault_writable_pages(void *data, size_t size)
++{
++	volatile uint8_t *bytes = data;
++	long page_size;
++	size_t offset;
++
++	page_size = sysconf(_SC_PAGESIZE);
++	spa_assert_se(page_size > 0);
++	for (offset = 0; offset < size; offset += (size_t)page_size)
++		bytes[offset] = 0;
++	if (size > 0)
++		bytes[size - 1u] = 0;
++}
++
+ static void pin_current_thread(uint32_t cpu)
+ {
+ 	cpu_set_t set;
+@@ -963,6 +977,8 @@ static void benchmark_empty_scans(uint32_t work_sources,
+ 	benchmark.gaps = calloc(samples, sizeof(*benchmark.gaps));
+ 	sources = calloc(work_sources + 1u, sizeof(*sources));
+ 	spa_assert_se(benchmark.gaps != NULL && sources != NULL);
++	prefault_writable_pages(benchmark.gaps,
++			(size_t)samples * sizeof(*benchmark.gaps));
+ 	atomic_init(&benchmark.stop_control, false);
+ 	atomic_init(&benchmark.start, false);
+ 	atomic_init(&benchmark.probes, 0);
+@@ -1099,6 +1115,7 @@ static void benchmark_regular_activation(const char *idle, uint32_t samples,
+ 
+ 	latency = calloc(samples, sizeof(*latency));
+ 	spa_assert_se(latency != NULL);
++	prefault_writable_pages(latency, (size_t)samples * sizeof(*latency));
+ 	synthetic.benchmark_latency = latency;
+ 	synthetic.benchmark_system = node->rt.target.system;
+ 	start = get_time_ns(node->rt.target.system);
