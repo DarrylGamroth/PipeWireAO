@@ -1,0 +1,13 @@
+$ LD_LIBRARY_PATH=build/src/pipewire perf c2c record -u -e mem-ldst \
+    -o /tmp/pw-polling-c2c.data -- \
+    build/src/tests/pw-test-polling-data-loop \
+    --benchmark-activation busy-spin 100000 10000 12 14 88 \
+    /tmp/pw-polling-c2c-hist.csv
+exit=255
+
+Error:
+Invalid event (ibs_op//) in per-thread mode, enable system wide with '-a'.
+
+The command did not create a usable profile. A system-wide retry was not run
+because it would collect unrelated activity. Run it only on isolated target
+CPUs in a controlled qualification environment.
