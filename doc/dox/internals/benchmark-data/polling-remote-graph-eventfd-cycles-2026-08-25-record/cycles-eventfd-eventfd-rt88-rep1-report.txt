@@ -1,0 +1,4968 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 494  of event 'cycles:u'
+# Event count (approx.): 1516179523
+#
+# Overhead  Command        Shared Object                      Symbol                        IPC   [IPC Coverage]
+# ........  .............  .................................  ............................  ....................
+#
+     6.25%  client-source  [unknown]                          [k] 0xffffffff9289ab0c        -      -            
+            |
+            ---0xffffffff9289ab0c
+               0xffffffff9289ad0f
+               0xffffffff91c12d2f
+               0xffffffff91f00022
+               0xffffffff91f08432
+               0xffffffff928fdace
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     5.35%  client-source  libpipewire-ao-0.3.so.0.1700.0     [.] node_ready                -      -            
+            |          
+            |--2.06%--node_ready
+            |          flush_all_queues
+            |          source_event_func
+            |          loop_iterate
+            |          do_loop
+            |          0x7f4bfd113b7a
+            |          0x7f4bfd1917f7
+            |          
+            |--1.29%--check_updates (inlined)
+            |          node_ready
+            |          flush_all_queues
+            |          source_event_func
+            |          loop_iterate
+            |          do_loop
+            |          0x7f4bfd113b7a
+            |          0x7f4bfd1917f7
+            |          
+            |--1.25%--spa_list_remove (inlined)
+            |          node_ready
+            |          flush_all_queues
+            |          source_event_func
+            |          loop_iterate
+            |          do_loop
+            |          0x7f4bfd113b7a
+            |          0x7f4bfd1917f7
+            |          
+            |--0.48%--pw_node_activation_state_reset (inlined)
+            |          node_ready
+            |          flush_all_queues
+            |          source_event_func
+            |          loop_iterate
+            |          do_loop
+            |          0x7f4bfd113b7a
+            |          0x7f4bfd1917f7
+            |          
+             --0.27%--spa_list_insert (inlined)
+                       node_ready
+                       flush_all_queues
+                       source_event_func
+                       loop_iterate
+                       do_loop
+                       0x7f4bfd113b7a
+                       0x7f4bfd1917f7
+
+     2.52%  client-sink    [unknown]                          [k] 0xffffffff92906261        -      -            
+            |
+            ---0xffffffff92906261
+               |          
+               |--2.41%--0xffffffff920b6179
+               |          0xffffffff9203f988
+               |          0xffffffff9203fead
+               |          0xffffffff928f2072
+               |          0xffffffff92a0012f
+               |          0x7f4bfd11b9ee
+               |          0x7f4bfd110667
+               |          0x7f4bfd1106ac
+               |          write
+               |          impl_eventfd_write
+               |          spa_system_eventfd_write (inlined)
+               |          trigger_target_v2
+               |          trigger_targets (inlined)
+               |          process_node (inlined)
+               |          node_on_fd_events
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.11%--0xffffffff920b67e1
+                          0xffffffff9203f257
+                          0xffffffff9203fd4d
+                          0xffffffff928f2072
+                          0xffffffff92a0012f
+                          0x7f4bfd11b9ee
+                          0x7f4bfd110667
+                          0x7f4bfd1106ac
+                          read
+                          impl_eventfd_read
+                          spa_system_eventfd_read (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     2.23%  client-source  [unknown]                          [k] 0xffffffff92905b1b        -      -            
+            |
+            ---0xffffffff92905b1b
+               |          
+               |--1.88%--0xffffffff920b05f5
+               |          0xffffffff91d387a8
+               |          0xffffffff920b61d6
+               |          0xffffffff9203f988
+               |          0xffffffff9203fead
+               |          0xffffffff928f2072
+               |          0xffffffff92a0012f
+               |          0x7f4bfd11b9ee
+               |          0x7f4bfd110667
+               |          0x7f4bfd1106ac
+               |          write
+               |          impl_eventfd_write
+               |          spa_system_eventfd_write (inlined)
+               |          |          
+               |          |--1.15%--loop_signal_event
+               |          |          loop_queue_invoke (inlined)
+               |          |          loop_invoke
+               |          |          spa_loop_invoke (inlined)
+               |          |          pw_loop_invoke (inlined)
+               |          |          call_trigger_done
+               |          |          call_trigger_done
+               |          |          impl_node_process_output
+               |          |          spa_node_process_fast (inlined)
+               |          |          process_node (inlined)
+               |          |          node_on_fd_events
+               |          |          loop_iterate
+               |          |          do_loop
+               |          |          0x7f4bfd113b7a
+               |          |          0x7f4bfd1917f7
+               |          |          
+               |           --0.73%--trigger_target_v2
+               |                     trigger_targets (inlined)
+               |                     node_ready
+               |                     flush_all_queues
+               |                     source_event_func
+               |                     loop_iterate
+               |                     do_loop
+               |                     0x7f4bfd113b7a
+               |                     0x7f4bfd1917f7
+               |          
+                --0.35%--0xffffffff91d13bf4
+                          0xffffffff920b01e9
+                          0xffffffff91d387a8
+                          0xffffffff91d3d8e6
+                          0xffffffff920b07bb
+                          0xffffffff91d387a8
+                          0xffffffff920b61d6
+                          0xffffffff9203f988
+                          0xffffffff9203fead
+                          0xffffffff928f2072
+                          0xffffffff92a0012f
+                          0x7f4bfd11b9ee
+                          0x7f4bfd110667
+                          0x7f4bfd1106ac
+                          write
+                          impl_eventfd_write
+                          spa_system_eventfd_write (inlined)
+                          loop_signal_event
+                          loop_queue_invoke (inlined)
+                          loop_invoke
+                          spa_loop_invoke (inlined)
+                          pw_loop_invoke (inlined)
+                          call_trigger_done
+                          call_trigger_done
+                          impl_node_process_output
+                          spa_node_process_fast (inlined)
+                          process_node (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     2.14%  client-source  [unknown]                          [k] 0xffffffff92906261        -      -            
+            |
+            ---0xffffffff92906261
+               |          
+               |--1.61%--0xffffffff920b6179
+               |          0xffffffff9203f988
+               |          0xffffffff9203fead
+               |          0xffffffff928f2072
+               |          0xffffffff92a0012f
+               |          0x7f4bfd11b9ee
+               |          0x7f4bfd110667
+               |          0x7f4bfd1106ac
+               |          write
+               |          impl_eventfd_write
+               |          spa_system_eventfd_write (inlined)
+               |          |          
+               |          |--0.86%--trigger_target_v2
+               |          |          trigger_targets (inlined)
+               |          |          node_ready
+               |          |          flush_all_queues
+               |          |          source_event_func
+               |          |          loop_iterate
+               |          |          do_loop
+               |          |          0x7f4bfd113b7a
+               |          |          0x7f4bfd1917f7
+               |          |          
+               |           --0.75%--loop_signal_event
+               |                     loop_queue_invoke (inlined)
+               |                     loop_invoke
+               |                     spa_loop_invoke (inlined)
+               |                     pw_loop_invoke (inlined)
+               |                     call_trigger_done
+               |                     call_trigger_done
+               |                     impl_node_process_output
+               |                     spa_node_process_fast (inlined)
+               |                     process_node (inlined)
+               |                     node_on_fd_events
+               |                     loop_iterate
+               |                     do_loop
+               |                     0x7f4bfd113b7a
+               |                     0x7f4bfd1917f7
+               |          
+               |--0.29%--0xffffffff920b1228
+               |          0xffffffff920b2ac1
+               |          0xffffffff928f2072
+               |          0xffffffff92a0012f
+               |          0x7f4bfd11b9ee
+               |          0x7f4bfd110667
+               |          0x7f4bfd1106ac
+               |          epoll_wait
+               |          impl_pollfd_wait
+               |          spa_system_pollfd_wait (inlined)
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.23%--0xffffffff920b025d
+                          0xffffffff920b1457
+                          0xffffffff920b2ac1
+                          0xffffffff928f2072
+                          0xffffffff92a0012f
+                          0x7f4bfd11b9ee
+                          0x7f4bfd110667
+                          0x7f4bfd1106ac
+                          epoll_wait
+                          impl_pollfd_wait
+                          spa_system_pollfd_wait (inlined)
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     2.08%  client-sink    pw-test-polling-remote-client      [.] sink_process              -      -            
+            |
+            ---sink_process
+               call_process (inlined)
+               call_process (inlined)
+               impl_node_process_input
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     1.53%  client-source  [unknown]                          [k] 0xffffffff91d3875d        -      -            
+            |
+            ---0xffffffff91d3875d
+               |          
+               |--1.20%--0xffffffff91d3d8e6
+               |          0xffffffff920b07bb
+               |          0xffffffff91d387a8
+               |          0xffffffff920b61d6
+               |          0xffffffff9203f988
+               |          0xffffffff9203fead
+               |          0xffffffff928f2072
+               |          0xffffffff92a0012f
+               |          0x7f4bfd11b9ee
+               |          0x7f4bfd110667
+               |          0x7f4bfd1106ac
+               |          write
+               |          impl_eventfd_write
+               |          spa_system_eventfd_write (inlined)
+               |          |          
+               |          |--0.72%--trigger_target_v2
+               |          |          trigger_targets (inlined)
+               |          |          node_ready
+               |          |          flush_all_queues
+               |          |          source_event_func
+               |          |          loop_iterate
+               |          |          do_loop
+               |          |          0x7f4bfd113b7a
+               |          |          0x7f4bfd1917f7
+               |          |          
+               |           --0.47%--loop_signal_event
+               |                     loop_queue_invoke (inlined)
+               |                     loop_invoke
+               |                     spa_loop_invoke (inlined)
+               |                     pw_loop_invoke (inlined)
+               |                     call_trigger_done
+               |                     call_trigger_done
+               |                     impl_node_process_output
+               |                     spa_node_process_fast (inlined)
+               |                     process_node (inlined)
+               |                     node_on_fd_events
+               |                     loop_iterate
+               |                     do_loop
+               |                     0x7f4bfd113b7a
+               |                     0x7f4bfd1917f7
+               |          
+                --0.33%--0xffffffff920b6843
+                          0xffffffff9203f257
+                          0xffffffff9203fd4d
+                          0xffffffff928f2072
+                          0xffffffff92a0012f
+                          0x7f4bfd11b9ee
+                          0x7f4bfd110667
+                          0x7f4bfd1106ac
+                          read
+                          impl_eventfd_read
+                          spa_system_eventfd_read (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     1.52%  client-source  libpipewire-module-client-node.so  [.] trigger_target_v2         -      -            
+            |
+            ---trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     1.40%  client-source  [vdso]                             [.] __vdso_clock_gettime      -      -            
+            |
+            ---__vdso_clock_gettime
+               clock_gettime
+               impl_clock_gettime
+               spa_system_clock_gettime (inlined)
+               get_time_ns (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     1.38%  client-sink    [unknown]                          [k] 0xffffffff9289ab0c        -      -            
+            |
+            ---0xffffffff9289ab0c
+               0xffffffff9289ad0f
+               0xffffffff91c12d2f
+               0xffffffff91f00022
+               0xffffffff91f08432
+               0xffffffff928fdace
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     1.30%  client-source  [unknown]                          [k] 0xffffffff928f4af8        -      -            
+            |
+            ---0xffffffff928f4af8
+               0xffffffff91c4eab0
+               0xffffffff91d3e50f
+               0xffffffff91d0d655
+               0xffffffff928fd6b1
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     1.28%  client-source  [unknown]                          [k] 0xffffffff920b068b        -      -            
+            |
+            ---0xffffffff920b068b
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               |          
+               |--0.99%--loop_signal_event
+               |          loop_queue_invoke (inlined)
+               |          loop_invoke
+               |          spa_loop_invoke (inlined)
+               |          pw_loop_invoke (inlined)
+               |          call_trigger_done
+               |          call_trigger_done
+               |          impl_node_process_output
+               |          spa_node_process_fast (inlined)
+               |          process_node (inlined)
+               |          node_on_fd_events
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.29%--trigger_target_v2
+                          trigger_targets (inlined)
+                          node_ready
+                          flush_all_queues
+                          source_event_func
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     1.26%  client-source  [unknown]                          [k] 0xffffffff920b615c        -      -            
+            |
+            ---0xffffffff920b615c
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               |          
+               |--0.64%--trigger_target_v2
+               |          trigger_targets (inlined)
+               |          node_ready
+               |          flush_all_queues
+               |          source_event_func
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.62%--loop_signal_event
+                          loop_queue_invoke (inlined)
+                          loop_invoke
+                          spa_loop_invoke (inlined)
+                          pw_loop_invoke (inlined)
+                          call_trigger_done
+                          call_trigger_done
+                          impl_node_process_output
+                          spa_node_process_fast (inlined)
+                          process_node (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     1.18%  client-sink    libpipewire-module-client-node.so  [.] trigger_target_v2         -      -            
+            |
+            ---trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     1.11%  client-source  [unknown]                          [k] 0xffffffff9229b3be        -      -            
+            |
+            ---0xffffffff9229b3be
+               0xffffffff920b6159
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               |          
+               |--0.65%--trigger_target_v2
+               |          trigger_targets (inlined)
+               |          node_ready
+               |          flush_all_queues
+               |          source_event_func
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.46%--loop_signal_event
+                          loop_queue_invoke (inlined)
+                          loop_invoke
+                          spa_loop_invoke (inlined)
+                          pw_loop_invoke (inlined)
+                          call_trigger_done
+                          call_trigger_done
+                          impl_node_process_output
+                          spa_node_process_fast (inlined)
+                          process_node (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     1.09%  client-source  pw-test-polling-remote-client      [.] source_process            -      -            
+            |
+            ---source_process
+               call_process (inlined)
+               call_process (inlined)
+               do_trigger_driver
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     1.06%  client-source  [unknown]                          [k] 0xffffffff92a00116        -      -            
+            |
+            ---0xffffffff92a00116
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               |          
+               |--0.77%--trigger_target_v2
+               |          trigger_targets (inlined)
+               |          node_ready
+               |          flush_all_queues
+               |          source_event_func
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.29%--loop_signal_event
+                          loop_queue_invoke (inlined)
+                          loop_invoke
+                          spa_loop_invoke (inlined)
+                          pw_loop_invoke (inlined)
+                          call_trigger_done
+                          call_trigger_done
+                          impl_node_process_output
+                          spa_node_process_fast (inlined)
+                          process_node (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     1.06%  client-source  [unknown]                          [k] 0xffffffff9229b3c6        -      -            
+            |
+            ---0xffffffff9229b3c6
+               0xffffffff920b6159
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               |          
+               |--0.69%--trigger_target_v2
+               |          trigger_targets (inlined)
+               |          node_ready
+               |          flush_all_queues
+               |          source_event_func
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.37%--loop_signal_event
+                          loop_queue_invoke (inlined)
+                          loop_invoke
+                          spa_loop_invoke (inlined)
+                          pw_loop_invoke (inlined)
+                          call_trigger_done
+                          call_trigger_done
+                          impl_node_process_output
+                          spa_node_process_fast (inlined)
+                          process_node (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     1.06%  client-source  [unknown]                          [k] 0xffffffff9206e817        -      -            
+            |
+            ---0xffffffff9206e817
+               0xffffffff9203fe6c
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     1.05%  client-sink    [unknown]                          [k] 0xffffffff921c7bad        -      -            
+            |
+            ---0xffffffff921c7bad
+               0xffffffff9216bdc0
+               0xffffffff9203cf16
+               |          
+               |--0.69%--0xffffffff9203f936
+               |          0xffffffff9203fead
+               |          0xffffffff928f2072
+               |          0xffffffff92a0012f
+               |          0x7f4bfd11b9ee
+               |          0x7f4bfd110667
+               |          0x7f4bfd1106ac
+               |          write
+               |          impl_eventfd_write
+               |          spa_system_eventfd_write (inlined)
+               |          trigger_target_v2
+               |          trigger_targets (inlined)
+               |          process_node (inlined)
+               |          node_on_fd_events
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.35%--0xffffffff9203f0bc
+                          0xffffffff9203fd4d
+                          0xffffffff928f2072
+                          0xffffffff92a0012f
+                          0x7f4bfd11b9ee
+                          0x7f4bfd110667
+                          0x7f4bfd1106ac
+                          read
+                          impl_eventfd_read
+                          spa_system_eventfd_read (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.95%  client-source  [unknown]                          [k] 0xffffffff92b04104        -      -            
+            |
+            ---0xffffffff92b04104
+               0xffffffff92b04110
+               |          
+               |--0.53%--0xffffffff92a00116
+               |          0x7f4bfd11b9ee
+               |          0x7f4bfd110667
+               |          0x7f4bfd1106ac
+               |          |          
+               |           --0.46%--write
+               |                     impl_eventfd_write
+               |                     spa_system_eventfd_write (inlined)
+               |                     trigger_target_v2
+               |                     trigger_targets (inlined)
+               |                     node_ready
+               |                     flush_all_queues
+               |                     source_event_func
+               |                     loop_iterate
+               |                     do_loop
+               |                     0x7f4bfd113b7a
+               |                     0x7f4bfd1917f7
+               |          
+               |--0.23%--0xffffffff920b1228
+               |          0xffffffff920b2ac1
+               |          0xffffffff928f2072
+               |          0xffffffff92a0012f
+               |          0x7f4bfd11b9ee
+               |          0x7f4bfd110667
+               |          0x7f4bfd1106ac
+               |          epoll_wait
+               |          impl_pollfd_wait
+               |          spa_system_pollfd_wait (inlined)
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.19%--0xffffffff9216bdd5
+                          0xffffffff9203cf16
+                          0xffffffff9203f936
+                          0xffffffff9203fead
+                          0xffffffff928f2072
+                          0xffffffff92a0012f
+                          0x7f4bfd11b9ee
+                          0x7f4bfd110667
+                          0x7f4bfd1106ac
+                          write
+                          impl_eventfd_write
+                          spa_system_eventfd_write (inlined)
+                          trigger_target_v2
+                          trigger_targets (inlined)
+                          node_ready
+                          flush_all_queues
+                          source_event_func
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.91%  client-sink    libpipewire-ao-0.3.so.0.1700.0     [.] pw_stream_queue_buffer    -      -            
+            |
+            ---queue_push (inlined)
+               pw_stream_queue_buffer
+               sink_process
+               call_process (inlined)
+               call_process (inlined)
+               impl_node_process_input
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.88%  client-source  [unknown]                          [k] 0xffffffff920b05c4        -      -            
+            |
+            ---0xffffffff920b05c4
+               0xffffffff91d387a8
+               |          
+               |--0.77%--0xffffffff920b6843
+               |          0xffffffff9203f257
+               |          0xffffffff9203fd4d
+               |          0xffffffff928f2072
+               |          0xffffffff92a0012f
+               |          0x7f4bfd11b9ee
+               |          0x7f4bfd110667
+               |          0x7f4bfd1106ac
+               |          read
+               |          impl_eventfd_read
+               |          spa_system_eventfd_read (inlined)
+               |          |          
+               |          |--0.52%--node_on_fd_events
+               |          |          loop_iterate
+               |          |          do_loop
+               |          |          0x7f4bfd113b7a
+               |          |          0x7f4bfd1917f7
+               |          |          
+               |           --0.25%--source_event_func
+               |                     loop_iterate
+               |                     do_loop
+               |                     0x7f4bfd113b7a
+               |                     0x7f4bfd1917f7
+               |          
+                --0.11%--0xffffffff920b61d6
+                          0xffffffff9203f988
+                          0xffffffff9203fead
+                          0xffffffff928f2072
+                          0xffffffff92a0012f
+                          0x7f4bfd11b9ee
+                          0x7f4bfd110667
+                          0x7f4bfd1106ac
+                          write
+                          impl_eventfd_write
+                          spa_system_eventfd_write (inlined)
+                          trigger_target_v2
+                          trigger_targets (inlined)
+                          node_ready
+                          flush_all_queues
+                          source_event_func
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.79%  client-source  [unknown]                          [k] 0xffffffff920b074e        -      -            
+            |
+            ---0xffffffff920b074e
+               0xffffffff91d387a8
+               0xffffffff920b6843
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               |          
+               |--0.52%--node_on_fd_events
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.28%--source_event_func
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.75%  client-sink    [unknown]                          [k] 0xffffffff91d3875d        -      -            
+            |
+            ---0xffffffff91d3875d
+               0xffffffff91d3d8e6
+               0xffffffff920b07bb
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.74%  client-source  [unknown]                          [k] 0xffffffff9289aaf0        -      -            
+            |
+            ---0xffffffff9289aaf0
+               0xffffffff9289ad0f
+               0xffffffff91c12d2f
+               0xffffffff91f00022
+               0xffffffff91f08432
+               0xffffffff928fdace
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.72%  client-sink    [unknown]                          [k] 0xffffffff9229b3cc        -      -            
+            |
+            ---0xffffffff9229b3cc
+               0xffffffff920b6159
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.71%  client-source  [unknown]                          [k] 0xffffffff928fd5f5        -      -            
+            |
+            ---0xffffffff928fd5f5
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.70%  client-source  [unknown]                          [k] 0xffffffff9203f939        -      -            
+            |
+            ---0xffffffff9203f939
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.70%  client-source  [unknown]                          [k] 0xffffffff91d387aa        -      -            
+            |
+            ---0xffffffff91d387aa
+               0xffffffff920b6843
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               |          
+               |--0.48%--source_event_func
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.22%--node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.69%  client-source  [unknown]                          [k] 0xffffffff920b0513        -      -            
+            |
+            ---0xffffffff920b0513
+               0xffffffff920b1105
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.68%  client-source  [unknown]                          [k] 0xffffffff920b6114        -      -            
+            |
+            ---0xffffffff920b6114
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               |          
+               |--0.43%--trigger_target_v2
+               |          trigger_targets (inlined)
+               |          node_ready
+               |          flush_all_queues
+               |          source_event_func
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.26%--loop_signal_event
+                          loop_queue_invoke (inlined)
+                          loop_invoke
+                          spa_loop_invoke (inlined)
+                          pw_loop_invoke (inlined)
+                          call_trigger_done
+                          call_trigger_done
+                          impl_node_process_output
+                          spa_node_process_fast (inlined)
+                          process_node (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.68%  client-sink    [unknown]                          [k] 0xffffffff9216bdd7        -      -            
+            |
+            ---0xffffffff9216bdd7
+               0xffffffff9203cf16
+               0xffffffff9203f0bc
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.67%  client-sink    [unknown]                          [k] 0xffffffff9290624a        -      -            
+            |
+            ---0xffffffff9290624a
+               |          
+               |--0.36%--0xffffffff920b67e1
+               |          0xffffffff9203f257
+               |          0xffffffff9203fd4d
+               |          0xffffffff928f2072
+               |          0xffffffff92a0012f
+               |          0x7f4bfd11b9ee
+               |          0x7f4bfd110667
+               |          0x7f4bfd1106ac
+               |          read
+               |          impl_eventfd_read
+               |          spa_system_eventfd_read (inlined)
+               |          node_on_fd_events
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.25%--0xffffffff920b6179
+                          0xffffffff9203f988
+                          0xffffffff9203fead
+                          0xffffffff928f2072
+                          0xffffffff92a0012f
+                          0x7f4bfd11b9ee
+                          0x7f4bfd110667
+                          0x7f4bfd1106ac
+                          write
+                          impl_eventfd_write
+                          spa_system_eventfd_write (inlined)
+                          trigger_target_v2
+                          trigger_targets (inlined)
+                          process_node (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.65%  client-source  [unknown]                          [k] 0xffffffff91ef4bc0        -      -            
+            |
+            ---0xffffffff91ef4bc0
+               0xffffffff9216bdd5
+               0xffffffff9203cf16
+               0xffffffff9203f936
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               |          
+               |--0.39%--loop_signal_event
+               |          loop_queue_invoke (inlined)
+               |          loop_invoke
+               |          spa_loop_invoke (inlined)
+               |          pw_loop_invoke (inlined)
+               |          call_trigger_done
+               |          call_trigger_done
+               |          impl_node_process_output
+               |          spa_node_process_fast (inlined)
+               |          process_node (inlined)
+               |          node_on_fd_events
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.26%--trigger_target_v2
+                          trigger_targets (inlined)
+                          node_ready
+                          flush_all_queues
+                          source_event_func
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.62%  client-source  [unknown]                          [k] 0xffffffff92292839        -      -            
+            |
+            ---0xffffffff92292839
+               0xffffffff920b686f
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.59%  client-sink    [unknown]                          [k] 0xffffffff928fd65b        -      -            
+            |
+            ---0xffffffff928fd65b
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.58%  client-source  [unknown]                          [k] 0xffffffff9206e80c        -      -            
+            |
+            ---0xffffffff9206e80c
+               0xffffffff9203fe6c
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               |          
+               |--0.40%--trigger_target_v2
+               |          trigger_targets (inlined)
+               |          node_ready
+               |          flush_all_queues
+               |          source_event_func
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.18%--loop_signal_event
+                          loop_queue_invoke (inlined)
+                          loop_invoke
+                          spa_loop_invoke (inlined)
+                          pw_loop_invoke (inlined)
+                          call_trigger_done
+                          call_trigger_done
+                          impl_node_process_output
+                          spa_node_process_fast (inlined)
+                          process_node (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.57%  client-sink    [vdso]                             [.] __vdso_clock_gettime      -      -            
+            |
+            ---__vdso_clock_gettime
+               clock_gettime
+               impl_clock_gettime
+               spa_system_clock_gettime (inlined)
+               get_time_ns (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.57%  client-source  [unknown]                          [k] 0xffffffff920b0310        -      -            
+            |
+            ---0xffffffff920b0310
+               0xffffffff920b1457
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.56%  client-source  [unknown]                          [k] 0xffffffff920b10df        -      -            
+            |
+            ---0xffffffff920b10df
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.54%  client-source  [unknown]                          [k] 0xffffffff91d0d658        -      -            
+            |
+            ---0xffffffff91d0d658
+               0xffffffff928fd6b1
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.53%  client-source  [unknown]                          [k] 0xffffffff9206daa5        -      -            
+            |
+            ---0xffffffff9206daa5
+               0xffffffff920b0e64
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.52%  client-source  [unknown]                          [k] 0xffffffff9216bdc2        -      -            
+            |
+            ---0xffffffff9216bdc2
+               0xffffffff9203cf16
+               0xffffffff9203f0bc
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               |          
+               |--0.28%--source_event_func
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.24%--node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.52%  client-sink    [unknown]                          [k] 0xffffffff92b04104        -      -            
+            |
+            ---0xffffffff92b04104
+               0xffffffff92b04110
+               |          
+               |--0.31%--0xffffffff92a00116
+               |          0x7f4bfd11b9ee
+               |          0x7f4bfd110667
+               |          0x7f4bfd1106ac
+               |          write
+               |          impl_eventfd_write
+               |          spa_system_eventfd_write (inlined)
+               |          trigger_target_v2
+               |          trigger_targets (inlined)
+               |          process_node (inlined)
+               |          node_on_fd_events
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.20%--0xffffffff9203cf16
+                          0xffffffff9203f0bc
+                          0xffffffff9203fd4d
+                          0xffffffff928f2072
+                          0xffffffff92a0012f
+                          0x7f4bfd11b9ee
+                          0x7f4bfd110667
+                          0x7f4bfd1106ac
+                          read
+                          impl_eventfd_read
+                          spa_system_eventfd_read (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.50%  client-source  [unknown]                          [k] 0xffffffff92a00080        -      -            
+            |
+            ---0xffffffff92a00080
+               0x7f4bfd11b9ee
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.50%  client-sink    [unknown]                          [k] 0xffffffff92905b1b        -      -            
+            |
+            ---0xffffffff92905b1b
+               0xffffffff920b05f5
+               0xffffffff91d387a8
+               |          
+               |--0.32%--0xffffffff920b6843
+               |          0xffffffff9203f257
+               |          0xffffffff9203fd4d
+               |          0xffffffff928f2072
+               |          0xffffffff92a0012f
+               |          0x7f4bfd11b9ee
+               |          0x7f4bfd110667
+               |          0x7f4bfd1106ac
+               |          read
+               |          impl_eventfd_read
+               |          spa_system_eventfd_read (inlined)
+               |          node_on_fd_events
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.18%--0xffffffff920b61d6
+                          0xffffffff9203f988
+                          0xffffffff9203fead
+                          0xffffffff928f2072
+                          0xffffffff92a0012f
+                          0x7f4bfd11b9ee
+                          0x7f4bfd110667
+                          0x7f4bfd1106ac
+                          write
+                          impl_eventfd_write
+                          spa_system_eventfd_write (inlined)
+                          trigger_target_v2
+                          trigger_targets (inlined)
+                          process_node (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.49%  client-source  [unknown]                          [k] 0xffffffff920b684c        -      -            
+            |
+            ---0xffffffff920b684c
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               |          
+               |--0.38%--node_on_fd_events
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.11%--source_event_func
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.48%  client-source  [unknown]                          [k] 0xffffffff921c7b80        -      -            
+            |
+            ---0xffffffff921c7b80
+               0xffffffff9216bdc0
+               0xffffffff9203cf16
+               0xffffffff9203f0bc
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               |          
+               |--0.29%--node_on_fd_events
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.19%--source_event_func
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.48%  client-source  [unknown]                          [k] 0xffffffff920b145a        -      -            
+            |
+            ---0xffffffff920b145a
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.48%  client-source  [unknown]                          [k] 0xffffffff920b1107        -      -            
+            |
+            ---0xffffffff920b1107
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.48%  client-source  [unknown]                          [k] 0xffffffff9206e7f8        -      -            
+            |
+            ---0xffffffff9206e7f8
+               0xffffffff9203fe6c
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.47%  client-source  [unknown]                          [k] 0xffffffff920b054e        -      -            
+            |
+            ---0xffffffff920b054e
+               0xffffffff920b1105
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.45%  client-sink    [unknown]                          [k] 0xffffffff9203fe64        -      -            
+            |
+            ---0xffffffff9203fe64
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.45%  client-source  [unknown]                          [k] 0xffffffff9229283f        -      -            
+            |
+            ---0xffffffff9229283f
+               0xffffffff920b686f
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.44%  client-sink    [unknown]                          [k] 0xffffffff920b1410        -      -            
+            |
+            ---0xffffffff920b1410
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.44%  client-source  [unknown]                          [k] 0xffffffff920b0687        -      -            
+            |
+            ---0xffffffff920b0687
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.42%  client-source  [unknown]                          [k] 0xffffffff920b0559        -      -            
+            |
+            ---0xffffffff920b0559
+               0xffffffff920b1105
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.41%  client-source  libpipewire-ao-0.3.so.0.1700.0     [.] impl_node_process_output  -      -            
+            |          
+            |--0.21%--copy_position (inlined)
+            |          impl_node_process_output
+            |          do_trigger_driver
+            |          flush_all_queues
+            |          source_event_func
+            |          loop_iterate
+            |          do_loop
+            |          0x7f4bfd113b7a
+            |          0x7f4bfd1917f7
+            |          
+             --0.21%--impl_node_process_output
+                       do_trigger_driver
+                       flush_all_queues
+                       source_event_func
+                       loop_iterate
+                       do_loop
+                       0x7f4bfd113b7a
+                       0x7f4bfd1917f7
+
+     0.41%  client-source  [unknown]                          [k] 0xffffffff920b0261        -      -            
+            |
+            ---0xffffffff920b0261
+               0xffffffff920b1457
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.39%  client-source  [unknown]                          [k] 0xffffffff92b04109        -      -            
+            |
+            ---0xffffffff92b04109
+               |          
+               |--0.21%--0xffffffff920b6159
+               |          0xffffffff9203f988
+               |          0xffffffff9203fead
+               |          0xffffffff928f2072
+               |          0xffffffff92a0012f
+               |          0x7f4bfd11b9ee
+               |          0x7f4bfd110667
+               |          0x7f4bfd1106ac
+               |          write
+               |          impl_eventfd_write
+               |          spa_system_eventfd_write (inlined)
+               |          loop_signal_event
+               |          loop_queue_invoke (inlined)
+               |          loop_invoke
+               |          spa_loop_invoke (inlined)
+               |          pw_loop_invoke (inlined)
+               |          call_trigger_done
+               |          call_trigger_done
+               |          impl_node_process_output
+               |          spa_node_process_fast (inlined)
+               |          process_node (inlined)
+               |          node_on_fd_events
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.18%--0xffffffff920b054b
+                          0xffffffff920b1105
+                          0xffffffff920b2ac1
+                          0xffffffff928f2072
+                          0xffffffff92a0012f
+                          0x7f4bfd11b9ee
+                          0x7f4bfd110667
+                          0x7f4bfd1106ac
+                          epoll_wait
+                          impl_pollfd_wait
+                          spa_system_pollfd_wait (inlined)
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.39%  client-sink    [unknown]                          [k] 0xffffffff9206e7f8        -      -            
+            |
+            ---0xffffffff9206e7f8
+               0xffffffff9203fe6c
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.38%  client-source  [unknown]                          [k] 0xffffffff920b1443        -      -            
+            |
+            ---0xffffffff920b1443
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.37%  client-sink    [unknown]                          [k] 0xffffffff920b10df        -      -            
+            |
+            ---0xffffffff920b10df
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.37%  client-sink    libpipewire-ao-0.3.so.0.1700.0     [.] impl_node_process_input   -      -            
+            |          
+             --0.36%--impl_node_process_input
+                       spa_node_process_fast (inlined)
+                       process_node (inlined)
+                       node_on_fd_events
+                       loop_iterate
+                       do_loop
+                       0x7f4bfd113b7a
+                       0x7f4bfd1917f7
+
+     0.36%  client-source  [unknown]                          [k] 0xffffffff92a00087        -      -            
+            |
+            ---0xffffffff92a00087
+               0x7f4bfd11b9ee
+               |          
+                --0.29%--0x7f4bfd110667
+                          0x7f4bfd1106ac
+                          write
+                          impl_eventfd_write
+                          0x1946fffffd04e46f
+
+     0.36%  client-source  [unknown]                          [k] 0xffffffff920b0743        -      -            
+            |
+            ---0xffffffff920b0743
+               0xffffffff91d387a8
+               0xffffffff920b6843
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               |          
+                --0.29%--node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.35%  client-source  [unknown]                          [k] 0xffffffff92a00125        -      -            
+            |
+            ---0xffffffff92a00125
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               |          
+               |--0.24%--read
+               |          impl_eventfd_read
+               |          spa_system_eventfd_read (inlined)
+               |          node_on_fd_events
+               |          loop_iterate
+               |          do_loop
+               |          0x7f4bfd113b7a
+               |          0x7f4bfd1917f7
+               |          
+                --0.11%--write
+                          impl_eventfd_write
+                          spa_system_eventfd_write (inlined)
+                          loop_signal_event
+                          loop_queue_invoke (inlined)
+                          loop_invoke
+                          spa_loop_invoke (inlined)
+                          pw_loop_invoke (inlined)
+                          call_trigger_done
+                          call_trigger_done
+                          impl_node_process_output
+                          spa_node_process_fast (inlined)
+                          process_node (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.35%  client-source  [unknown]                          [k] 0xffffffff920b1230        -      -            
+            |
+            ---0xffffffff920b1230
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.35%  client-source  [unknown]                          [k] 0xffffffff91d387b0        -      -            
+            |
+            ---0xffffffff91d387b0
+               0xffffffff920b6843
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.35%  client-source  [unknown]                          [k] 0xffffffff920b05f9        -      -            
+            |
+            ---0xffffffff920b05f9
+               0xffffffff91d387a8
+               0xffffffff920b6843
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.35%  client-sink    [unknown]                          [k] 0xffffffff91c990d0        -      -            
+            |
+            ---0xffffffff91c990d0
+               0xffffffff91c1337e
+               0xffffffff91c12d3c
+               0xffffffff91f00022
+               0xffffffff91f08432
+               0xffffffff928fdace
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.35%  client-sink    [unknown]                          [k] 0xffffffff91d79f78        -      -            
+            |
+            ---0xffffffff91d79f78
+               0xffffffff921cd112
+               0xffffffff921c7ba5
+               0xffffffff9216bdc0
+               0xffffffff9203cf16
+               0xffffffff9203f936
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.35%  client-sink    [unknown]                          [k] 0xffffffff920b07cd        -      -            
+            |
+            ---0xffffffff920b07cd
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.35%  client-sink    [unknown]                          [k] 0xffffffff92292837        -      -            
+            |
+            ---0xffffffff92292837
+               0xffffffff920b686f
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.34%  client-source  [unknown]                          [k] 0xffffffff92a0008f        -      -            
+            |
+            ---0xffffffff92a0008f
+               0x7f4bfd11b9ee
+               |          
+                --0.27%--0x7f4bfd110667
+                          0x7f4bfd1106ac
+                          write
+                          impl_eventfd_write
+                          0x35b2fffffd04e46f
+
+     0.33%  client-sink    [unknown]                          [k] 0xffffffff9203ff4d        -      -            
+            |
+            ---0xffffffff9203ff4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.33%  client-sink    [unknown]                          [k] 0xffffffff920b0607        -      -            
+            |
+            ---0xffffffff920b0607
+               0xffffffff91d387a8
+               0xffffffff920b6843
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.33%  client-sink    [unknown]                          [k] 0xffffffff920b6794        -      -            
+            |
+            ---0xffffffff920b6794
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.32%  client-source  [unknown]                          [k] 0xffffffff92906315        -      -            
+            |
+            ---0xffffffff92906315
+               |          
+                --0.23%--0xffffffff920b685f
+                          0xffffffff9203f257
+                          0xffffffff9203fd4d
+                          0xffffffff928f2072
+                          0xffffffff92a0012f
+                          0x7f4bfd11b9ee
+                          0x7f4bfd110667
+                          0x7f4bfd1106ac
+                          read
+                          impl_eventfd_read
+                          spa_system_eventfd_read (inlined)
+                          node_on_fd_events
+                          loop_iterate
+                          do_loop
+                          0x7f4bfd113b7a
+                          0x7f4bfd1917f7
+
+     0.32%  client-sink    [unknown]                          [k] 0xffffffff91d38730        -      -            
+            |
+            ---0xffffffff91d38730
+               0xffffffff91d3d8e6
+               0xffffffff920b07bb
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.32%  client-sink    [unknown]                          [k] 0xffffffff91ef4bc0        -      -            
+            |
+            ---0xffffffff91ef4bc0
+               0xffffffff9216bdd5
+               0xffffffff9203cf16
+               0xffffffff9203f936
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.32%  client-sink    [unknown]                          [k] 0xffffffff9204247d        -      -            
+            |
+            ---0xffffffff9204247d
+               0xffffffff920b0556
+               0xffffffff920b1105
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.32%  client-sink    [unknown]                          [k] 0xffffffff9206e817        -      -            
+            |
+            ---0xffffffff9206e817
+               0xffffffff9203fe6c
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.32%  client-sink    [unknown]                          [k] 0xffffffff92292776        -      -            
+            |
+            ---0xffffffff92292776
+               0xffffffff920b686f
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.32%  client-sink    [unknown]                          [k] 0xffffffff9229283f        -      -            
+            |
+            ---0xffffffff9229283f
+               0xffffffff920b686f
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.32%  client-sink    [unknown]                          [k] 0xffffffff92a000b4        -      -            
+            |
+            ---0xffffffff92a000b4
+
+     0.32%  client-sink    [unknown]                          [k] 0xffffffff9206e825        -      -            
+            |
+            ---0xffffffff9206e825
+               0xffffffff9203fe6c
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.32%  client-sink    [unknown]                          [k] 0xffffffff929061cb        -      -            
+            |
+            ---0xffffffff929061cb
+               0xffffffff928fd654
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.32%  client-sink    [unknown]                          [k] 0xffffffff92a00080        -      -            
+            |
+            ---0xffffffff92a00080
+               0x7f4bfd11b9ee
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.30%  client-source  [unknown]                          [k] 0xffffffff91d38752        -      -            
+            |
+            ---0xffffffff91d38752
+               0xffffffff920b6843
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.29%  client-source  [unknown]                          [k] 0xffffffff91d14324        -      -            
+            |
+            ---0xffffffff91d14324
+               0xffffffff920b01e9
+               0xffffffff91d387a8
+               0xffffffff91d3d8e6
+               0xffffffff920b07bb
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.29%  client-source  [unknown]                          [k] 0xffffffff91d79f78        -      -            
+            |
+            ---0xffffffff91d79f78
+               0xffffffff920b0858
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.29%  client-source  [unknown]                          [k] 0xffffffff920b6167        -      -            
+            |
+            ---0xffffffff920b6167
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.29%  client-source  [unknown]                          [k] 0xffffffff921c7bad        -      -            
+            |
+            ---0xffffffff921c7bad
+               0xffffffff9216bdc0
+               0xffffffff9203cf16
+               0xffffffff9203f0bc
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.29%  client-source  [unknown]                          [k] 0xffffffff9229b3c9        -      -            
+            |
+            ---0xffffffff9229b3c9
+               0xffffffff920b6159
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.29%  client-source  [unknown]                          [k] 0xffffffff92b0410b        -      -            
+            |
+            ---0xffffffff92b0410b
+               0xffffffff920b05f5
+               0xffffffff91d387a8
+               0xffffffff920b6843
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.29%  client-sink    [unknown]                          [k] 0xffffffff920b1107        -      -            
+            |
+            ---0xffffffff920b1107
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.28%  client-source  [unknown]                          [k] 0xffffffff9216bdd5        -      -            
+            |
+            ---0xffffffff9216bdd5
+               0xffffffff9203cf16
+               0xffffffff9203f0bc
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.28%  client-source  [unknown]                          [k] 0xffffffff91c990d9        -      -            
+            |
+            ---0xffffffff91c990d9
+               0xffffffff91c1337e
+               0xffffffff91c12d3c
+               0xffffffff91f00022
+               0xffffffff91f08432
+               0xffffffff928fdace
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.28%  client-source  [unknown]                          [k] 0xffffffff92905afc        -      -            
+            |
+            ---0xffffffff92905afc
+               0xffffffff91d13bf4
+               0xffffffff920b01e9
+               0xffffffff91d387a8
+               0xffffffff91d3d8e6
+               0xffffffff920b07bb
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.28%  client-source  [unknown]                          [k] 0xffffffff920b1410        -      -            
+            |
+            ---0xffffffff920b1410
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.27%  client-source  [unknown]                          [k] 0xffffffff920b5eda        -      -            
+            |
+            ---0xffffffff920b5eda
+               0xffffffff920b054b
+               0xffffffff920b1105
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.27%  client-source  [unknown]                          [k] 0xffffffff921c7b99        -      -            
+            |
+            ---0xffffffff921c7b99
+               0xffffffff9216bdc0
+               0xffffffff9203cf16
+               0xffffffff9203f936
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.27%  client-source  [unknown]                          [k] 0xffffffff92904d84        -      -            
+            |
+            ---0xffffffff92904d84
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.27%  client-source  [unknown]                          [k] 0xffffffff929061c0        -      -            
+            |
+            ---0xffffffff929061c0
+               0xffffffff928fd654
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.27%  client-source  [unknown]                          [k] 0xffffffff9203f0e4        -      -            
+            |
+            ---0xffffffff9203f0e4
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.27%  client-source  [unknown]                          [k] 0xffffffff9289ad12        -      -            
+            |
+            ---0xffffffff9289ad12
+               0xffffffff91c12d2f
+               0xffffffff91f00022
+               0xffffffff91f08432
+               0xffffffff928fdace
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.27%  client-source  [unknown]                          [k] 0xffffffff921c7b6d        -      -            
+            |
+            ---0xffffffff921c7b6d
+               0xffffffff9216bdc0
+               0xffffffff9203cf16
+               0xffffffff9203f0bc
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.27%  client-source  [unknown]                          [k] 0xffffffff92905b04        -      -            
+            |
+            ---0xffffffff92905b04
+               0xffffffff91d3d8d1
+               0xffffffff920b07bb
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.26%  client-source  [unknown]                          [k] 0xffffffff91d1432f        -      -            
+            |
+            ---0xffffffff91d1432f
+               0xffffffff920b01e9
+               0xffffffff91d387a8
+               0xffffffff91d3d8e6
+               0xffffffff920b07bb
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.26%  client-source  [unknown]                          [k] 0xffffffff92906256        -      -            
+            |
+            ---0xffffffff92906256
+               0xffffffff920b6179
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.26%  client-source  [unknown]                          [k] 0xffffffff9203f0ce        -      -            
+            |
+            ---0xffffffff9203f0ce
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.26%  client-source  [unknown]                          [k] 0xffffffff91d3d8ca        -      -            
+            |
+            ---0xffffffff91d3d8ca
+               0xffffffff920b07bb
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.26%  client-source  [unknown]                          [k] 0xffffffff91d7e287        -      -            
+            |
+            ---0xffffffff91d7e287
+               0xffffffff928fd645
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.26%  client-source  [unknown]                          [k] 0xffffffff9290624a        -      -            
+            |
+            ---0xffffffff9290624a
+               0xffffffff920b6179
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.26%  client-source  libpipewire-ao-0.3.so.0.1700.0     [.] pw_stream_dequeue_buffer  -      -            
+            |
+            ---pw_stream_dequeue_buffer
+               source_process
+               call_process (inlined)
+               call_process (inlined)
+               do_trigger_driver
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.26%  client-source  [unknown]                          [k] 0xffffffff91d0d684        -      -            
+            |
+            ---0xffffffff91d0d684
+               0xffffffff928fd6b1
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.26%  client-source  [unknown]                          [k] 0xffffffff9203f26b        -      -            
+            |
+            ---0xffffffff9203f26b
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.26%  client-source  [unknown]                          [k] 0xffffffff9203f8cc        -      -            
+            |
+            ---0xffffffff9203f8cc
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.26%  client-source  [unknown]                          [k] 0xffffffff9203f8d1        -      -            
+            |
+            ---0xffffffff9203f8d1
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.26%  client-source  [unknown]                          [k] 0xffffffff9206da54        -      -            
+            |
+            ---0xffffffff9206da54
+               0xffffffff920b0e64
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.26%  client-source  [unknown]                          [k] 0xffffffff9203f947        -      -            
+            |
+            ---0xffffffff9203f947
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.25%  client-source  libc.so.6                          [.] __errno_location          -      -            
+            |
+            ---__errno_location
+               get_buffer (inlined)
+               get_buffer (inlined)
+               impl_node_process_output
+               do_trigger_driver
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.25%  client-source  [unknown]                          [k] 0xffffffff920b05d2        -      -            
+            |
+            ---0xffffffff920b05d2
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.25%  client-source  [unknown]                          [k] 0xffffffff920b6794        -      -            
+            |
+            ---0xffffffff920b6794
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.25%  client-source  [unknown]                          [k] 0xffffffff920b6874        -      -            
+            |
+            ---0xffffffff920b6874
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.25%  client-source  [unknown]                          [k] 0xffffffff922ad53e        -      -            
+            |
+            ---0xffffffff922ad53e
+               0xffffffff920b13e9
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.24%  client-source  [unknown]                          [k] 0xffffffff9216bdc0        -      -            
+            |
+            ---0xffffffff9216bdc0
+               0xffffffff9203cf16
+               0xffffffff9203f0bc
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.24%  client-source  [unknown]                          [k] 0xffffffff921cd123        -      -            
+            |
+            ---0xffffffff921cd123
+               0xffffffff921c7ba5
+               0xffffffff9216bdc0
+               0xffffffff9203cf16
+               0xffffffff9203f936
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.24%  client-source  [unknown]                          [k] 0xffffffff928f2015        -      -            
+            |
+            ---0xffffffff928f2015
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.24%  client-source  [unknown]                          [k] 0xffffffff92904f44        -      -            
+            |
+            ---0xffffffff92904f44
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.24%  client-source  [unknown]                          [k] 0xffffffff920b104f        -      -            
+            |
+            ---0xffffffff920b104f
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.24%  client-source  [unknown]                          [k] 0xffffffff9203cf20        -      -            
+            |
+            ---0xffffffff9203cf20
+               0xffffffff9203f936
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.23%  client-source  [unknown]                          [k] 0xffffffff928f1ff0        -      -            
+            |
+            ---0xffffffff928f1ff0
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.23%  client-source  [unknown]                          [k] 0xffffffff91d0d62f        -      -            
+            |
+            ---0xffffffff91d0d62f
+               0xffffffff928fd6b1
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.23%  client-source  [unknown]                          [k] 0xffffffff928fd65b        -      -            
+            |
+            ---0xffffffff928fd65b
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.23%  client-source  [unknown]                          [k] 0xffffffff920b13eb        -      -            
+            |
+            ---0xffffffff920b13eb
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.22%  client-source  [unknown]                          [k] 0xffffffff920b0e1f        -      -            
+            |
+            ---0xffffffff920b0e1f
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.22%  client-source  [unknown]                          [k] 0xffffffff92901311        -      -            
+            |
+            ---0xffffffff92901311
+               0xffffffff920b0ff8
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.22%  client-source  [unknown]                          [k] 0xffffffff92a00111        -      -            
+            |
+            ---0xffffffff92a00111
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.22%  client-source  [unknown]                          [k] 0xffffffff9203f8ae        -      -            
+            |
+            ---0xffffffff9203f8ae
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.22%  client-source  [unknown]                          [k] 0xffffffff9203cefa        -      -            
+            |
+            ---0xffffffff9203cefa
+               0xffffffff9203f0bc
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.22%  client-source  [unknown]                          [k] 0xffffffff9206e805        -      -            
+            |
+            ---0xffffffff9206e805
+               0xffffffff9203fe6c
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.22%  client-source  [unknown]                          [k] 0xffffffff920b105f        -      -            
+            |
+            ---0xffffffff920b105f
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.22%  client-source  [unknown]                          [k] 0xffffffff920b1462        -      -            
+            |
+            ---0xffffffff920b1462
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.22%  client-source  [unknown]                          [k] 0xffffffff920b6862        -      -            
+            |
+            ---0xffffffff920b6862
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.21%  client-source  libpipewire-ao-0.3.so.0.1700.0     [.] process_node.isra.0       -      -            
+            |
+            ---process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.21%  client-source  [unknown]                          [k] 0xffffffff92a000b4        -      -            
+            |
+            ---0xffffffff92a000b4
+
+     0.21%  client-source  [unknown]                          [k] 0xffffffff920b1385        -      -            
+            |
+            ---0xffffffff920b1385
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.21%  client-source  [unknown]                          [k] 0xffffffff9229b3cc        -      -            
+            |
+            ---0xffffffff9229b3cc
+               0xffffffff920b6159
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.21%  client-source  libpipewire-ao-0.3.so.0.1700.0     [.] do_trigger_driver         -      -            
+            |
+            ---call_process (inlined)
+               call_process (inlined)
+               do_trigger_driver
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.21%  client-source  [unknown]                          [k] 0xffffffff91c085cd        -      -            
+            |
+            ---0xffffffff91c085cd
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.21%  client-sink    [unknown]                          [k] 0xffffffff921cd041        -      -            
+            |
+            ---0xffffffff921cd041
+               0xffffffff921c7ba5
+               0xffffffff9216bdc0
+               0xffffffff9203cf16
+               0xffffffff9203f936
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.20%  client-sink    [unknown]                          [k] 0xffffffff92a00116        -      -            
+            |
+            ---0xffffffff92a00116
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.20%  client-source  [unknown]                          [k] 0xffffffff9206e814        -      -            
+            |
+            ---0xffffffff9206e814
+               0xffffffff9203fe6c
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.20%  client-source  [unknown]                          [k] 0xffffffff920b0fd3        -      -            
+            |
+            ---0xffffffff920b0fd3
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.20%  client-source  [unknown]                          [k] 0xffffffff920b13f1        -      -            
+            |
+            ---0xffffffff920b13f1
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.20%  client-source  [unknown]                          [k] 0xffffffff91ef4bc4        -      -            
+            |
+            ---0xffffffff91ef4bc4
+               0xffffffff9216bdd5
+               0xffffffff9203cf16
+               0xffffffff9203f0bc
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.20%  client-source  [unknown]                          [k] 0xffffffff91d38780        -      -            
+            |
+            ---0xffffffff91d38780
+               0xffffffff920b6843
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.20%  client-source  [unknown]                          [k] 0xffffffff921cd041        -      -            
+            |
+            ---0xffffffff921cd041
+               0xffffffff921c7ba5
+               0xffffffff9216bdc0
+               0xffffffff9203cf16
+               0xffffffff9203f936
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.20%  client-sink    [unknown]                          [k] 0xffffffff920b5f0e        -      -            
+            |
+            ---0xffffffff920b5f0e
+               0xffffffff920b054b
+               0xffffffff920b1105
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.20%  client-source  libpipewire-ao-0.3.so.0.1700.0     [.] pw_stream_queue_buffer    -      -            
+            |
+            ---spa_ringbuffer_write_update (inlined)
+               queue_push (inlined)
+               pw_stream_queue_buffer
+               call_process (inlined)
+               call_process (inlined)
+               do_trigger_driver
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.20%  client-source  [unknown]                          [k] 0xffffffff928ffee4        -      -            
+            |
+            ---0xffffffff928ffee4
+               0xffffffff920b145f
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.20%  client-source  [unknown]                          [k] 0xffffffff91d0d638        -      -            
+            |
+            ---0xffffffff91d0d638
+               0xffffffff928fd6b1
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.20%  client-source  [unknown]                          [k] 0xffffffff928ffef8        -      -            
+            |
+            ---0xffffffff928ffef8
+               0xffffffff920b145f
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.19%  client-source  [unknown]                          [k] 0xffffffff921c7b7c        -      -            
+            |
+            ---0xffffffff921c7b7c
+               0xffffffff9216bdc0
+               0xffffffff9203cf16
+               0xffffffff9203f0bc
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.19%  client-source  [unknown]                          [k] 0xffffffff91d3876f        -      -            
+            |
+            ---0xffffffff91d3876f
+               0xffffffff920b6843
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.19%  client-source  [unknown]                          [k] 0xffffffff920b0240        -      -            
+            |
+            ---0xffffffff920b0240
+               0xffffffff920b1457
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.19%  client-source  [unknown]                          [k] 0xffffffff920b11e3        -      -            
+            |
+            ---0xffffffff920b11e3
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.19%  client-source  [unknown]                          [k] 0xffffffff922927f9        -      -            
+            |
+            ---0xffffffff922927f9
+               0xffffffff920b686f
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.19%  client-source  [unknown]                          [k] 0xffffffff928f200c        -      -            
+            |
+            ---0xffffffff928f200c
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.18%  client-source  [unknown]                          [k] 0xffffffff920b104c        -      -            
+            |
+            ---0xffffffff920b104c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.18%  client-source  [unknown]                          [k] 0xffffffff920b6981        -      -            
+            |
+            ---0xffffffff920b6981
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.18%  client-sink    [unknown]                          [k] 0xffffffff91c08312        -      -            
+            |
+            ---0xffffffff91c08312
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.18%  client-sink    [unknown]                          [k] 0xffffffff91d3d8d4        -      -            
+            |
+            ---0xffffffff91d3d8d4
+               0xffffffff920b07bb
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.18%  client-sink    [unknown]                          [k] 0xffffffff9203cf18        -      -            
+            |
+            ---0xffffffff9203cf18
+               0xffffffff9203f0bc
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.18%  client-sink    [unknown]                          [k] 0xffffffff9203f25a        -      -            
+            |
+            ---0xffffffff9203f25a
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.18%  client-sink    [unknown]                          [k] 0xffffffff920b6114        -      -            
+            |
+            ---0xffffffff920b6114
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.18%  client-sink    [unknown]                          [k] 0xffffffff920b6167        -      -            
+            |
+            ---0xffffffff920b6167
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.18%  client-sink    [unknown]                          [k] 0xffffffff920b6862        -      -            
+            |
+            ---0xffffffff920b6862
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.18%  client-sink    [unknown]                          [k] 0xffffffff9289ad12        -      -            
+            |
+            ---0xffffffff9289ad12
+               0xffffffff91c12d2f
+               0xffffffff91f00022
+               0xffffffff91f08432
+               0xffffffff928fdace
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.18%  client-sink    [unknown]                          [k] 0xffffffff928ffee4        -      -            
+            |
+            ---0xffffffff928ffee4
+               0xffffffff920b145f
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.18%  client-sink    [unknown]                          [k] 0xffffffff92a00125        -      -            
+            |
+            ---0xffffffff92a00125
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.18%  client-sink    [unknown]                          [k] 0xffffffff920b104c        -      -            
+            |
+            ---0xffffffff920b104c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.17%  client-sink    libpipewire-ao-0.3.so.0.1700.0     [.] process_node.isra.0       -      -            
+            |
+            ---process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.17%  client-sink    [unknown]                          [k] 0xffffffff91d3881e        -      -            
+            |
+            ---0xffffffff91d3881e
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.17%  client-sink    [unknown]                          [k] 0xffffffff9206da84        -      -            
+            |
+            ---0xffffffff9206da84
+               0xffffffff920b0e64
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.17%  client-sink    [unknown]                          [k] 0xffffffff920b615c        -      -            
+            |
+            ---0xffffffff920b615c
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.17%  client-sink    [unknown]                          [k] 0xffffffff920b61df        -      -            
+            |
+            ---0xffffffff920b61df
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.17%  client-sink    [unknown]                          [k] 0xffffffff920b684c        -      -            
+            |
+            ---0xffffffff920b684c
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.17%  client-sink    [unknown]                          [k] 0xffffffff9289aaf0        -      -            
+            |
+            ---0xffffffff9289aaf0
+               0xffffffff9289ad0f
+               0xffffffff91c12d2f
+               0xffffffff91f00022
+               0xffffffff91f08432
+               0xffffffff928fdace
+               0xffffffff928fe1c7
+               0xffffffff92904f1a
+               0xffffffff920b141c
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.17%  client-source  [unknown]                          [k] 0xffffffff9216bd96        -      -            
+            |
+            ---0xffffffff9216bd96
+               0xffffffff9203cf16
+               0xffffffff9203f936
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.17%  client-source  [unknown]                          [k] 0xffffffff9216bdd7        -      -            
+            |
+            ---0xffffffff9216bdd7
+               0xffffffff9203cf16
+               0xffffffff9203f936
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+
+     0.16%  client-source  [unknown]                          [k] 0xffffffff920b01d4        -      -            
+            |
+            ---0xffffffff920b01d4
+               0xffffffff91d387a8
+               0xffffffff91d3d8e6
+               0xffffffff920b07bb
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.15%  client-source  libspa-support.so                  [.] loop_signal_event         -      -            
+            |
+            ---loop_signal_event
+               loop_queue_invoke (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.14%  client-source  [unknown]                          [k] 0xffffffff928ffef1        -      -            
+            |
+            ---0xffffffff928ffef1
+               0xffffffff920b145f
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.14%  client-sink    [unknown]                          [k] 0xffffffff9203f257        -      -            
+            |
+            ---0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.14%  client-sink    [unknown]                          [k] 0xffffffff9206e74b        -      -            
+            |
+            ---0xffffffff9206e74b
+               0xffffffff9203fe6c
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.14%  client-sink    [unknown]                          [k] 0xffffffff920b0ffb        -      -            
+            |
+            ---0xffffffff920b0ffb
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.14%  client-sink    [unknown]                          [k] 0xffffffff920b611f        -      -            
+            |
+            ---0xffffffff920b611f
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.14%  client-sink    [unknown]                          [k] 0xffffffff92292774        -      -            
+            |
+            ---0xffffffff92292774
+               0xffffffff920b686f
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.14%  client-sink    [unknown]                          [k] 0xffffffff92905afb        -      -            
+            |
+            ---0xffffffff92905afb
+               0xffffffff91d3d8d1
+               0xffffffff920b07bb
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.13%  client-source  [unknown]                          [k] 0xffffffff91d387a8        -      -            
+            |
+            ---0xffffffff91d387a8
+               0xffffffff920b6843
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.11%  client-source  [unknown]                          [k] 0xffffffff9206e76b        -      -            
+            |
+            ---0xffffffff9206e76b
+               0xffffffff9203fe6c
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               node_ready
+               flush_all_queues
+               source_event_func
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.11%  client-sink    [unknown]                          [k] 0xffffffff9203f95c        -      -            
+            |
+            ---0xffffffff9203f95c
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.11%  client-sink    [unknown]                          [k] 0xffffffff920b068b        -      -            
+            |
+            ---0xffffffff920b068b
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.11%  client-sink    [unknown]                          [k] 0xffffffff921c7b7c        -      -            
+            |
+            ---0xffffffff921c7b7c
+               0xffffffff9216bdc0
+               0xffffffff9203cf16
+               0xffffffff9203f0bc
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.11%  client-sink    [unknown]                          [k] 0xffffffff928f2039        -      -            
+            |
+            ---0xffffffff928f2039
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.11%  client-sink    [unknown]                          [k] 0xffffffff92905bc5        -      -            
+            |
+            ---0xffffffff92905bc5
+               0xffffffff920b074b
+               0xffffffff91d387a8
+               0xffffffff920b6843
+               0xffffffff9203f257
+               0xffffffff9203fd4d
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               read
+               impl_eventfd_read
+               spa_system_eventfd_read (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.11%  client-sink    [unknown]                          [k] 0xffffffff92a00005        -      -            
+            |
+            ---0xffffffff92a00005
+               0xffffffff92a00116
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.11%  client-sink    [unknown]                          [k] 0xffffffff92b0410b        -      -            
+            |
+            ---0xffffffff92b0410b
+               0xffffffff91d3d8d1
+               0xffffffff920b07bb
+               0xffffffff91d387a8
+               0xffffffff920b61d6
+               0xffffffff9203f988
+               0xffffffff9203fead
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               write
+               impl_eventfd_write
+               spa_system_eventfd_write (inlined)
+               trigger_target_v2
+               trigger_targets (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.11%  client-source  libspa-support.so                  [.] loop_invoke               -      -            
+            |
+            ---get_queue (inlined)
+               loop_invoke
+               spa_loop_invoke (inlined)
+               pw_loop_invoke (inlined)
+               call_trigger_done
+               call_trigger_done
+               impl_node_process_output
+               spa_node_process_fast (inlined)
+               process_node (inlined)
+               node_on_fd_events
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.11%  client-source  libspa-support.so                  [.] loop_iterate              -      -            
+            |
+            ---loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.11%  client-source  [unknown]                          [k] 0xffffffff920b0e67        -      -            
+            |
+            ---0xffffffff920b0e67
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.11%  client-source  [unknown]                          [k] 0xffffffff920b1105        -      -            
+            |
+            ---0xffffffff920b1105
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.11%  client-source  [unknown]                          [k] 0xffffffff920b11db        -      -            
+            |
+            ---0xffffffff920b11db
+               0xffffffff920b2ac1
+               0xffffffff928f2072
+               0xffffffff92a0012f
+               0x7f4bfd11b9ee
+               0x7f4bfd110667
+               0x7f4bfd1106ac
+               epoll_wait
+               impl_pollfd_wait
+               spa_system_pollfd_wait (inlined)
+               loop_iterate
+               do_loop
+               0x7f4bfd113b7a
+               0x7f4bfd1917f7
+
+     0.11%  client-source  [unknown]                          [k] 0xffffffff92a00084        -      -            
+            |
+            ---0xffffffff92a00084
+               0x7f4bfd11b9ee
+               0x55ac13dde9db
+
+
+
+#
+# (Tip: Treat branches as callchains: perf record -b ... ; perf report --branch-history)
+#

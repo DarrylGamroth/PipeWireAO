@@ -153,10 +153,13 @@ improvement for a new control-plane latency policy. Moving the activation
 sequence field would break the shared activation layout. Neither change should
 be made from these synthetic results.
 
-The next useful profile is an end-to-end camera to algorithm to AO graph on
-isolated deployment CPUs. That run should retain the same page-fault gate,
-collect per-node CPU budgets, and—if system-wide collection is acceptable—use
-IBS/c2c to verify the activation line and the queue ownership boundaries.
+An exported-node buffer graph has now been profiled with the same page-fault
+gate; see [Exported-node graph scheduling benchmark](polling-remote-graph-benchmark.md).
+It confirms the synthetic result and does not expose a scheduler hot function
+that warrants optimization. The next useful profile is an end-to-end camera to
+algorithm to AO graph on isolated deployment CPUs. That run should collect
+per-node CPU budgets and—if system-wide collection is acceptable—use IBS/c2c
+to verify the activation line and the queue ownership boundaries.
 
 ## Reproduction and data
 

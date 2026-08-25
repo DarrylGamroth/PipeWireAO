@@ -1,0 +1,281 @@
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/daemon/pipewire-ao -P { context.data-loops = [ { loop.name=daemon-event loop.class=data.rt loop.idle=eventfd } ] }
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-busy-spin-rt88-none-rep1 eventfd busy-spin benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-busy-spin-rt88-none-rep1.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-busy-spin-rt88-none-rep1 sink=polling-export-sink-bench-1763515-eventfd-busy-spin-rt88-none-rep1
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=999910417 source-tid=1763589 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1763590 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-eventfd-rt88-none-rep1 eventfd eventfd benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-eventfd-rt88-none-rep1.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-eventfd-rt88-none-rep1 sink=polling-export-sink-bench-1763515-eventfd-eventfd-rt88-none-rep1
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000106826 source-tid=1763612 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1763613 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-busy-spin-rt0-none-rep1 eventfd busy-spin benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-busy-spin-rt0-none-rep1.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-busy-spin-rt0-none-rep1 sink=polling-export-sink-bench-1763515-eventfd-busy-spin-rt0-none-rep1
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000809183 source-tid=1763624 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1763625 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-eventfd-rt88-none-rep1 busy-spin eventfd benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-eventfd-rt88-none-rep1.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-eventfd-rt88-none-rep1 sink=polling-export-sink-bench-1763515-busy-spin-eventfd-rt88-none-rep1
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=999907753 source-tid=1763656 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1763657 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-eventfd-rt0-none-rep1 eventfd eventfd benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-eventfd-rt0-none-rep1.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-eventfd-rt0-none-rep1 sink=polling-export-sink-bench-1763515-eventfd-eventfd-rt0-none-rep1
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000608397 source-tid=1763670 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1763671 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-busy-spin-rt0-none-rep1 busy-spin busy-spin benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-busy-spin-rt0-none-rep1.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-busy-spin-rt0-none-rep1 sink=polling-export-sink-bench-1763515-busy-spin-busy-spin-rt0-none-rep1
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1001904257 source-tid=1763699 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1763700 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-eventfd-rt0-none-rep1 busy-spin eventfd benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-eventfd-rt0-none-rep1.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-eventfd-rt0-none-rep1 sink=polling-export-sink-bench-1763515-busy-spin-eventfd-rt0-none-rep1
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000208507 source-tid=1763717 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1763718 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-busy-spin-rt88-none-rep1 busy-spin busy-spin benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-busy-spin-rt88-none-rep1.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-busy-spin-rt88-none-rep1 sink=polling-export-sink-bench-1763515-busy-spin-busy-spin-rt88-none-rep1
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1004102129 source-tid=1763743 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1763744 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-busy-spin-rt88-none-rep2 busy-spin busy-spin benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-busy-spin-rt88-none-rep2.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-busy-spin-rt88-none-rep2 sink=polling-export-sink-bench-1763515-busy-spin-busy-spin-rt88-none-rep2
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=999904406 source-tid=1763766 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1763767 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-eventfd-rt88-none-rep2 busy-spin eventfd benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-eventfd-rt88-none-rep2.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-eventfd-rt88-none-rep2 sink=polling-export-sink-bench-1763515-busy-spin-eventfd-rt88-none-rep2
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1006012972 source-tid=1763771 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1763772 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-eventfd-rt0-none-rep2 eventfd eventfd benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-eventfd-rt0-none-rep2.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-eventfd-rt0-none-rep2 sink=polling-export-sink-bench-1763515-eventfd-eventfd-rt0-none-rep2
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000415675 source-tid=1763810 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1763811 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-busy-spin-rt88-none-rep2 eventfd busy-spin benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-busy-spin-rt88-none-rep2.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-busy-spin-rt88-none-rep2 sink=polling-export-sink-bench-1763515-eventfd-busy-spin-rt88-none-rep2
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000007700 source-tid=1763815 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1763816 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-eventfd-rt88-none-rep2 eventfd eventfd benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-eventfd-rt88-none-rep2.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-eventfd-rt88-none-rep2 sink=polling-export-sink-bench-1763515-eventfd-eventfd-rt88-none-rep2
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000010264 source-tid=1763853 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1763854 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-busy-spin-rt0-none-rep2 busy-spin busy-spin benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-busy-spin-rt0-none-rep2.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-busy-spin-rt0-none-rep2 sink=polling-export-sink-bench-1763515-busy-spin-busy-spin-rt0-none-rep2
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1015805467 source-tid=1763860 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1763861 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-eventfd-rt0-none-rep2 busy-spin eventfd benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-eventfd-rt0-none-rep2.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-eventfd-rt0-none-rep2 sink=polling-export-sink-bench-1763515-busy-spin-eventfd-rt0-none-rep2
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000208386 source-tid=1763898 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1763899 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-busy-spin-rt0-none-rep2 eventfd busy-spin benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-busy-spin-rt0-none-rep2.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-busy-spin-rt0-none-rep2 sink=polling-export-sink-bench-1763515-eventfd-busy-spin-rt0-none-rep2
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1001808437 source-tid=1763906 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1763907 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-busy-spin-rt88-none-rep3 busy-spin busy-spin benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-busy-spin-rt88-none-rep3.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-busy-spin-rt88-none-rep3 sink=polling-export-sink-bench-1763515-busy-spin-busy-spin-rt88-none-rep3
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=999904637 source-tid=1763926 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1763927 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-eventfd-rt0-none-rep3 eventfd eventfd benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-eventfd-rt0-none-rep3.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-eventfd-rt0-none-rep3 sink=polling-export-sink-bench-1763515-eventfd-eventfd-rt0-none-rep3
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1009410404 source-tid=1763953 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1763954 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-eventfd-rt0-none-rep3 busy-spin eventfd benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-eventfd-rt0-none-rep3.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-eventfd-rt0-none-rep3 sink=polling-export-sink-bench-1763515-busy-spin-eventfd-rt0-none-rep3
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000211492 source-tid=1763970 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1763971 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-busy-spin-rt88-none-rep3 eventfd busy-spin benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-busy-spin-rt88-none-rep3.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-busy-spin-rt88-none-rep3 sink=polling-export-sink-bench-1763515-eventfd-busy-spin-rt88-none-rep3
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=999910628 source-tid=1763996 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1763997 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-busy-spin-rt0-none-rep3 busy-spin busy-spin benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-busy-spin-rt0-none-rep3.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-busy-spin-rt0-none-rep3 sink=polling-export-sink-bench-1763515-busy-spin-busy-spin-rt0-none-rep3
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=999904427 source-tid=1764013 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1764014 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-eventfd-rt88-none-rep3 eventfd eventfd benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-eventfd-rt88-none-rep3.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-eventfd-rt88-none-rep3 sink=polling-export-sink-bench-1763515-eventfd-eventfd-rt88-none-rep3
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1012707517 source-tid=1764025 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1764026 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-busy-spin-rt0-none-rep3 eventfd busy-spin benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-busy-spin-rt0-none-rep3.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-busy-spin-rt0-none-rep3 sink=polling-export-sink-bench-1763515-eventfd-busy-spin-rt0-none-rep3
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000915752 source-tid=1764060 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1764061 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-eventfd-rt88-none-rep3 busy-spin eventfd benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-eventfd-rt88-none-rep3.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-eventfd-rt88-none-rep3 sink=polling-export-sink-bench-1763515-busy-spin-eventfd-rt88-none-rep3
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000110593 source-tid=1764070 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1764071 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-eventfd-rt88-none-rep4 eventfd eventfd benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-eventfd-rt88-none-rep4.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-eventfd-rt88-none-rep4 sink=polling-export-sink-bench-1763515-eventfd-eventfd-rt88-none-rep4
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000012689 source-tid=1764109 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1764110 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-busy-spin-rt88-none-rep4 busy-spin busy-spin benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-busy-spin-rt88-none-rep4.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-busy-spin-rt88-none-rep4 sink=polling-export-sink-bench-1763515-busy-spin-busy-spin-rt88-none-rep4
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1001201038 source-tid=1764131 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1764132 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-busy-spin-rt88-none-rep4 eventfd busy-spin benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-busy-spin-rt88-none-rep4.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-busy-spin-rt88-none-rep4 sink=polling-export-sink-bench-1763515-eventfd-busy-spin-rt88-none-rep4
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=999906701 source-tid=1764169 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1764170 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-eventfd-rt0-none-rep4 busy-spin eventfd benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-eventfd-rt0-none-rep4.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-eventfd-rt0-none-rep4 sink=polling-export-sink-bench-1763515-busy-spin-eventfd-rt0-none-rep4
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1001010481 source-tid=1764192 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1764193 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-eventfd-rt0-none-rep4 eventfd eventfd benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-eventfd-rt0-none-rep4.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-eventfd-rt0-none-rep4 sink=polling-export-sink-bench-1763515-eventfd-eventfd-rt0-none-rep4
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000112767 source-tid=1764217 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1764218 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-eventfd-rt88-none-rep4 busy-spin eventfd benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-eventfd-rt88-none-rep4.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-eventfd-rt88-none-rep4 sink=polling-export-sink-bench-1763515-busy-spin-eventfd-rt88-none-rep4
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1014208442 source-tid=1764237 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1764238 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-busy-spin-rt0-none-rep4 eventfd busy-spin benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-busy-spin-rt0-none-rep4.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-busy-spin-rt0-none-rep4 sink=polling-export-sink-bench-1763515-eventfd-busy-spin-rt0-none-rep4
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1001312096 source-tid=1764277 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1764278 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-busy-spin-rt0-none-rep4 busy-spin busy-spin benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-busy-spin-rt0-none-rep4.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-busy-spin-rt0-none-rep4 sink=polling-export-sink-bench-1763515-busy-spin-busy-spin-rt0-none-rep4
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=999904486 source-tid=1764311 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1764312 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-eventfd-rt88-none-rep5 busy-spin eventfd benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-eventfd-rt88-none-rep5.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-eventfd-rt88-none-rep5 sink=polling-export-sink-bench-1763515-busy-spin-eventfd-rt88-none-rep5
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=999909746 source-tid=1764329 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1764330 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-busy-spin-rt0-none-rep5 busy-spin busy-spin benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-busy-spin-rt0-none-rep5.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-busy-spin-rt0-none-rep5 sink=polling-export-sink-bench-1763515-busy-spin-busy-spin-rt0-none-rep5
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1005604717 source-tid=1764355 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1764356 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-busy-spin-rt0-none-rep5 eventfd busy-spin benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-busy-spin-rt0-none-rep5.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-busy-spin-rt0-none-rep5 sink=polling-export-sink-bench-1763515-eventfd-busy-spin-rt0-none-rep5
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000512537 source-tid=1764372 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1764373 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-eventfd-rt0-none-rep5 busy-spin eventfd benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-eventfd-rt0-none-rep5.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-eventfd-rt0-none-rep5 sink=polling-export-sink-bench-1763515-busy-spin-eventfd-rt0-none-rep5
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1000511595 source-tid=1764391 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1764392 sink-cpu=14 sink-policy=0 sink-priority=0
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-busy-spin-busy-spin-rt88-none-rep5 busy-spin busy-spin benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-busy-spin-busy-spin-rt88-none-rep5.csv
+client-output:
+READY source=polling-export-source-bench-1763515-busy-spin-busy-spin-rt88-none-rep5 sink=polling-export-sink-bench-1763515-busy-spin-busy-spin-rt88-none-rep5
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=999907603 source-tid=1764424 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1764425 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-busy-spin-rt88-none-rep5 eventfd busy-spin benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-busy-spin-rt88-none-rep5.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-busy-spin-rt88-none-rep5 sink=polling-export-sink-bench-1763515-eventfd-busy-spin-rt88-none-rep5
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1008110736 source-tid=1764435 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1764436 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-eventfd-rt88-none-rep5 eventfd eventfd benchmark 2000 10000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-eventfd-rt88-none-rep5.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-eventfd-rt88-none-rep5 sink=polling-export-sink-bench-1763515-eventfd-eventfd-rt88-none-rep5
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=999906951 source-tid=1764470 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1764471 sink-cpu=14 sink-policy=1 sink-priority=88
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1763515-eventfd-eventfd-rt0-none-rep5 eventfd eventfd benchmark 2000 10000 100000 12 14 0 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-2026-08-25-record/latency-eventfd-eventfd-rt0-none-rep5.csv
+client-output:
+READY source=polling-export-source-bench-1763515-eventfd-eventfd-rt0-none-rep5 sink=polling-export-sink-bench-1763515-eventfd-eventfd-rt0-none-rep5
+RESULT produced=12000 received=12000 held=0
+BENCHMARK samples=10000 measurement-ns=1010011932 source-tid=1764479 source-cpu=12 source-policy=0 source-priority=0 sink-tid=1764480 sink-cpu=14 sink-policy=0 sink-priority=0
+

@@ -1,0 +1,1301 @@
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/daemon/pipewire-ao -P { context.data-loops = [ { loop.name=daemon-event loop.class=data.rt loop.idle=eventfd } ] }
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-dtlb-rep1 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-dtlb-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-dtlb-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1771825,1771826
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-dtlb-rep1 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-dtlb-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499995193 source-tid=1771825 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1771826 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-l1d-rep1 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-l1d-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-l1d-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1771843,1771844
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-l1d-rep1 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-l1d-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499989022 source-tid=1771843 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1771844 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-l1d-rep1 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-l1d-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-l1d-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1771870,1771871
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-l1d-rep1 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-l1d-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499947274 source-tid=1771870 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1771871 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-dtlb-rep1 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-dtlb-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-dtlb-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1771905,1771906
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-dtlb-rep1 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-dtlb-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500373644 source-tid=1771905 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1771906 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-faults-rep1 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-faults-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-faults-rep1.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1771933,1771934
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-faults-rep1 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-faults-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499913450 source-tid=1771933 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1771934 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-l1d-rep1 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-l1d-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-l1d-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1771967,1771968
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-l1d-rep1 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-l1d-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500172436 source-tid=1771967 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1771968 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-core-rep1 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-core-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-core-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1771980,1771981
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-core-rep1 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-core-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500095491 source-tid=1771980 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1771981 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-l2-rep1 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-l2-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-l2-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1772013,1772014
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-l2-rep1 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-l2-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499905465 source-tid=1772013 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772014 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-l2-rep1 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-l2-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-l2-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1772028,1772029
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-l2-rep1 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-l2-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499941513 source-tid=1772028 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772029 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-l1d-rep1 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-l1d-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-l1d-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1772044,1772045
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-l1d-rep1 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-l1d-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499872163 source-tid=1772044 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772045 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-faults-rep1 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-faults-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-faults-rep1.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1772071,1772072
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-faults-rep1 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-faults-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500107725 source-tid=1772071 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772072 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-dtlb-rep1 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-dtlb-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-dtlb-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1772089,1772090
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-dtlb-rep1 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-dtlb-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500142360 source-tid=1772089 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772090 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-core-rep1 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-core-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-core-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1772117,1772118
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-core-rep1 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-core-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500010562 source-tid=1772117 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772118 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-l2-rep1 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-l2-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-l2-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1772136,1772137
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-l2-rep1 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-l2-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=507211467 source-tid=1772136 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772137 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-faults-rep1 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-faults-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-faults-rep1.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1772149,1772150
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-faults-rep1 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-faults-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500057431 source-tid=1772149 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772150 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-l2-rep1 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-l2-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-l2-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1772179,1772180
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-l2-rep1 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-l2-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500051259 source-tid=1772179 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772180 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-core-rep1 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-core-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-core-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1772194,1772195
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-core-rep1 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-core-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500303221 source-tid=1772194 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772195 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-core-rep1 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-core-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-core-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1772222,1772223
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-core-rep1 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-core-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500063562 source-tid=1772222 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772223 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-faults-rep1 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-faults-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-faults-rep1.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1772240,1772241
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-faults-rep1 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-faults-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499907559 source-tid=1772240 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772241 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep1 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-dtlb-rep1.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-dtlb-rep1.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1772252,1772253
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep1 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep1
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499835033 source-tid=1772252 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772253 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-core-rep2 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-core-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-core-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1772285,1772286
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-core-rep2 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-core-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499922217 source-tid=1772285 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772286 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-faults-rep2 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-faults-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-faults-rep2.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1772297,1772298
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-faults-rep2 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-faults-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499894414 source-tid=1772297 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772298 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-l2-rep2 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-l2-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-l2-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1772330,1772331
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-l2-rep2 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-l2-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499894565 source-tid=1772330 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772331 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-l1d-rep2 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-l1d-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-l1d-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1772343,1772344
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-l1d-rep2 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-l1d-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500009891 source-tid=1772343 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772344 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-l2-rep2 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-l2-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-l2-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1772361,1772362
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-l2-rep2 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-l2-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499941934 source-tid=1772361 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772362 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-faults-rep2 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-faults-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-faults-rep2.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1772390,1772391
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-faults-rep2 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-faults-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500106853 source-tid=1772390 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772391 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-core-rep2 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-core-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-core-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1772408,1772409
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-core-rep2 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-core-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499896228 source-tid=1772408 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772409 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-core-rep2 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-core-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-core-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1772419,1772420
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-core-rep2 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-core-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500222280 source-tid=1772419 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772420 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-faults-rep2 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-faults-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-faults-rep2.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1772455,1772456
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-faults-rep2 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-faults-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499925303 source-tid=1772455 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772456 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-dtlb-rep2 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-dtlb-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-dtlb-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1772479,1772480
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-dtlb-rep2 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-dtlb-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499970718 source-tid=1772479 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772480 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-dtlb-rep2 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-dtlb-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-dtlb-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1772535,1772536
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-dtlb-rep2 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-dtlb-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=506743389 source-tid=1772535 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772536 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep2 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-dtlb-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-dtlb-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1772577,1772578
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep2 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499905275 source-tid=1772577 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772578 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-l1d-rep2 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-l1d-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-l1d-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1772596,1772597
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-l1d-rep2 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-l1d-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500289105 source-tid=1772596 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772597 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-l2-rep2 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-l2-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-l2-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1772643,1772644
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-l2-rep2 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-l2-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500053022 source-tid=1772643 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772644 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-l2-rep2 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-l2-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-l2-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1772656,1772657
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-l2-rep2 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-l2-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500160554 source-tid=1772656 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772657 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-core-rep2 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-core-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-core-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1772710,1772711
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-core-rep2 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-core-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500270230 source-tid=1772710 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772711 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-dtlb-rep2 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-dtlb-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-dtlb-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1772722,1772723
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-dtlb-rep2 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-dtlb-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500011835 source-tid=1772722 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772723 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-l1d-rep2 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-l1d-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-l1d-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1772740,1772741
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-l1d-rep2 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-l1d-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499821829 source-tid=1772740 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772741 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-l1d-rep2 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-l1d-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-l1d-rep2.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1772767,1772768
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-l1d-rep2 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-l1d-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500159552 source-tid=1772767 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772768 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-faults-rep2 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-faults-rep2.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-faults-rep2.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1772785,1772786
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-faults-rep2 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-faults-rep2
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500026763 source-tid=1772785 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772786 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-core-rep3 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-core-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-core-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1772813,1772814
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-core-rep3 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-core-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500025951 source-tid=1772813 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772814 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-faults-rep3 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-faults-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-faults-rep3.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1772831,1772832
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-faults-rep3 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-faults-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499948606 source-tid=1772831 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772832 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-l1d-rep3 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-l1d-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-l1d-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1772843,1772844
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-l1d-rep3 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-l1d-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499966039 source-tid=1772843 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772844 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-dtlb-rep3 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-dtlb-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-dtlb-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1772876,1772877
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-dtlb-rep3 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-dtlb-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499911136 source-tid=1772876 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772877 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-faults-rep3 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-faults-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-faults-rep3.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1772888,1772889
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-faults-rep3 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-faults-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500018658 source-tid=1772888 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772889 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-core-rep3 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-core-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-core-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1772921,1772922
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-core-rep3 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-core-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499922487 source-tid=1772921 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772922 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-faults-rep3 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-faults-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-faults-rep3.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1772932,1772933
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-faults-rep3 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-faults-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=504590492 source-tid=1772932 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772933 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-l1d-rep3 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-l1d-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-l1d-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1772954,1772955
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-l1d-rep3 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-l1d-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500316536 source-tid=1772954 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772955 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-l1d-rep3 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-l1d-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-l1d-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1772975,1772976
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-l1d-rep3 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-l1d-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500091524 source-tid=1772975 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772976 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-core-rep3 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-core-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-core-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1772996,1772997
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-core-rep3 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-core-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499908070 source-tid=1772996 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1772997 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-core-rep3 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-core-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-core-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1773020,1773021
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-core-rep3 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-core-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499948436 source-tid=1773020 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773021 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep3 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-dtlb-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-dtlb-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1773039,1773040
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep3 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500548641 source-tid=1773039 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773040 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-l2-rep3 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-l2-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-l2-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1773052,1773053
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-l2-rep3 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-l2-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500174941 source-tid=1773052 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773053 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-dtlb-rep3 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-dtlb-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-dtlb-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1773085,1773086
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-dtlb-rep3 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-dtlb-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500025811 source-tid=1773085 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773086 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-faults-rep3 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-faults-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-faults-rep3.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1773100,1773101
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-faults-rep3 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-faults-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499869929 source-tid=1773100 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773101 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-dtlb-rep3 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-dtlb-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-dtlb-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1773115,1773116
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-dtlb-rep3 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-dtlb-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500100551 source-tid=1773115 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773116 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-l2-rep3 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-l2-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-l2-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1773150,1773151
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-l2-rep3 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-l2-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500080223 source-tid=1773150 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773151 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-l1d-rep3 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-l1d-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-l1d-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1773180,1773181
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-l1d-rep3 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-l1d-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500113025 source-tid=1773180 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773181 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-l2-rep3 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-l2-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-l2-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1773213,1773214
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-l2-rep3 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-l2-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499898693 source-tid=1773213 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773214 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-l2-rep3 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-l2-rep3.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-l2-rep3.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1773225,1773226
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-l2-rep3 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-l2-rep3
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499884526 source-tid=1773225 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773226 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-l1d-rep4 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-l1d-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-l1d-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1773261,1773262
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-l1d-rep4 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-l1d-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500106352 source-tid=1773261 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773262 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-l2-rep4 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-l2-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-l2-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1773288,1773289
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-l2-rep4 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-l2-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499955960 source-tid=1773288 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773289 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-l1d-rep4 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-l1d-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-l1d-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1773306,1773307
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-l1d-rep4 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-l1d-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500042783 source-tid=1773306 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773307 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-l1d-rep4 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-l1d-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-l1d-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1773331,1773332
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-l1d-rep4 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-l1d-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499862655 source-tid=1773331 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773332 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-l2-rep4 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-l2-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-l2-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1773369,1773370
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-l2-rep4 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-l2-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=506888952 source-tid=1773369 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773370 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-core-rep4 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-core-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-core-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1773392,1773393
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-core-rep4 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-core-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499830955 source-tid=1773392 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773393 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-l1d-rep4 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-l1d-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-l1d-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1773428,1773429
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-l1d-rep4 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-l1d-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499926014 source-tid=1773428 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773429 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-faults-rep4 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-faults-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-faults-rep4.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1773437,1773438
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-faults-rep4 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-faults-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499958345 source-tid=1773437 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773438 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep4 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-dtlb-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-dtlb-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1773473,1773474
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep4 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=506740714 source-tid=1773473 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773474 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-faults-rep4 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-faults-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-faults-rep4.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1773535,1773536
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-faults-rep4 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-faults-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500112694 source-tid=1773535 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773536 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-dtlb-rep4 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-dtlb-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-dtlb-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1773553,1773554
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-dtlb-rep4 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-dtlb-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499955951 source-tid=1773553 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773554 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-l2-rep4 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-l2-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-l2-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1773580,1773581
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-l2-rep4 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-l2-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499857385 source-tid=1773580 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773581 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-dtlb-rep4 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-dtlb-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-dtlb-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1773598,1773599
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-dtlb-rep4 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-dtlb-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499918480 source-tid=1773598 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773599 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-faults-rep4 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-faults-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-faults-rep4.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1773625,1773626
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-faults-rep4 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-faults-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499959337 source-tid=1773625 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773626 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-core-rep4 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-core-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-core-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1773644,1773645
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-core-rep4 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-core-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500043995 source-tid=1773644 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773645 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-core-rep4 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-core-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-core-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1773659,1773660
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-core-rep4 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-core-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=501594814 source-tid=1773659 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773660 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-core-rep4 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-core-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-core-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1773689,1773690
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-core-rep4 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-core-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500115920 source-tid=1773689 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773690 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-l2-rep4 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-l2-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-l2-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1773704,1773705
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-l2-rep4 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-l2-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499880128 source-tid=1773704 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773705 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-dtlb-rep4 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-dtlb-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-dtlb-rep4.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1773730,1773731
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-dtlb-rep4 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-dtlb-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499970908 source-tid=1773730 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773731 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-faults-rep4 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-faults-rep4.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-faults-rep4.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1773769,1773770
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-faults-rep4 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-faults-rep4
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500201030 source-tid=1773769 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773770 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep5 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-dtlb-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-dtlb-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1773782,1773783
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep5 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-dtlb-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499907900 source-tid=1773782 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773783 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-l2-rep5 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-l2-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-l2-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1773815,1773816
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-l2-rep5 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-l2-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=505294973 source-tid=1773815 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773816 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-l1d-rep5 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-l1d-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-l1d-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1773841,1773842
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-l1d-rep5 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-l1d-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499909353 source-tid=1773841 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773842 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-core-rep5 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-core-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-core-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1773863,1773864
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-core-rep5 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-core-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500132481 source-tid=1773863 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773864 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-dtlb-rep5 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-dtlb-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-dtlb-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1773886,1773887
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-dtlb-rep5 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-dtlb-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500012616 source-tid=1773886 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773887 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-l2-rep5 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-l2-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-l2-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1773905,1773906
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-l2-rep5 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-l2-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500241526 source-tid=1773905 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773906 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-faults-rep5 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-faults-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-faults-rep5.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1773935,1773936
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-faults-rep5 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-faults-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499861112 source-tid=1773935 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773936 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-faults-rep5 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-faults-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-faults-rep5.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1773954,1773955
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-faults-rep5 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-faults-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500087427 source-tid=1773954 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773955 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-core-rep5 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-core-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-core-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1773982,1773983
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-core-rep5 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-core-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500039256 source-tid=1773982 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1773983 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-l1d-rep5 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-l1d-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-l1d-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1774015,1774016
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-l1d-rep5 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-l1d-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=503001091 source-tid=1774015 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1774016 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-faults-rep5 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-faults-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-faults-rep5.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1774027,1774028
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-faults-rep5 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-faults-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499953425 source-tid=1774027 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1774028 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-l1d-rep5 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-l1d-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-l1d-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1774062,1774063
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-l1d-rep5 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-l1d-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499994602 source-tid=1774062 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1774063 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-l2-rep5 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-l2-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-l2-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1774074,1774075
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-l2-rep5 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-l2-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499916877 source-tid=1774074 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1774075 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-dtlb-rep5 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-dtlb-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-dtlb-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1774092,1774093
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-dtlb-rep5 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-dtlb-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499988752 source-tid=1774092 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1774093 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-eventfd-rt88-l2-rep5 eventfd eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-eventfd-rt88-l2-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-eventfd-rt88-l2-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l2_request_g1.all_no_prefetch:u,l2_cache_req_stat.ic_dc_miss_in_l2:u} -t 1774120,1774121
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-eventfd-rt88-l2-rep5 sink=polling-export-sink-bench-1771733-eventfd-eventfd-rt88-l2-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500277053 source-tid=1774120 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1774121 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-faults-rep5 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-faults-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-faults-rep5.csv --delay=-1 --control=fd:5,10 -e {page-faults,minor-faults,major-faults,context-switches,cpu-migrations} -t 1774138,1774139
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-faults-rep5 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-faults-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500078800 source-tid=1774138 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1774139 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-core-rep5 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-core-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-core-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1774165,1774166
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-core-rep5 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-core-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=500208614 source-tid=1774165 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1774166 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-eventfd-rt88-dtlb-rep5 busy-spin eventfd benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-eventfd-rt88-dtlb-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-eventfd-rt88-dtlb-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,l1_dtlb_misses:u,l2_dtlb_misses:u} -t 1774184,1774185
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-eventfd-rt88-dtlb-rep5 sink=polling-export-sink-bench-1771733-busy-spin-eventfd-rt88-dtlb-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499894766 source-tid=1774184 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1774185 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-busy-spin-busy-spin-rt88-l1d-rep5 busy-spin busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-busy-spin-busy-spin-rt88-l1d-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-busy-spin-busy-spin-rt88-l1d-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,L1-dcache-loads:u,L1-dcache-load-misses:u} -t 1774199,1774200
+client-output:
+READY source=polling-export-source-bench-1771733-busy-spin-busy-spin-rt88-l1d-rep5 sink=polling-export-sink-bench-1771733-busy-spin-busy-spin-rt88-l1d-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=506341466 source-tid=1774199 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1774200 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
+
+$ /home/dgamroth/workspaces/codex/pipewire/pipewire/build/src/tests/pw-test-polling-remote-client bench-1771733-eventfd-busy-spin-rt88-core-rep5 eventfd busy-spin benchmark 1000 5000 100000 12 14 88 /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/latency-eventfd-busy-spin-rt88-core-rep5.csv
+$ perf stat --no-big-num -x ; --output /home/dgamroth/workspaces/codex/pipewire/pipewire/doc/dox/internals/benchmark-data/polling-remote-graph-pmu-2026-08-25-record/stat-eventfd-busy-spin-rt88-core-rep5.csv --delay=-1 --control=fd:5,10 -e {cycles:u,instructions:u,branches:u,branch-misses:u} -t 1774226,1774227
+client-output:
+READY source=polling-export-source-bench-1771733-eventfd-busy-spin-rt88-core-rep5 sink=polling-export-sink-bench-1771733-eventfd-busy-spin-rt88-core-rep5
+RESULT produced=6000 received=6000 held=0
+BENCHMARK samples=5000 measurement-ns=499971149 source-tid=1774226 source-cpu=12 source-policy=1 source-priority=88 sink-tid=1774227 sink-cpu=14 sink-policy=1 sink-priority=88
+perf-stdout:
+perf-stderr:
+Events disabled
+Events enabled
+Events disabled
+
