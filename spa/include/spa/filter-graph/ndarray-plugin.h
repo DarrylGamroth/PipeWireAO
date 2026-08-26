@@ -231,6 +231,12 @@ struct spa_fgn_descriptor {
 	uint32_t n_ports;
 	const struct spa_fgn_port_info *ports;
 
+	/**
+	 * Construct an instance from one standard JSON object.
+	 *
+	 * The graph host canonicalizes PipeWire's relaxed SPA syntax before this
+	 * callback. The string is borrowed for this call only.
+	 */
 	int (*instantiate)(const struct spa_fgn_descriptor *descriptor,
 			const char *config, void **instance);
 	void (*cleanup)(void *instance);
@@ -307,6 +313,7 @@ struct spa_fgn_descriptor {
 	 * Parameter-port entries are present in the input
 	 * array with a NULL buffer; process() uses the plugin-owned active state
 	 * previously published by commit_parameter().
+	 * The inputs or outputs array may be NULL exactly when its count is zero.
 	 *
 	 * The graph host validates these structural, extent, alignment, and aliasing
 	 * conditions before entering a plugin. A direct C caller that bypasses the

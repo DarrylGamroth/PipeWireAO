@@ -39,6 +39,16 @@ formats, shapes, descriptor strings, property descriptors, choices, and their
 strings remain valid until instance cleanup or library unload as documented in
 the public header.
 
+### FGN-CONFIG-001 — Construction configuration boundary
+
+A node `config` value MUST be an object in PipeWire's relaxed SPA JSON syntax.
+Before `instantiate()`, the graph host MUST recursively canonicalize that
+object to standard JSON, including quoted keys and strings, colons, and
+commas. A missing `config` value MUST be passed as the standard JSON object
+`{}`. Construction-only and graph-rebuild values MUST travel through this
+pre-instantiation configuration boundary; the initial node `props` object MUST
+NOT be used for either class.
+
 ### FGN-LIFE-001 — Callback concurrency and ownership
 
 The host and plugin MUST follow this callback matrix:
@@ -67,6 +77,8 @@ Before invoking a plugin, the host MUST admit exactly one data plane per
 connected buffer, verify offset and extent arithmetic against `maxsize`, verify
 element and known-metadata alignment, reject duplicate metadata types, and
 reject overlap among data, chunk, metadata, input, and mutable output regions.
+Mutable output regions MUST also be disjoint from the caller's outer input and
+output pointer arrays and from every graph-owned plugin-facing buffer array.
 The admitted profile permits at most 16 metadata entries and 4096 total
 metadata bytes per buffer. A plugin MUST preserve the supplied output offset,
 leave output size zero until processing succeeds, publish the exact completed
@@ -91,11 +103,12 @@ and one transaction admits at most 4096 assignments per node.
 
 ### FGN-PROP-001 — Failure-atomic preparation
 
-`spa_fgn_graph_set_props()` MUST parse the complete namespaced Props
-structure, reject malformed/trailing/duplicate/unknown/non-runtime values, and
-prepare every affected operation before publishing any of them. A preparation
-failure discards every prepared object and leaves the active and pending graph
-transaction unchanged.
+`spa_fgn_graph_set_props()` MUST parse its complete namespaced Props structure,
+and an initial node `props` object MUST parse its complete local property
+object. Both paths reject malformed/trailing/duplicate/unknown/non-runtime
+values and prepare every affected operation before publishing any of them. A
+preparation failure discards every prepared object and leaves the active and
+pending graph transaction unchanged.
 
 ### FGN-PROP-002 — Graph-cycle publication
 
@@ -105,6 +118,9 @@ retired transaction is unavailable. At the beginning of one later graph cycle,
 the data-loop owner publishes every affected operation before processing any
 node, so one cycle cannot observe a transaction on only a subset of its
 affected nodes. An empty transaction succeeds without occupying the slot.
+Initial runtime properties MUST be prepared by the admission owner into this
+same bounded pending transaction and committed at the first process boundary.
+The admission owner MUST NOT call `commit_props()` directly.
 
 ### FGN-PROP-003 — Prepared-object lifetime
 
@@ -142,6 +158,11 @@ The ABI MUST represent per-frame values as ordinary data ports, sparse large
 prepared artifacts as parameter input ports, and low-rate scalars as
 properties. A parameter update copies or prepares retained plugin state before
 publication and returns `-EBUSY` rather than growing an unbounded queue.
+A valid graph MAY expose zero external inputs or zero external outputs for a
+pure source or sink. The graph and PipeWire adapter MUST NOT depend on the
+implementation-defined return value of a zero-size allocation, and graph
+processing MUST accept a null external pointer array exactly when its count is
+zero.
 
 ### FGN-SPA-001 — Standard parameter projection
 
@@ -206,6 +227,12 @@ that library. Every port supplies one exact element type, shape, layout,
 optional rate, schema, and profile after instance construction. Graph creation
 rejects incompatible links and cycles before activation.
 
+The graph host converts each relaxed `config` object to standard JSON before
+calling the plugin. Plugin authors can therefore use ordinary typed JSON
+decoders and do not need to implement PipeWire's relaxed syntax. The separate
+`props` object accepts runtime properties only and is prepared during graph
+admission for adoption at the first process boundary.
+
 The graph can be loaded with standard PipeWire tools. For example:
 
 ```text
@@ -262,12 +289,12 @@ ABI version 2 describes stable local IDs and names, Bool, Int, Long, Float,
 Double, Id, and String values, defaults, descriptions, canonical units, ranges,
 and enumerated choices. Every property has exactly one update class:
 
-| Update class | Initial node configuration | Runtime `SPA_PARAM_Props` |
+| Update class | Initial node `props` | Runtime `SPA_PARAM_Props` |
 |---|---|---|
 | read-only | no | no |
 | runtime | yes | yes |
-| construction-only | yes | no |
-| graph-rebuild | yes | no; the adapter must rebuild the graph |
+| construction-only | no; use `config` | no |
+| graph-rebuild | no; use `config` and rebuild | no; the adapter must rebuild the graph |
 
 Ranges and choice sets are mutually exclusive. The graph validates descriptor
 metadata and every incoming value before it calls a plugin. Enum choices become
