@@ -5,6 +5,7 @@
 #ifndef SPA_FILTER_GRAPH_NDARRAY_PLUGIN_H
 #define SPA_FILTER_GRAPH_NDARRAY_PLUGIN_H
 
+#include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -23,10 +24,15 @@ extern "C" {
  */
 
 /** Version of the C ABI exported by ndarray operation shared libraries. */
-#define SPA_FGN_PLUGIN_ABI_VERSION 1u
+#define SPA_FGN_PLUGIN_ABI_VERSION 2u
+#define SPA_FGN_MAX_METAS 16u
+#define SPA_FGN_MAX_META_BYTES 4096u
 
 /** Symbol exported by an ndarray operation shared library. */
 #define SPA_FGN_PLUGIN_ENTRY_NAME "spa_filter_graph_ndarray_plugin_get_interface"
+
+/** Maximum UTF-8 byte length of a descriptor, port, or property local name. */
+#define SPA_FGN_LOCAL_NAME_MAX 255u
 
 /** Direction of an operation port. */
 enum spa_fgn_port_direction {
@@ -66,22 +72,38 @@ struct spa_fgn_port_info {
 	uint32_t index;
 	uint32_t direction;          /**< one of enum spa_fgn_port_direction */
 	uint32_t flags;              /**< a mask of enum spa_fgn_port_flag */
+	/** Non-empty; at most SPA_FGN_LOCAL_NAME_MAX bytes. */
 	const char *name;
 };
 
-/** Property flags. */
+/**
+ * Property flags.
+ *
+ * Every descriptor sets exactly one of READONLY, RUNTIME, CONSTRUCTION, or
+ * GRAPH_REBUILD. RANGE and CHOICES are mutually exclusive value constraints.
+ */
 enum spa_fgn_property_flag {
 	SPA_FGN_PROPERTY_FLAG_NONE = 0,
+	/** The property is reported but cannot be assigned. */
 	SPA_FGN_PROPERTY_FLAG_READONLY = (1u << 0),
 	SPA_FGN_PROPERTY_FLAG_RANGE = (1u << 1),
+	/** The property can be adopted at a process boundary. */
+	SPA_FGN_PROPERTY_FLAG_RUNTIME = (1u << 2),
+	/** The property is accepted only during instance construction. */
+	SPA_FGN_PROPERTY_FLAG_CONSTRUCTION = (1u << 3),
+	/** Changing the property requires graph reconstruction. */
+	SPA_FGN_PROPERTY_FLAG_GRAPH_REBUILD = (1u << 4),
+	SPA_FGN_PROPERTY_FLAG_CHOICES = (1u << 5),
 };
 
 /**
  * A scalar property value.
  *
  * type is one of SPA_TYPE_Bool, SPA_TYPE_Int, SPA_TYPE_Long, SPA_TYPE_Float,
- * SPA_TYPE_Double, SPA_TYPE_Id, or SPA_TYPE_String. String storage is borrowed
- * for the duration documented by the callback receiving or returning it.
+ * SPA_TYPE_Double, SPA_TYPE_Id, or SPA_TYPE_String. An input string passed to
+ * prepare_props() is borrowed only for that call. A string returned by
+ * get_prop() remains valid through callback return and the host's immediate
+ * copy into a POD.
  */
 struct spa_fgn_value {
 	uint32_t type;
@@ -97,18 +119,80 @@ struct spa_fgn_value {
 	} value;
 };
 
+/** One admitted value and label for an enumerated scalar property. */
+struct spa_fgn_property_choice {
+	uint32_t struct_size;
+	uint32_t reserved;
+	struct spa_fgn_value value;
+	const char *name;
+	const char *description;
+};
+
 /** Description of one instance property. */
 struct spa_fgn_property_info {
 	uint32_t struct_size;
 	uint32_t id;
 	uint32_t flags;              /**< a mask of enum spa_fgn_property_flag */
 	uint32_t reserved;
+	/** Non-empty; at most SPA_FGN_LOCAL_NAME_MAX bytes. */
 	const char *name;
 	const char *description;
+	const char *unit;             /**< non-empty canonical unit; "1" is dimensionless */
 	struct spa_fgn_value default_value;
 	struct spa_fgn_value minimum;
 	struct spa_fgn_value maximum;
+	uint32_t n_choices;
+	uint32_t choices_reserved;
+	const struct spa_fgn_property_choice *choices;
 };
+
+/** Static-initializer helpers for declarative C property tables. */
+#define SPA_FGN_VALUE_NONE_INIT						\
+	{ 0 }
+#define SPA_FGN_VALUE_BOOL_INIT(value_)					\
+	{ .type = SPA_TYPE_Bool, .value.boolean = (value_) }
+#define SPA_FGN_VALUE_INT_INIT(value_)					\
+	{ .type = SPA_TYPE_Int, .value.integer = (value_) }
+#define SPA_FGN_VALUE_LONG_INIT(value_)					\
+	{ .type = SPA_TYPE_Long, .value.long_integer = (value_) }
+#define SPA_FGN_VALUE_FLOAT_INIT(value_)					\
+	{ .type = SPA_TYPE_Float, .value.float_value = (value_) }
+#define SPA_FGN_VALUE_DOUBLE_INIT(value_)					\
+	{ .type = SPA_TYPE_Double, .value.double_value = (value_) }
+#define SPA_FGN_VALUE_ID_INIT(value_)					\
+	{ .type = SPA_TYPE_Id, .value.id = (value_) }
+#define SPA_FGN_VALUE_STRING_INIT(value_)					\
+	{ .type = SPA_TYPE_String, .value.string = (value_) }
+
+#define SPA_FGN_PROPERTY_INFO_INIT(id_, flags_, name_, description_, unit_, \
+		default_, minimum_, maximum_, n_choices_, choices_)		\
+	{									\
+		.struct_size = sizeof(struct spa_fgn_property_info),		\
+		.id = (id_),							\
+		.flags = (flags_),						\
+		.name = (name_),						\
+		.description = (description_),					\
+		.unit = (unit_),						\
+		.default_value = default_,					\
+		.minimum = minimum_,						\
+		.maximum = maximum_,						\
+		.n_choices = (n_choices_),					\
+		.choices = (choices_),						\
+	}
+
+/** Enumerate one descriptor from a static C property table. */
+static inline int spa_fgn_enum_prop_info_table(
+		const struct spa_fgn_property_info *properties,
+		uint32_t n_properties, uint32_t index,
+		struct spa_fgn_property_info *info)
+{
+	if (info == NULL || (n_properties > 0 && properties == NULL))
+		return -EINVAL;
+	if (index >= n_properties)
+		return 0;
+	*info = properties[index];
+	return 1;
+}
 
 /** One property assignment in a transaction. */
 struct spa_fgn_property {
@@ -128,12 +212,21 @@ struct spa_fgn_descriptor;
 /**
  * Descriptor for one operation implementation.
  *
- * Descriptors and port arrays have static shared-library lifetime. Instances
- * and every object reachable through them are owned by the plugin.
+ * Descriptors and port arrays have static shared-library lifetime. Formats,
+ * shapes, property descriptors, choices, and descriptor strings returned for
+ * an instance remain valid until cleanup. Instances and every object reachable
+ * through them are owned by the plugin.
+ *
+ * instantiate(), admission enumeration, activate(), deactivate(), reset(), and
+ * cleanup() are serial and do not overlap process(). Control callbacks are
+ * serial with one another but get_prop(), prepare_props(), discard_props(), and
+ * parameter callbacks may overlap process(). The host never locks process();
+ * plugins use an explicit lock-free publication protocol for shared state.
  */
 struct spa_fgn_descriptor {
 	uint32_t struct_size;
 	uint32_t version;
+	/** Non-empty; at most SPA_FGN_LOCAL_NAME_MAX bytes. */
 	const char *name;
 	uint32_t n_ports;
 	const struct spa_fgn_port_info *ports;
@@ -149,13 +242,34 @@ struct spa_fgn_descriptor {
 			struct spa_fgn_property_info *info);
 	int (*get_prop)(void *instance, uint32_t id,
 			struct spa_fgn_value *value);
+	/**
+	 * Return a monotonic sequence revision for externally visible values.
+	 *
+	 * Stable snapshots use even revisions. The value remains odd while one or
+	 * more writers change property-visible state and advances to a greater even
+	 * value only after the final writer completes. The graph retries a control
+	 * snapshot that sees an odd or changed revision and reports process-time
+	 * changes to its caller.
+	 * The callback satisfies the same real-time restrictions as process().
+	 */
+	uint64_t (*get_prop_revision)(void *instance);
 
-	/** Prepare and validate a complete local transaction off the data loop. */
+	/**
+	 * Prepare and validate a complete local transaction off the data loop.
+	 *
+	 * Property values and strings are borrowed only for this call. The returned
+	 * object is self-contained and owned by the plugin.
+	 */
 	int (*prepare_props)(void *instance, const struct spa_fgn_property *props,
 			uint32_t n_props, void **prepared);
-	/** Publish a previously prepared transaction. This callback cannot fail. */
+	/**
+	 * Publish a previously prepared transaction at graph-cycle start.
+	 *
+	 * This callback consumes prepared and cannot fail, allocate, block, destroy
+	 * retired state, or unwind.
+	 */
 	void (*commit_props)(void *instance, void *prepared);
-	/** Release a prepared transaction that will not be committed. */
+	/** Consume an unpublished prepared transaction on the control path. */
 	void (*discard_props)(void *instance, void *prepared);
 
 	/**
@@ -183,9 +297,22 @@ struct spa_fgn_descriptor {
 	 * This callback runs on the graph data loop. It must not allocate, block,
 	 * unwind across the ABI, or retain a buffer after returning. Input buffers
 	 * and their metadata are read-only, including when one output fans out to
-	 * multiple consumers. Parameter-port entries are present in the input
+	 * multiple consumers. Input and output buffer descriptors, chunks,
+	 * metadata, and data regions do not overlap. Each buffer has exactly one
+	 * data plane and at most SPA_FGN_MAX_METAS entries containing at most
+	 * SPA_FGN_MAX_META_BYTES in total. An operation writes at the supplied
+	 * output chunk offset, preserves that offset, and sets the completed size
+	 * only after successful processing. It leaves the completed size zero on
+	 * failure.
+	 * Parameter-port entries are present in the input
 	 * array with a NULL buffer; process() uses the plugin-owned active state
 	 * previously published by commit_parameter().
+	 *
+	 * The graph host validates these structural, extent, alignment, and aliasing
+	 * conditions before entering a plugin. A direct C caller that bypasses the
+	 * graph host must provide accessible, correctly aligned outer arrays and
+	 * nested pointers satisfying the same contract; an arbitrary inaccessible
+	 * pointer cannot be validated portably by the callee.
 	 */
 	int (*process)(void *instance,
 			const struct spa_fgn_buffer *inputs, uint32_t n_inputs,
@@ -196,7 +323,7 @@ struct spa_fgn_descriptor {
 struct spa_fgn_plugin {
 	uint32_t struct_size;
 	uint32_t abi_version;
-	const char *name;
+	const char *name;              /**< non-empty plugin family name */
 	const struct spa_fgn_descriptor *(*find_descriptor)(const char *name);
 };
 
