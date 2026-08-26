@@ -48,7 +48,14 @@ int spa_fgn_graph_enum_prop_info(struct spa_fgn_graph *graph, uint32_t index,
 int spa_fgn_graph_get_props(struct spa_fgn_graph *graph,
 		struct spa_pod_builder *builder, struct spa_pod **props);
 
-/** Atomically prepare and commit one namespaced SPA_PARAM_Props update. */
+/**
+ * Failure-atomically prepare one namespaced SPA_PARAM_Props update.
+ *
+ * A non-empty successful transaction occupies one bounded pending slot. The
+ * data-loop owner publishes all affected operations together at the beginning
+ * of a later graph cycle. Returns -EBUSY until the pending or retired slot is
+ * available. An empty update is a successful no-op.
+ */
 int spa_fgn_graph_set_props(struct spa_fgn_graph *graph,
 		const struct spa_pod *props);
 
@@ -66,7 +73,19 @@ int spa_fgn_graph_activate(struct spa_fgn_graph *graph);
 int spa_fgn_graph_deactivate(struct spa_fgn_graph *graph);
 int spa_fgn_graph_reset(struct spa_fgn_graph *graph);
 
-/** Process one complete synchronous graph cycle. */
+/** Successful graph-process result flags. */
+enum spa_fgn_process_result {
+	SPA_FGN_PROCESS_RESULT_NONE = 0,
+	/** At least one externally visible property value changed. */
+	SPA_FGN_PROCESS_RESULT_PROPS_CHANGED = (1u << 0),
+};
+
+/**
+ * Process one complete synchronous graph cycle.
+ *
+ * Returns a negative errno-style error or a mask of enum
+ * spa_fgn_process_result.
+ */
 int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		struct spa_buffer *const inputs[], uint32_t n_inputs,
 		struct spa_buffer *const outputs[], uint32_t n_outputs);

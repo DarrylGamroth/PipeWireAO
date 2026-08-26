@@ -11,15 +11,18 @@ use std::cell::UnsafeCell;
 use std::ffi::{CStr, c_char, c_void};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
-const ABI_VERSION: u32 = 1;
+const ABI_VERSION: u32 = 2;
 const DIRECTION_INPUT: u32 = 0;
 const DIRECTION_OUTPUT: u32 = 1;
 const PORT_OPTIONAL: u32 = 1;
 const PORT_PARAMETER: u32 = 2;
 const PROPERTY_READONLY: u32 = 1;
 const PROPERTY_RANGE: u32 = 2;
+const PROPERTY_RUNTIME: u32 = 4;
+const PROPERTY_CHOICES: u32 = 32;
+const TYPE_ID: u32 = 3;
 const TYPE_LONG: u32 = 5;
 const TYPE_FLOAT: u32 = 6;
 const ELEMENT_F32_LE: u32 = 18;
@@ -29,7 +32,11 @@ const EINVAL: i32 = 22;
 const ENOENT: i32 = 2;
 const EFAULT: i32 = 14;
 const EBUSY: i32 = 16;
+const EEXIST: i32 = 17;
+const EOVERFLOW: i32 = 75;
 const PARAMETER_SLOT_NONE: u32 = u32::MAX;
+const PROPERTY_WRITER_BITS: u32 = 2;
+const PROPERTY_WRITER_MASK: u64 = (1 << PROPERTY_WRITER_BITS) - 1;
 
 #[repr(C)]
 struct SpaChunk {
@@ -120,6 +127,17 @@ struct Value {
 }
 
 #[repr(C)]
+struct PropertyChoice {
+    struct_size: u32,
+    reserved: u32,
+    value: Value,
+    name: *const c_char,
+    description: *const c_char,
+}
+
+unsafe impl Sync for PropertyChoice {}
+
+#[repr(C)]
 struct PropertyInfo {
     struct_size: u32,
     id: u32,
@@ -127,9 +145,13 @@ struct PropertyInfo {
     reserved: u32,
     name: *const c_char,
     description: *const c_char,
+    unit: *const c_char,
     default_value: Value,
     minimum: Value,
     maximum: Value,
+    n_choices: u32,
+    choices_reserved: u32,
+    choices: *const PropertyChoice,
 }
 
 #[repr(C)]
@@ -150,6 +172,7 @@ type Cleanup = unsafe extern "C" fn(*mut c_void);
 type GetPortFormat = unsafe extern "C" fn(*mut c_void, u32, *mut *const Format) -> i32;
 type EnumPropInfo = unsafe extern "C" fn(*mut c_void, u32, *mut PropertyInfo) -> i32;
 type GetProp = unsafe extern "C" fn(*mut c_void, u32, *mut Value) -> i32;
+type GetPropRevision = unsafe extern "C" fn(*mut c_void) -> u64;
 type PrepareProps =
     unsafe extern "C" fn(*mut c_void, *const Property, u32, *mut *mut c_void) -> i32;
 type PropsAction = unsafe extern "C" fn(*mut c_void, *mut c_void);
@@ -170,6 +193,7 @@ struct Descriptor {
     get_port_format: Option<GetPortFormat>,
     enum_prop_info: Option<EnumPropInfo>,
     get_prop: Option<GetProp>,
+    get_prop_revision: Option<GetPropRevision>,
     prepare_props: Option<PrepareProps>,
     commit_props: Option<PropsAction>,
     discard_props: Option<PropsAction>,
@@ -202,10 +226,19 @@ struct Instance {
     parameter_slots: UnsafeCell<[ParameterSlot; 2]>,
     requested_parameter_slot: AtomicU32,
     active_parameter_slot: AtomicU32,
+    requested_parameter_sequence: AtomicU64,
+    active_parameter_sequence: AtomicU64,
+    property_publication: AtomicU64,
+    prepared_props_busy: AtomicBool,
+    prepared_props: UnsafeCell<Prepared>,
+    prepared_parameter_busy: AtomicBool,
+    prepared_parameter: UnsafeCell<PreparedParameter>,
 }
 
-// SAFETY: the control thread writes only an inactive slot before publishing
-// it with requested_parameter_slot. process() is the only active-slot reader.
+// SAFETY: the control thread writes only inactive parameter/prepared-property
+// storage before release publication. The data loop consumes the prepared
+// property only after the graph's acquire handoff and is the only active-slot
+// reader.
 unsafe impl Sync for Instance {}
 
 struct ParameterSlot {
@@ -233,18 +266,22 @@ fn state_gain(state: u64) -> f32 {
     f32::from_bits(state as u32)
 }
 
-fn parameter_sequence(instance: &Instance, requested: bool) -> u64 {
-    let mut slot = if requested {
-        instance.requested_parameter_slot.load(Ordering::Acquire)
-    } else {
-        PARAMETER_SLOT_NONE
-    };
-    if slot == PARAMETER_SLOT_NONE {
-        slot = instance.active_parameter_slot.load(Ordering::Acquire);
-    }
-    // SAFETY: a requested slot is immutable after release publication. With
-    // no requested slot, the active slot cannot change until one is published.
-    unsafe { (*instance.parameter_slots.get())[slot as usize].sequence }
+fn property_write_begin(instance: &Instance) {
+    instance.property_publication.fetch_add(1, Ordering::SeqCst);
+}
+
+fn property_write_end(instance: &Instance) {
+    // Increment the completed generation and decrement the writer count in one
+    // indivisible transition. Callback ownership admits at most two writers.
+    instance
+        .property_publication
+        .fetch_add(PROPERTY_WRITER_MASK, Ordering::SeqCst);
+}
+
+fn property_revision(instance: &Instance) -> u64 {
+    let publication = instance.property_publication.load(Ordering::SeqCst);
+    (publication >> PROPERTY_WRITER_BITS) * 2
+        + u64::from(publication & PROPERTY_WRITER_MASK != 0)
 }
 
 static SHAPE: [u32; 2] = [2, 2];
@@ -301,6 +338,39 @@ fn long_value(value: i64) -> Value {
     }
 }
 
+fn id_value(value: u32) -> Value {
+    Value {
+        type_: TYPE_ID,
+        reserved: 0,
+        value: ValueBody { id: value },
+    }
+}
+
+static MODE_CHOICES: [PropertyChoice; 2] = [
+    PropertyChoice {
+        struct_size: size_of::<PropertyChoice>() as u32,
+        reserved: 0,
+        value: Value {
+            type_: TYPE_ID,
+            reserved: 0,
+            value: ValueBody { id: 0 },
+        },
+        name: c"normal".as_ptr(),
+        description: c"Normal".as_ptr(),
+    },
+    PropertyChoice {
+        struct_size: size_of::<PropertyChoice>() as u32,
+        reserved: 0,
+        value: Value {
+            type_: TYPE_ID,
+            reserved: 0,
+            value: ValueBody { id: 1 },
+        },
+        name: c"diagnostic".as_ptr(),
+        description: c"Diagnostic".as_ptr(),
+    },
+];
+
 unsafe extern "C" fn instantiate(
     _descriptor: *const Descriptor,
     _config: *const c_char,
@@ -325,6 +395,13 @@ unsafe extern "C" fn instantiate(
             ]),
             requested_parameter_slot: AtomicU32::new(PARAMETER_SLOT_NONE),
             active_parameter_slot: AtomicU32::new(0),
+            requested_parameter_sequence: AtomicU64::new(0),
+            active_parameter_sequence: AtomicU64::new(0),
+            property_publication: AtomicU64::new(0),
+            prepared_props_busy: AtomicBool::new(false),
+            prepared_props: UnsafeCell::new(Prepared { gain: 1.0 }),
+            prepared_parameter_busy: AtomicBool::new(false),
+            prepared_parameter: UnsafeCell::new(PreparedParameter { slot: 0 }),
         });
         // SAFETY: result was validated above and ownership crosses the ABI.
         unsafe { *result = Box::into_raw(instance).cast() };
@@ -363,15 +440,12 @@ unsafe extern "C" fn enum_prop_info(data: *mut c_void, index: u32, info: *mut Pr
         if data.is_null() || info.is_null() {
             return -EINVAL;
         }
-        let instance = unsafe { &*data.cast::<Instance>() };
-        let requested_state = instance.requested_state.load(Ordering::Acquire);
-        let active_state = instance.active_state.load(Ordering::Acquire);
         let (name, description, flags, default_value, minimum, maximum) = match index {
             0 => (
                 c"gain",
                 c"Requested scalar gain",
-                PROPERTY_RANGE,
-                float_value(state_gain(requested_state)),
+                PROPERTY_RUNTIME | PROPERTY_RANGE,
+                float_value(1.0),
                 float_value(-16.0),
                 float_value(16.0),
             ),
@@ -379,7 +453,7 @@ unsafe extern "C" fn enum_prop_info(data: *mut c_void, index: u32, info: *mut Pr
                 c"active-gain",
                 c"Scalar gain adopted by process()",
                 PROPERTY_READONLY,
-                float_value(state_gain(active_state)),
+                float_value(1.0),
                 Value {
                     type_: 0,
                     reserved: 0,
@@ -427,7 +501,7 @@ unsafe extern "C" fn enum_prop_info(data: *mut c_void, index: u32, info: *mut Pr
                 c"requested-parameter-sequence",
                 c"Sequence of the latest accepted coefficient update",
                 PROPERTY_READONLY,
-                long_value(parameter_sequence(instance, true) as i64),
+                long_value(0),
                 Value {
                     type_: 0,
                     reserved: 0,
@@ -443,7 +517,23 @@ unsafe extern "C" fn enum_prop_info(data: *mut c_void, index: u32, info: *mut Pr
                 c"active-parameter-sequence",
                 c"Coefficient sequence adopted by process()",
                 PROPERTY_READONLY,
-                long_value(parameter_sequence(instance, false) as i64),
+                long_value(0),
+                Value {
+                    type_: 0,
+                    reserved: 0,
+                    value: ValueBody { long_integer: 0 },
+                },
+                Value {
+                    type_: 0,
+                    reserved: 0,
+                    value: ValueBody { long_integer: 0 },
+                },
+            ),
+            6 => (
+                c"mode",
+                c"Example enumerated execution mode",
+                PROPERTY_READONLY | PROPERTY_CHOICES,
+                id_value(0),
                 Value {
                     type_: 0,
                     reserved: 0,
@@ -457,6 +547,11 @@ unsafe extern "C" fn enum_prop_info(data: *mut c_void, index: u32, info: *mut Pr
             ),
             _ => return 0,
         };
+        let (n_choices, choices) = if index == 6 {
+            (MODE_CHOICES.len() as u32, MODE_CHOICES.as_ptr())
+        } else {
+            (0, ptr::null())
+        };
         let value = PropertyInfo {
             struct_size: size_of::<PropertyInfo>() as u32,
             id: index,
@@ -464,9 +559,13 @@ unsafe extern "C" fn enum_prop_info(data: *mut c_void, index: u32, info: *mut Pr
             reserved: 0,
             name: name.as_ptr(),
             description: description.as_ptr(),
+            unit: c"1".as_ptr(),
             default_value,
             minimum,
             maximum,
+            n_choices,
+            choices_reserved: 0,
+            choices,
         };
         unsafe { *info = value };
         1
@@ -487,14 +586,34 @@ unsafe extern "C" fn get_prop(data: *mut c_void, id: u32, value: *mut Value) -> 
             1 => float_value(state_gain(active_state)),
             2 => long_value(i64::from(state_generation(requested_state))),
             3 => long_value(i64::from(state_generation(active_state))),
-            4 => long_value(parameter_sequence(instance, true) as i64),
-            5 => long_value(parameter_sequence(instance, false) as i64),
+            4 => long_value(
+                instance
+                    .requested_parameter_sequence
+                    .load(Ordering::Acquire) as i64,
+            ),
+            5 => long_value(
+                instance
+                    .active_parameter_sequence
+                    .load(Ordering::Acquire) as i64,
+            ),
+            6 => id_value(0),
             _ => return -ENOENT,
         };
         unsafe { *value = current };
         0
     }))
     .unwrap_or(-EFAULT)
+}
+
+unsafe extern "C" fn get_prop_revision(data: *mut c_void) -> u64 {
+    catch_unwind(AssertUnwindSafe(|| {
+        if data.is_null() {
+            return 0;
+        }
+        let instance = unsafe { &*data.cast::<Instance>() };
+        property_revision(instance)
+    }))
+    .unwrap_or(0)
 }
 
 unsafe extern "C" fn prepare_props(
@@ -508,9 +627,21 @@ unsafe extern "C" fn prepare_props(
             return -EINVAL;
         }
         let instance = unsafe { &*data.cast::<Instance>() };
-        let mut gain = state_gain(instance.requested_state.load(Ordering::Acquire));
+        let requested = instance.requested_state.load(Ordering::Acquire);
+        let active = instance.active_state.load(Ordering::Acquire);
+        if state_generation(requested) != state_generation(active) {
+            return -EBUSY;
+        }
+        if state_generation(requested) == u32::MAX {
+            return -EOVERFLOW;
+        }
+        let mut gain = state_gain(requested);
+        let mut gain_seen = false;
         for index in 0..n_properties as usize {
             let property = unsafe { &*properties.add(index) };
+            if gain_seen {
+                return -EEXIST;
+            }
             if property.id != 0 || property.value.type_ != TYPE_FLOAT {
                 return -EINVAL;
             }
@@ -519,8 +650,19 @@ unsafe extern "C" fn prepare_props(
                 return -EINVAL;
             }
             gain = value;
+            gain_seen = true;
         }
-        unsafe { *result = Box::into_raw(Box::new(Prepared { gain })).cast() };
+        if instance
+            .prepared_props_busy
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            return -EBUSY;
+        }
+        unsafe {
+            *instance.prepared_props.get() = Prepared { gain };
+            *result = instance.prepared_props.get().cast();
+        }
         0
     }))
     .unwrap_or(-EFAULT)
@@ -532,19 +674,26 @@ unsafe extern "C" fn commit_props(data: *mut c_void, prepared: *mut c_void) {
             return;
         }
         let instance = unsafe { &*data.cast::<Instance>() };
-        let prepared = unsafe { Box::from_raw(prepared.cast::<Prepared>()) };
+        let prepared = unsafe { &*prepared.cast::<Prepared>() };
         let current = instance.requested_state.load(Ordering::Relaxed);
+        property_write_begin(instance);
         instance.requested_state.store(
-            pack_state(state_generation(current).wrapping_add(1), prepared.gain),
+            pack_state(state_generation(current) + 1, prepared.gain),
             Ordering::Release,
         );
+        property_write_end(instance);
+        instance.prepared_props_busy.store(false, Ordering::Release);
     }));
 }
 
-unsafe extern "C" fn discard_props(_data: *mut c_void, prepared: *mut c_void) {
+unsafe extern "C" fn discard_props(data: *mut c_void, prepared: *mut c_void) {
     let _ = catch_unwind(AssertUnwindSafe(|| {
-        if !prepared.is_null() {
-            unsafe { drop(Box::from_raw(prepared.cast::<Prepared>())) };
+        if data.is_null() || prepared.is_null() {
+            return;
+        }
+        let instance = unsafe { &*data.cast::<Instance>() };
+        if prepared == instance.prepared_props.get().cast() {
+            instance.prepared_props_busy.store(false, Ordering::Release);
         }
     }));
 }
@@ -600,17 +749,37 @@ unsafe extern "C" fn prepare_parameter(
                 return -EINVAL;
             }
         }
+        let sequence = match unsafe { header_sequence(spa_buffer) } {
+            Some(sequence) if sequence <= i64::MAX as u64 => sequence,
+            Some(_) => return -EOVERFLOW,
+            None => match instance
+                .requested_parameter_sequence
+                .load(Ordering::Acquire)
+                .checked_add(1)
+                .filter(|sequence| *sequence <= i64::MAX as u64)
+            {
+                Some(sequence) => sequence,
+                None => return -EOVERFLOW,
+            },
+        };
+        if instance
+            .prepared_parameter_busy
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            return -EBUSY;
+        }
 
         let active = instance.active_parameter_slot.load(Ordering::Acquire);
         let slot = active ^ 1;
         let slot_ptr =
             unsafe { ptr::addr_of_mut!((*instance.parameter_slots.get())[slot as usize]) };
         unsafe { ptr::copy_nonoverlapping(values, (*slot_ptr).values.as_mut_ptr(), 4) };
-        let sequence = unsafe { header_sequence(spa_buffer) }.unwrap_or_else(|| unsafe {
-            (*instance.parameter_slots.get())[active as usize].sequence + 1
-        });
         unsafe { (*slot_ptr).sequence = sequence };
-        unsafe { *result = Box::into_raw(Box::new(PreparedParameter { slot })).cast() };
+        unsafe {
+            *instance.prepared_parameter.get() = PreparedParameter { slot };
+            *result = instance.prepared_parameter.get().cast();
+        }
         0
     }))
     .unwrap_or(-EFAULT)
@@ -622,17 +791,34 @@ unsafe extern "C" fn commit_parameter(data: *mut c_void, prepared: *mut c_void) 
             return;
         }
         let instance = unsafe { &*data.cast::<Instance>() };
-        let prepared = unsafe { Box::from_raw(prepared.cast::<PreparedParameter>()) };
+        let prepared = unsafe { &*prepared.cast::<PreparedParameter>() };
+        let sequence = unsafe {
+            (*instance.parameter_slots.get())[prepared.slot as usize].sequence
+        };
+        property_write_begin(instance);
+        instance
+            .requested_parameter_sequence
+            .store(sequence, Ordering::Release);
         instance
             .requested_parameter_slot
             .store(prepared.slot, Ordering::Release);
+        property_write_end(instance);
+        instance
+            .prepared_parameter_busy
+            .store(false, Ordering::Release);
     }));
 }
 
-unsafe extern "C" fn discard_parameter(_data: *mut c_void, prepared: *mut c_void) {
+unsafe extern "C" fn discard_parameter(data: *mut c_void, prepared: *mut c_void) {
     let _ = catch_unwind(AssertUnwindSafe(|| {
-        if !prepared.is_null() {
-            unsafe { drop(Box::from_raw(prepared.cast::<PreparedParameter>())) };
+        if data.is_null() || prepared.is_null() {
+            return;
+        }
+        let instance = unsafe { &*data.cast::<Instance>() };
+        if prepared == instance.prepared_parameter.get().cast() {
+            instance
+                .prepared_parameter_busy
+                .store(false, Ordering::Release);
         }
     }));
 }
@@ -685,16 +871,32 @@ unsafe extern "C" fn process(
             return -EINVAL;
         }
         let state = instance.requested_state.load(Ordering::Acquire);
-        instance.active_state.store(state, Ordering::Release);
-        let gain = state_gain(state);
+        let state_changed = state != instance.active_state.load(Ordering::Relaxed);
         let requested_parameter_slot = instance.requested_parameter_slot.load(Ordering::Acquire);
-        if requested_parameter_slot != PARAMETER_SLOT_NONE {
+        let parameter_changed = requested_parameter_slot != PARAMETER_SLOT_NONE;
+        if state_changed || parameter_changed {
+            property_write_begin(instance);
+        }
+        if state_changed {
+            instance.active_state.store(state, Ordering::Release);
+        }
+        let gain = state_gain(state);
+        if parameter_changed {
             instance
                 .active_parameter_slot
                 .store(requested_parameter_slot, Ordering::Release);
+            let sequence = unsafe {
+                (*instance.parameter_slots.get())[requested_parameter_slot as usize].sequence
+            };
+            instance
+                .active_parameter_sequence
+                .store(sequence, Ordering::Release);
             instance
                 .requested_parameter_slot
                 .store(PARAMETER_SLOT_NONE, Ordering::Release);
+        }
+        if state_changed || parameter_changed {
+            property_write_end(instance);
         }
         let parameter_slot = instance.active_parameter_slot.load(Ordering::Acquire);
         let coefficients = unsafe {
@@ -766,6 +968,7 @@ static DESCRIPTOR: Descriptor = Descriptor {
     get_port_format: Some(get_port_format),
     enum_prop_info: Some(enum_prop_info),
     get_prop: Some(get_prop),
+    get_prop_revision: Some(get_prop_revision),
     prepare_props: Some(prepare_props),
     commit_props: Some(commit_props),
     discard_props: Some(discard_props),

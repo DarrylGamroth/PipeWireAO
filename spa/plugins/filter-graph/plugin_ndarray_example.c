@@ -6,6 +6,7 @@
 
 #include <errno.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -22,13 +23,25 @@ enum property_id {
 	PROPERTY_ACTIVE_GENERATION,
 	PROPERTY_REQUESTED_PARAMETER_SEQUENCE,
 	PROPERTY_ACTIVE_PARAMETER_SEQUENCE,
+	PROPERTY_MODE,
 };
 
 #define PARAMETER_SLOT_NONE UINT32_MAX
+#define PROPERTY_WRITER_BITS 2u
+#define PROPERTY_WRITER_MASK ((UINT64_C(1) << PROPERTY_WRITER_BITS) - 1u)
+#define PROPERTY_WRITER_END (PROPERTY_WRITER_MASK)
 
 struct parameter_slot {
 	float *values;
 	uint64_t sequence;
+};
+
+struct prepared_props {
+	float gain;
+};
+
+struct prepared_parameter {
+	uint32_t slot;
 };
 
 struct instance {
@@ -42,15 +55,30 @@ struct instance {
 	struct parameter_slot parameter_slots[2];
 	_Atomic uint32_t requested_parameter_slot;
 	_Atomic uint32_t active_parameter_slot;
+	_Atomic uint64_t requested_parameter_sequence;
+	_Atomic uint64_t active_parameter_sequence;
+	_Atomic uint64_t property_publication;
+	_Atomic bool prepared_props_busy;
+	struct prepared_props prepared_props;
+	_Atomic bool prepared_parameter_busy;
+	struct prepared_parameter prepared_parameter;
 };
 
-struct prepared_props {
-	float gain;
-};
+static void property_write_begin(struct instance *instance)
+{
+	atomic_fetch_add_explicit(&instance->property_publication, 1,
+			memory_order_seq_cst);
+}
 
-struct prepared_parameter {
-	uint32_t slot;
-};
+static void property_write_end(struct instance *instance)
+{
+	/* Increment the completed generation and decrement the writer count in one
+	 * indivisible publication-state transition. Callback ownership admits at
+	 * most one control writer and one process writer. */
+	atomic_fetch_add_explicit(&instance->property_publication,
+			PROPERTY_WRITER_END,
+			memory_order_seq_cst);
+}
 
 static uint64_t pack_state(uint32_t generation, float gain)
 {
@@ -187,6 +215,11 @@ static int instantiate(const struct spa_fgn_descriptor *descriptor SPA_UNUSED,
 	}
 	atomic_init(&instance->requested_parameter_slot, PARAMETER_SLOT_NONE);
 	atomic_init(&instance->active_parameter_slot, 0);
+	atomic_init(&instance->requested_parameter_sequence, 0);
+	atomic_init(&instance->active_parameter_sequence, 0);
+	atomic_init(&instance->property_publication, 0);
+	atomic_init(&instance->prepared_props_busy, false);
+	atomic_init(&instance->prepared_parameter_busy, false);
 	instance->format.schema = instance->schema[0] != '\0'
 		? instance->schema : NULL;
 	instance->format.profile = instance->profile[0] != '\0'
@@ -239,50 +272,79 @@ static struct spa_fgn_value long_value(int64_t value)
 	};
 }
 
+static struct spa_fgn_value id_value(uint32_t value)
+{
+	return (struct spa_fgn_value) {
+		.type = SPA_TYPE_Id,
+		.value.id = value,
+	};
+}
+
+static const struct spa_fgn_property_choice mode_choices[] = {
+	{
+		.struct_size = sizeof(struct spa_fgn_property_choice),
+		.value = SPA_FGN_VALUE_ID_INIT(0),
+		.name = "normal",
+		.description = "Normal",
+	},
+	{
+		.struct_size = sizeof(struct spa_fgn_property_choice),
+		.value = SPA_FGN_VALUE_ID_INIT(1),
+		.name = "diagnostic",
+		.description = "Diagnostic",
+	},
+};
+
+static const struct spa_fgn_property_info property_infos[] = {
+	[PROPERTY_GAIN] = SPA_FGN_PROPERTY_INFO_INIT(
+		PROPERTY_GAIN,
+		SPA_FGN_PROPERTY_FLAG_RUNTIME | SPA_FGN_PROPERTY_FLAG_RANGE,
+		"gain", "Requested scalar gain", "1",
+		SPA_FGN_VALUE_FLOAT_INIT(1.0f),
+		SPA_FGN_VALUE_FLOAT_INIT(-16.0f),
+		SPA_FGN_VALUE_FLOAT_INIT(16.0f), 0, NULL),
+	[PROPERTY_ACTIVE_GAIN] = SPA_FGN_PROPERTY_INFO_INIT(
+		PROPERTY_ACTIVE_GAIN, SPA_FGN_PROPERTY_FLAG_READONLY,
+		"active-gain", "Scalar gain adopted by process()", "1",
+		SPA_FGN_VALUE_FLOAT_INIT(1.0f),
+		SPA_FGN_VALUE_NONE_INIT, SPA_FGN_VALUE_NONE_INIT, 0, NULL),
+	[PROPERTY_REQUESTED_GENERATION] = SPA_FGN_PROPERTY_INFO_INIT(
+		PROPERTY_REQUESTED_GENERATION, SPA_FGN_PROPERTY_FLAG_READONLY,
+		"requested-generation", "Generation published by the control thread", "1",
+		SPA_FGN_VALUE_LONG_INIT(0),
+		SPA_FGN_VALUE_NONE_INIT, SPA_FGN_VALUE_NONE_INIT, 0, NULL),
+	[PROPERTY_ACTIVE_GENERATION] = SPA_FGN_PROPERTY_INFO_INIT(
+		PROPERTY_ACTIVE_GENERATION, SPA_FGN_PROPERTY_FLAG_READONLY,
+		"active-generation", "Generation adopted by process()", "1",
+		SPA_FGN_VALUE_LONG_INIT(0),
+		SPA_FGN_VALUE_NONE_INIT, SPA_FGN_VALUE_NONE_INIT, 0, NULL),
+	[PROPERTY_REQUESTED_PARAMETER_SEQUENCE] = SPA_FGN_PROPERTY_INFO_INIT(
+		PROPERTY_REQUESTED_PARAMETER_SEQUENCE, SPA_FGN_PROPERTY_FLAG_READONLY,
+		"requested-parameter-sequence",
+		"Sequence of the latest accepted coefficient update", "1",
+		SPA_FGN_VALUE_LONG_INIT(0),
+		SPA_FGN_VALUE_NONE_INIT, SPA_FGN_VALUE_NONE_INIT, 0, NULL),
+	[PROPERTY_ACTIVE_PARAMETER_SEQUENCE] = SPA_FGN_PROPERTY_INFO_INIT(
+		PROPERTY_ACTIVE_PARAMETER_SEQUENCE, SPA_FGN_PROPERTY_FLAG_READONLY,
+		"active-parameter-sequence", "Coefficient sequence adopted by process()", "1",
+		SPA_FGN_VALUE_LONG_INIT(0),
+		SPA_FGN_VALUE_NONE_INIT, SPA_FGN_VALUE_NONE_INIT, 0, NULL),
+	[PROPERTY_MODE] = SPA_FGN_PROPERTY_INFO_INIT(
+		PROPERTY_MODE,
+		SPA_FGN_PROPERTY_FLAG_READONLY | SPA_FGN_PROPERTY_FLAG_CHOICES,
+		"mode", "Example enumerated execution mode", "1",
+		SPA_FGN_VALUE_ID_INIT(0),
+		SPA_FGN_VALUE_NONE_INIT, SPA_FGN_VALUE_NONE_INIT,
+		SPA_N_ELEMENTS(mode_choices), mode_choices),
+};
+
 static int enum_prop_info(void *data, uint32_t index,
 		struct spa_fgn_property_info *info)
 {
-	struct instance *instance = data;
-	uint64_t state;
-	static const char *const names[] = {
-		"gain", "active-gain", "requested-generation", "active-generation",
-		"requested-parameter-sequence", "active-parameter-sequence",
-	};
-	static const char *const descriptions[] = {
-		"Requested scalar gain",
-		"Scalar gain adopted by process()",
-		"Generation published by the control thread",
-		"Generation adopted by process()",
-		"Sequence of the latest accepted coefficient update",
-		"Coefficient sequence adopted by process()",
-	};
-
-	if (instance == NULL || info == NULL)
+	if (data == NULL)
 		return -EINVAL;
-	if (index >= SPA_N_ELEMENTS(names))
-		return 0;
-	*info = (struct spa_fgn_property_info) {
-		.struct_size = sizeof(*info),
-		.id = index,
-		.flags = index == PROPERTY_GAIN ? SPA_FGN_PROPERTY_FLAG_RANGE
-			: SPA_FGN_PROPERTY_FLAG_READONLY,
-		.name = names[index],
-		.description = descriptions[index],
-	};
-	if (index == PROPERTY_GAIN) {
-		state = atomic_load_explicit(&instance->requested_state,
-				memory_order_acquire);
-		info->default_value = float_value(state_gain(state));
-		info->minimum = float_value(-16.0f);
-		info->maximum = float_value(16.0f);
-	} else if (index == PROPERTY_ACTIVE_GAIN) {
-		state = atomic_load_explicit(&instance->active_state,
-				memory_order_acquire);
-		info->default_value = float_value(state_gain(state));
-	} else {
-		info->default_value = long_value(0);
-	}
-	return 1;
+	return spa_fgn_enum_prop_info_table(property_infos,
+			SPA_N_ELEMENTS(property_infos), index, info);
 }
 
 static int get_prop(void *data, uint32_t id, struct spa_fgn_value *value)
@@ -314,24 +376,37 @@ static int get_prop(void *data, uint32_t id, struct spa_fgn_value *value)
 		*value = long_value(state_generation(state));
 		break;
 	case PROPERTY_REQUESTED_PARAMETER_SEQUENCE: {
-		uint32_t slot = atomic_load_explicit(
-				&instance->requested_parameter_slot, memory_order_acquire);
-		if (slot == PARAMETER_SLOT_NONE)
-			slot = atomic_load_explicit(&instance->active_parameter_slot,
-					memory_order_acquire);
-		*value = long_value(instance->parameter_slots[slot].sequence);
+		*value = long_value(atomic_load_explicit(
+				&instance->requested_parameter_sequence,
+				memory_order_acquire));
 		break;
 	}
 	case PROPERTY_ACTIVE_PARAMETER_SEQUENCE: {
-		uint32_t slot = atomic_load_explicit(&instance->active_parameter_slot,
-				memory_order_acquire);
-		*value = long_value(instance->parameter_slots[slot].sequence);
+		*value = long_value(atomic_load_explicit(
+				&instance->active_parameter_sequence,
+				memory_order_acquire));
 		break;
 	}
+	case PROPERTY_MODE:
+		*value = id_value(0);
+		break;
 	default:
 		return -ENOENT;
 	}
 	return 0;
+}
+
+static uint64_t get_prop_revision(void *data)
+{
+	struct instance *instance = data;
+	uint64_t publication;
+
+	if (instance == NULL)
+		return 0;
+	publication = atomic_load_explicit(&instance->property_publication,
+			memory_order_seq_cst);
+	return (publication >> PROPERTY_WRITER_BITS) * 2u +
+		((publication & PROPERTY_WRITER_MASK) != 0);
 }
 
 static int prepare_props(void *data, const struct spa_fgn_property *properties,
@@ -339,25 +414,45 @@ static int prepare_props(void *data, const struct spa_fgn_property *properties,
 {
 	struct instance *instance = data;
 	struct prepared_props *prepared;
+	uint64_t requested, active;
 	uint32_t i;
+	bool expected = false;
+	bool gain_seen = false;
 
 	if (instance == NULL || result == NULL ||
 	    (n_properties > 0 && properties == NULL))
 		return -EINVAL;
-	if ((prepared = malloc(sizeof(*prepared))) == NULL)
-		return -ENOMEM;
-	prepared->gain = state_gain(atomic_load_explicit(&instance->requested_state,
-			memory_order_acquire));
+	requested = atomic_load_explicit(&instance->requested_state,
+			memory_order_acquire);
+	active = atomic_load_explicit(&instance->active_state,
+			memory_order_acquire);
+	if (state_generation(requested) != state_generation(active))
+		return -EBUSY;
+	if (state_generation(requested) == UINT32_MAX)
+		return -EOVERFLOW;
+	if (!atomic_compare_exchange_strong_explicit(
+			&instance->prepared_props_busy, &expected, true,
+			memory_order_acquire, memory_order_relaxed))
+		return -EBUSY;
+	prepared = &instance->prepared_props;
+	prepared->gain = state_gain(requested);
 	for (i = 0; i < n_properties; i++) {
+		if (gain_seen) {
+			atomic_store_explicit(&instance->prepared_props_busy, false,
+					memory_order_release);
+			return -EEXIST;
+		}
 		if (properties[i].id != PROPERTY_GAIN ||
 		    properties[i].value.type != SPA_TYPE_Float ||
 		    !isfinite(properties[i].value.value.float_value) ||
 		    properties[i].value.value.float_value < -16.0f ||
 		    properties[i].value.value.float_value > 16.0f) {
-			free(prepared);
+			atomic_store_explicit(&instance->prepared_props_busy, false,
+					memory_order_release);
 			return -EINVAL;
 		}
 		prepared->gain = properties[i].value.value.float_value;
+		gain_seen = true;
 	}
 	*result = prepared;
 	return 0;
@@ -371,26 +466,33 @@ static void commit_props(void *data, void *prepared_data)
 
 	current = atomic_load_explicit(&instance->requested_state,
 			memory_order_relaxed);
+	property_write_begin(instance);
 	atomic_store_explicit(&instance->requested_state,
 			pack_state(state_generation(current) + 1, prepared->gain),
 			memory_order_release);
-	free(prepared);
+	property_write_end(instance);
+	atomic_store_explicit(&instance->prepared_props_busy, false,
+			memory_order_release);
 }
 
-static void discard_props(void *data SPA_UNUSED, void *prepared)
+static void discard_props(void *data, void *prepared)
 {
-	free(prepared);
+	struct instance *instance = data;
+
+	if (instance != NULL && prepared == &instance->prepared_props)
+		atomic_store_explicit(&instance->prepared_props_busy, false,
+				memory_order_release);
 }
 
 static int prepare_parameter(void *data, uint32_t port,
 		const struct spa_fgn_buffer *buffer, void **result)
 {
 	struct instance *instance = data;
-	struct prepared_parameter *prepared;
 	const struct spa_meta_header *header;
 	const struct spa_data *spa_data;
 	const float *values;
 	uint32_t active, slot, i;
+	uint64_t sequence;
 
 	if (instance == NULL || port != 2 || buffer == NULL ||
 	    buffer->buffer == NULL || result == NULL)
@@ -403,19 +505,31 @@ static int prepare_parameter(void *data, uint32_t port,
 	for (i = 0; i < instance->n_values; i++)
 		if (!isfinite(values[i]))
 			return -EINVAL;
-	if ((prepared = malloc(sizeof(*prepared))) == NULL)
-		return -ENOMEM;
+	header = spa_buffer_find_meta_data(buffer->buffer, SPA_META_Header,
+			sizeof(*header));
+	if (header != NULL) {
+		if (header->seq > INT64_MAX)
+			return -EOVERFLOW;
+		sequence = header->seq;
+	} else {
+		sequence = atomic_load_explicit(
+				&instance->requested_parameter_sequence,
+				memory_order_acquire);
+		if (sequence >= INT64_MAX)
+			return -EOVERFLOW;
+		sequence++;
+	}
+	if (atomic_exchange_explicit(&instance->prepared_parameter_busy, true,
+			memory_order_acquire))
+		return -EBUSY;
 	active = atomic_load_explicit(&instance->active_parameter_slot,
 			memory_order_acquire);
 	slot = active ^ 1u;
 	memcpy(instance->parameter_slots[slot].values, values,
 			instance->n_values * sizeof(float));
-	header = spa_buffer_find_meta_data(buffer->buffer, SPA_META_Header,
-			sizeof(*header));
-	instance->parameter_slots[slot].sequence = header != NULL
-		? header->seq : instance->parameter_slots[active].sequence + 1;
-	prepared->slot = slot;
-	*result = prepared;
+	instance->parameter_slots[slot].sequence = sequence;
+	instance->prepared_parameter.slot = slot;
+	*result = &instance->prepared_parameter;
 	return 0;
 }
 
@@ -423,15 +537,25 @@ static void commit_parameter(void *data, void *prepared_data)
 {
 	struct instance *instance = data;
 	struct prepared_parameter *prepared = prepared_data;
+	uint64_t sequence = instance->parameter_slots[prepared->slot].sequence;
 
+	property_write_begin(instance);
+	atomic_store_explicit(&instance->requested_parameter_sequence, sequence,
+			memory_order_release);
 	atomic_store_explicit(&instance->requested_parameter_slot, prepared->slot,
 			memory_order_release);
-	free(prepared);
+	property_write_end(instance);
+	atomic_store_explicit(&instance->prepared_parameter_busy, false,
+			memory_order_release);
 }
 
-static void discard_parameter(void *data SPA_UNUSED, void *prepared)
+static void discard_parameter(void *data, void *prepared)
 {
-	free(prepared);
+	struct instance *instance = data;
+
+	if (instance != NULL && prepared == &instance->prepared_parameter)
+		atomic_store_explicit(&instance->prepared_parameter_busy, false,
+				memory_order_release);
 }
 
 static void copy_metadata(struct spa_buffer *output, const struct spa_buffer *input)
@@ -461,6 +585,7 @@ static int process(void *data, const struct spa_fgn_buffer *inputs,
 	float gain;
 	uint32_t parameter_slot, requested_parameter_slot;
 	uint32_t i;
+	bool state_changed, parameter_changed;
 
 	if (instance == NULL || inputs == NULL || outputs == NULL ||
 	    n_inputs != 2 || n_outputs != 1 || inputs[0].buffer == NULL ||
@@ -469,16 +594,28 @@ static int process(void *data, const struct spa_fgn_buffer *inputs,
 		return -EINVAL;
 	state = atomic_load_explicit(&instance->requested_state,
 			memory_order_acquire);
-	atomic_store_explicit(&instance->active_state, state, memory_order_release);
-	gain = state_gain(state);
+	state_changed = state != atomic_load_explicit(&instance->active_state,
+			memory_order_relaxed);
 	requested_parameter_slot = atomic_load_explicit(
 			&instance->requested_parameter_slot, memory_order_acquire);
-	if (requested_parameter_slot != PARAMETER_SLOT_NONE) {
+	parameter_changed = requested_parameter_slot != PARAMETER_SLOT_NONE;
+	if (state_changed || parameter_changed)
+		property_write_begin(instance);
+	if (state_changed)
+		atomic_store_explicit(&instance->active_state, state,
+				memory_order_release);
+	gain = state_gain(state);
+	if (parameter_changed) {
 		atomic_store_explicit(&instance->active_parameter_slot,
 				requested_parameter_slot, memory_order_release);
+		atomic_store_explicit(&instance->active_parameter_sequence,
+				instance->parameter_slots[requested_parameter_slot].sequence,
+				memory_order_release);
 		atomic_store_explicit(&instance->requested_parameter_slot,
 				PARAMETER_SLOT_NONE, memory_order_release);
 	}
+	if (state_changed || parameter_changed)
+		property_write_end(instance);
 	parameter_slot = atomic_load_explicit(&instance->active_parameter_slot,
 			memory_order_acquire);
 	input_data = &inputs[0].buffer->datas[0];
@@ -504,6 +641,7 @@ static const struct spa_fgn_descriptor descriptor = {
 	.get_port_format = get_port_format,
 	.enum_prop_info = enum_prop_info,
 	.get_prop = get_prop,
+	.get_prop_revision = get_prop_revision,
 	.prepare_props = prepare_props,
 	.commit_props = commit_props,
 	.discard_props = discard_props,
