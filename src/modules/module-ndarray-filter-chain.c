@@ -386,10 +386,12 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 	uint32_t i;
 	int res;
 
-	memset(impl->process_inputs, 0,
-			impl->n_inputs * sizeof(*impl->process_inputs));
-	memset(impl->process_outputs, 0,
-			impl->n_outputs * sizeof(*impl->process_outputs));
+	if (impl->n_inputs > 0)
+		memset(impl->process_inputs, 0,
+				impl->n_inputs * sizeof(*impl->process_inputs));
+	if (impl->n_outputs > 0)
+		memset(impl->process_outputs, 0,
+				impl->n_outputs * sizeof(*impl->process_outputs));
 	for (i = 0; i < impl->n_inputs; i++) {
 		struct port *port = impl->inputs[i];
 		struct pw_buffer *buffer = NULL, *next;
@@ -794,16 +796,20 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 	}
 	impl->n_inputs = spa_fgn_graph_get_n_inputs(impl->graph);
 	impl->n_outputs = spa_fgn_graph_get_n_outputs(impl->graph);
-	if ((impl->inputs = calloc(impl->n_inputs, sizeof(*impl->inputs))) == NULL ||
-	    (impl->outputs = calloc(impl->n_outputs, sizeof(*impl->outputs))) == NULL ||
-	    (impl->process_inputs = calloc(impl->n_inputs,
+	if ((impl->n_inputs > 0 &&
+	     ((impl->inputs = calloc(impl->n_inputs,
+			 sizeof(*impl->inputs))) == NULL ||
+	      (impl->process_inputs = calloc(impl->n_inputs,
 			 sizeof(*impl->process_inputs))) == NULL ||
-	    (impl->process_outputs = calloc(impl->n_outputs,
-			  sizeof(*impl->process_outputs))) == NULL ||
-	    (impl->input_buffers = calloc(impl->n_inputs,
-			 sizeof(*impl->input_buffers))) == NULL ||
-	    (impl->output_buffers = calloc(impl->n_outputs,
-			  sizeof(*impl->output_buffers))) == NULL) {
+	      (impl->input_buffers = calloc(impl->n_inputs,
+			 sizeof(*impl->input_buffers))) == NULL)) ||
+	    (impl->n_outputs > 0 &&
+	     ((impl->outputs = calloc(impl->n_outputs,
+			 sizeof(*impl->outputs))) == NULL ||
+	      (impl->process_outputs = calloc(impl->n_outputs,
+			 sizeof(*impl->process_outputs))) == NULL ||
+	      (impl->output_buffers = calloc(impl->n_outputs,
+			 sizeof(*impl->output_buffers))) == NULL))) {
 		res = -ENOMEM;
 		goto error;
 	}
