@@ -21,6 +21,7 @@ const PORT_PARAMETER: u32 = 2;
 const PROPERTY_READONLY: u32 = 1;
 const PROPERTY_RANGE: u32 = 2;
 const PROPERTY_RUNTIME: u32 = 4;
+const PROPERTY_CONSTRUCTION: u32 = 8;
 const PROPERTY_CHOICES: u32 = 32;
 const TYPE_ID: u32 = 3;
 const TYPE_LONG: u32 = 5;
@@ -545,6 +546,22 @@ unsafe extern "C" fn enum_prop_info(data: *mut c_void, index: u32, info: *mut Pr
                     value: ValueBody { long_integer: 0 },
                 },
             ),
+            7 => (
+                c"extent",
+                c"Construction-time vector extent",
+                PROPERTY_CONSTRUCTION,
+                long_value(4),
+                Value {
+                    type_: 0,
+                    reserved: 0,
+                    value: ValueBody { long_integer: 0 },
+                },
+                Value {
+                    type_: 0,
+                    reserved: 0,
+                    value: ValueBody { long_integer: 0 },
+                },
+            ),
             _ => return 0,
         };
         let (n_choices, choices) = if index == 6 {
@@ -597,6 +614,7 @@ unsafe extern "C" fn get_prop(data: *mut c_void, id: u32, value: *mut Value) -> 
                     .load(Ordering::Acquire) as i64,
             ),
             6 => id_value(0),
+            7 => long_value(4),
             _ => return -ENOENT,
         };
         unsafe { *value = current };
