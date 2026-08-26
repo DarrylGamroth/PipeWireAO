@@ -20,6 +20,23 @@ verified_surfaces = ["C", "Rust", "Calculon Rust"]
 verified_obligations = ["ABI version", "layout", "descriptor lifetime", "loader rejection"]
 
 [[requirements]]
+id = "FGN-CONFIG-001"
+source = "doc/dox/internals/ndarray-filter-graph.md"
+parent_or_rationale = "One scientist-facing construction syntax across plugin languages"
+owner = "FGN graph host"
+applicability = "mandatory"
+claimed_surfaces = ["C graph host", "C plugin", "Rust plugin", "Calculon Rust"]
+closure_obligations = ["object admission", "relaxed SPA parsing", "standard JSON canonicalization", "pre-instantiation delivery", "update-class separation"]
+implementation_state = "implemented"
+implementation_links = ["spa/plugins/filter-graph/ndarray-graph.c", "../calculon-algorithms/crates/calculon-fgn/src/unary.rs", "../calculon-algorithms/crates/calculon-fgn/src/source.rs"]
+evidence_state = "validated"
+evidence_links = ["spa/plugins/filter-graph/test-ndarray-graph.c", "../calculon-algorithms/scripts/test_fgn_integration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py"]
+verified_revision = "FGN and Calculon working trees reviewed 2026-08-25"
+verified_environment = "C11, Rust 1.97.1, and live PipeWireAO on Linux x86_64"
+verified_surfaces = ["C graph host", "C plugin", "Rust plugin", "Calculon Rust"]
+verified_obligations = ["object admission", "relaxed SPA parsing", "standard JSON canonicalization", "pre-instantiation delivery", "update-class separation"]
+
+[[requirements]]
 id = "FGN-LIFE-001"
 source = "doc/dox/internals/ndarray-filter-graph.md"
 parent_or_rationale = "Safe control/data concurrency"
@@ -31,7 +48,7 @@ implementation_state = "implemented"
 implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/plugins/filter-graph/ndarray-graph.c", "src/modules/module-ndarray-filter-chain.c", "../calculon-algorithms/crates/calculon-fgn/src/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/unary.rs", "../calculon-algorithms/crates/calculon-fgn/src/source.rs"]
 evidence_state = "partial"
 evidence_links = ["spa/plugins/filter-graph/test-ndarray-graph.c", "../calculon-algorithms/crates/calculon-fgn/tests/parameter.rs", "../calculon-algorithms/crates/calculon-fgn-plugins/tests/process_allocation.rs", "../calculon-algorithms/scripts/test_fgn_integration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py"]
-remaining_gaps = ["Producer shutdown, event-source cancellation, a main-loop cancellation barrier, forced parameter/process/property observation interleavings, and repeated live module teardown are covered. A live ndarray client has not yet forced teardown while a data-loop notification is outstanding."]
+remaining_gaps = ["A live ndarray client has not yet forced teardown while a data-loop notification is outstanding."]
 
 [[requirements]]
 id = "FGN-BUF-001"
@@ -46,9 +63,9 @@ implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/pl
 evidence_state = "validated"
 evidence_links = ["spa/plugins/filter-graph/test-ndarray-graph.c", "../calculon-algorithms/crates/calculon-fgn-plugins/tests/process_allocation.rs"]
 verified_revision = "FGN and Calculon working trees reviewed 2026-08-25"
-verified_environment = "Meson/Ninja C and Rust plugin tests on Linux x86_64"
+verified_environment = "Meson/Ninja normal and ASan+UBSan C/Rust plugin tests on Linux x86_64"
 verified_surfaces = ["C graph host", "Calculon Rust adapter"]
-verified_obligations = ["one data plane", "bounds and alignment", "metadata caps", "nonaliasing", "offset preservation", "failure size zero"]
+verified_obligations = ["one data plane", "bounds and alignment", "metadata caps", "nonaliasing including caller and plugin-facing arrays", "offset preservation", "failure size zero"]
 
 [[requirements]]
 id = "FGN-SCHEMA-001"
@@ -93,7 +110,7 @@ implementation_state = "implemented"
 implementation_links = ["spa/plugins/filter-graph/ndarray-graph.c"]
 evidence_state = "partial"
 evidence_links = ["spa/plugins/filter-graph/test-ndarray-graph.c", "../calculon-algorithms/scripts/test_fgn_integration.py"]
-remaining_gaps = ["Two-node numerical and backpressure behavior is covered; a barrier-controlled concurrent set/process test is not yet maintained."]
+remaining_gaps = ["A barrier-controlled concurrent set/process test is not yet maintained."]
 
 [[requirements]]
 id = "FGN-PROP-003"
@@ -148,15 +165,15 @@ parent_or_rationale = "Separate frames, artifacts, and scalars"
 owner = "FGN ABI and PipeWire adapter"
 applicability = "mandatory"
 claimed_surfaces = ["C host", "C plugin", "Rust plugin", "PipeWire module"]
-closure_obligations = ["data ports", "parameter ports", "property surface", "bounded parameter backpressure"]
+closure_obligations = ["data ports", "parameter ports", "property surface", "bounded parameter backpressure", "zero-sided graphs"]
 implementation_state = "implemented"
 implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/plugins/filter-graph/ndarray-graph.c", "src/modules/module-ndarray-filter-chain.c", "../calculon-algorithms/crates/calculon-fgn/src/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/source.rs"]
 evidence_state = "validated"
-evidence_links = ["spa/plugins/filter-graph/test-ndarray-graph.c"]
-verified_revision = "FGN working tree reviewed 2026-08-25"
-verified_environment = "Meson/Ninja C and Rust plugin tests on Linux x86_64"
+evidence_links = ["spa/plugins/filter-graph/test-ndarray-graph.c", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py"]
+verified_revision = "FGN and Calculon working trees reviewed 2026-08-25"
+verified_environment = "Meson/Ninja C/Rust graph tests and isolated live PipeWireAO on Linux x86_64"
 verified_surfaces = ["C host", "C plugin", "Rust plugin", "PipeWire module"]
-verified_obligations = ["data ports", "parameter ports", "property surface", "bounded parameter backpressure"]
+verified_obligations = ["data ports", "parameter ports", "property surface", "bounded parameter backpressure", "zero-input source", "zero-output sink"]
 
 [[requirements]]
 id = "FGN-SPA-001"
@@ -191,6 +208,6 @@ remaining_gaps = ["The unsafe Send + Sync Operation boundary, checked Calculon b
 
 [[gates]]
 id = "fgn-v2-properties"
-requirements = ["FGN-ABI-001", "FGN-LIFE-001", "FGN-BUF-001", "FGN-SCHEMA-001", "FGN-PROP-001", "FGN-PROP-002", "FGN-PROP-003", "FGN-PROP-004", "FGN-RT-001", "FGN-PORT-001", "FGN-SPA-001", "FGN-RUST-001"]
+requirements = ["FGN-ABI-001", "FGN-CONFIG-001", "FGN-LIFE-001", "FGN-BUF-001", "FGN-SCHEMA-001", "FGN-PROP-001", "FGN-PROP-002", "FGN-PROP-003", "FGN-PROP-004", "FGN-RT-001", "FGN-PORT-001", "FGN-SPA-001", "FGN-RUST-001"]
 state = "partial"
 acceptance_evidence = ["spa/plugins/filter-graph/test-ndarray-graph.c", "../calculon-algorithms/scripts/test_fgn_integration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py"]

@@ -192,7 +192,7 @@ static void check_properties(struct spa_fgn_graph *graph)
 		count++;
 		spa_pod_builder_init(&builder, data, sizeof(data));
 	}
-	assert(count == 14);
+	assert(count == 16);
 	spa_pod_builder_init(&builder, data, sizeof(data));
 	assert(spa_fgn_graph_get_props(graph, &builder, &pod) == 1);
 	assert(pod != NULL);
@@ -389,8 +389,8 @@ static void test_calculon_plugin(const char *plugin)
 		"{ nodes = ["
 		" { type = ndarray name = integrator plugin = \"%s\""
 		"   label = leaky-integrator-f32"
-		"   config = { \"gain\": 0.5, \"pole\": 0.75,"
-		"              \"state\": [ 4.0, -4.0 ] } }"
+		"   config = { gain = 0.5 pole = 0.75"
+		"              state = [ 4.0 -4.0 ] } }"
 		"] inputs = [ \"integrator:in\" ]"
 		" outputs = [ \"integrator:out\" ] }",
 		plugin);
@@ -544,7 +544,7 @@ static void test_calculon_plugin(const char *plugin)
 		" { type = ndarray name = excitation plugin = \"%s\""
 		"   label = docrime-excitation-f32"
 		"   config = { \"amplitudes\": [ 1.0, 2.0 ], \"seed\": 0 } }"
-		"] inputs = [ \"excitation:parameter\" ]"
+		"] inputs = [ ]"
 		" outputs = [ \"excitation:out\" ] }",
 		plugin);
 	assert(res > 0 && (size_t)res < sizeof(config));
@@ -553,21 +553,15 @@ static void test_calculon_plugin(const char *plugin)
 		fprintf(stderr, "Calculon DO-CRIME excitation graph failed: %s (%d)\n",
 				strerror(-res), res);
 	assert(res == 0);
-	assert(spa_fgn_graph_get_n_inputs(graph) == 1);
+	assert(spa_fgn_graph_get_n_inputs(graph) == 0);
 	assert(spa_fgn_graph_get_port_format(graph, SPA_FGN_PORT_OUTPUT,
 			0, &format) == 0);
 	assert(strcmp(format->schema,
 			"org.calculon.ao.docrime-excitation/1") == 0);
-	assert(spa_fgn_graph_get_port_format(graph, SPA_FGN_PORT_INPUT,
-			0, &format) == 0);
-	assert(strcmp(format->schema,
-			"org.calculon.ao.docrime-excitation-amplitude/1") == 0);
-
 	init_buffer(&output);
-	inputs[0] = NULL;
 	outputs[0] = &output.buffer;
 	assert(spa_fgn_graph_activate(graph) == 0);
-	assert(spa_fgn_graph_process(graph, inputs, 1, outputs, 1) == 0);
+	assert(spa_fgn_graph_process(graph, NULL, 0, outputs, 1) == 0);
 	assert(isfinite(output.values[0]) && fabsf(output.values[0]) < 1.0f);
 	assert(isfinite(output.values[1]) && fabsf(output.values[1]) < 2.0f);
 	assert(spa_fgn_graph_deactivate(graph) == 0);
@@ -636,7 +630,7 @@ int main(int argc, char *argv[])
 	struct spa_meta_header duplicate_headers[2];
 	void *saved_data;
 	struct spa_meta *saved_metas;
-	uint32_t saved_n_metas;
+	uint32_t saved_maxsize, saved_n_metas;
 	uint32_t i;
 	int res;
 
@@ -649,6 +643,24 @@ int main(int argc, char *argv[])
 		argv[1]);
 	assert(res > 0 && (size_t)res < sizeof(config));
 	assert(spa_fgn_graph_new(config, &invalid_graph) == -EEXIST);
+	assert(invalid_graph == NULL);
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = construction plugin = \"%s\""
+		"   label = scale-f32 props = { extent = 4 } }"
+		"] }",
+		argv[1]);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &invalid_graph) == -EPERM);
+	assert(invalid_graph == NULL);
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = non_object plugin = \"%s\""
+		"   label = scale-f32 config = [ 1 2 ] }"
+		"] }",
+		argv[1]);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &invalid_graph) == -EINVAL);
 	assert(invalid_graph == NULL);
 
 	res = snprintf(config, sizeof(config),
@@ -684,9 +696,11 @@ int main(int argc, char *argv[])
 	assert(format->shape[0] == 2 && format->shape[1] == 2);
 	assert(strcmp(format->schema, "test.matrix/1") == 0);
 	check_properties(graph);
+	assert(get_long_property(graph, "first:requested-generation") == 0);
+	assert(get_long_property(graph, "second:requested-generation") == 0);
 	props = build_mode_update(props_data, sizeof(props_data), 1);
 	assert(props != NULL);
-	assert(spa_fgn_graph_set_props(graph, props) == -EPERM);
+	assert(spa_fgn_graph_set_props(graph, props) == -EBUSY);
 
 	init_buffer(&input);
 	init_buffer(&output);
@@ -702,6 +716,8 @@ int main(int argc, char *argv[])
 	assert(spa_fgn_graph_process(graph, inputs, 2, outputs, 1) ==
 			SPA_FGN_PROCESS_RESULT_PROPS_CHANGED);
 	assert(get_long_property(graph, "first:active-generation") == 1);
+	assert(get_long_property(graph, "second:active-generation") == 1);
+	assert(spa_fgn_graph_set_props(graph, props) == -EPERM);
 	for (i = 0; i < 4; i++)
 		assert(output.values[i] == input.values[i] * 6.0f);
 	assert(output.header.seq == input.header.seq);
@@ -756,10 +772,35 @@ int main(int argc, char *argv[])
 	assert(spa_fgn_graph_process(graph, inputs, 2, outputs, 1) == -EINVAL);
 	output.meta.data = &output.header;
 
+	/* Declared input extents must remain within maxsize after the offset. */
+	input.chunk.offset = sizeof(float);
+	input.chunk.size = input.data.maxsize;
+	assert(spa_fgn_graph_process(graph, inputs, 2, outputs, 1) == -EMSGSIZE);
+	input.chunk.offset = 0;
+	input.chunk.size = 4 * sizeof(float);
+
+	/* Mutable output regions cannot alias either outer pointer array. */
+	saved_data = output.data.data;
+	saved_maxsize = output.data.maxsize;
+	output.data.data = inputs;
+	output.data.maxsize = sizeof(inputs);
+	assert(spa_fgn_graph_process(graph, inputs, 2, outputs, 1) == -EINVAL);
+	output.data.data = outputs;
+	output.data.maxsize = 4 * sizeof(float);
+	assert(spa_fgn_graph_process(graph, inputs, 2, outputs, 1) == -EINVAL);
+	output.data.data = saved_data;
+	output.data.maxsize = saved_maxsize;
+
 	for (i = 0; i < 4; i++)
 		parameter.values[i] = (float)i + 1.0f;
 	parameter.header.seq = 7;
 	assert(spa_fgn_graph_update_parameter(graph, 0, &parameter.buffer) == -EINVAL);
+	parameter.chunk.offset = sizeof(float);
+	parameter.chunk.size = parameter.data.maxsize;
+	assert(spa_fgn_graph_update_parameter(graph, 1,
+			&parameter.buffer) == -EMSGSIZE);
+	parameter.chunk.offset = 0;
+	parameter.chunk.size = 4 * sizeof(float);
 	assert(spa_fgn_graph_update_parameter(graph, 1, &parameter.buffer) == 0);
 	assert(get_long_property(graph, "first:requested-parameter-sequence") == 7);
 	assert(get_long_property(graph, "first:active-parameter-sequence") == 0);
@@ -823,6 +864,25 @@ int main(int argc, char *argv[])
 	for (i = 0; i < 4; i++)
 		assert(output.values[i] == input.values[i] * 40.0f);
 
+	assert(spa_fgn_graph_deactivate(graph) == 0);
+	spa_fgn_graph_free(graph);
+	graph = NULL;
+
+	/* A graph with no external outputs is a valid sink. */
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = sink plugin = \"%s\" label = scale-f32"
+		"   config = { shape = [ 2 2 ] schema = test.matrix/1 } }"
+		"] inputs = [ \"sink:in\" ] outputs = [ ] }",
+		argv[1]);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == 0);
+	assert(spa_fgn_graph_get_n_inputs(graph) == 1);
+	assert(spa_fgn_graph_get_n_outputs(graph) == 0);
+	init_buffer(&input);
+	inputs[0] = &input.buffer;
+	assert(spa_fgn_graph_activate(graph) == 0);
+	assert(spa_fgn_graph_process(graph, inputs, 1, NULL, 0) == 0);
 	assert(spa_fgn_graph_deactivate(graph) == 0);
 	spa_fgn_graph_free(graph);
 	if (argc == 3)

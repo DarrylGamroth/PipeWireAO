@@ -22,8 +22,9 @@ struct spa_fgn_graph;
  * Build a graph from a standard SPA JSON/config-syntax object.
  *
  * Every node uses `plugin` for a shared-library path and `label` for the
- * descriptor within that library. Nodes may contain plugin-specific `config`
- * and initial scalar `props` objects.
+ * descriptor within that library. Nodes may contain a plugin-specific relaxed
+ * SPA `config` object, which the host canonicalizes to standard JSON before
+ * instance construction, and an initial runtime-only scalar `props` object.
  */
 int spa_fgn_graph_new(const char *config, struct spa_fgn_graph **graph);
 void spa_fgn_graph_free(struct spa_fgn_graph *graph);
@@ -84,7 +85,8 @@ enum spa_fgn_process_result {
  * Process one complete synchronous graph cycle.
  *
  * Returns a negative errno-style error or a mask of enum
- * spa_fgn_process_result.
+ * spa_fgn_process_result. An inputs or outputs array may be NULL exactly when
+ * its corresponding count is zero.
  */
 int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		struct spa_buffer *const inputs[], uint32_t n_inputs,
