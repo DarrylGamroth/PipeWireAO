@@ -21,6 +21,7 @@
 #include <spa/pod/parser.h>
 #include <spa/pod/iter.h>
 #include <spa/utils/json.h>
+#include <spa/utils/json-builder.h>
 #include <spa/utils/overflow.h>
 #include <spa/utils/string.h>
 
@@ -85,6 +86,7 @@ struct fgn_node {
 	struct spa_fgn_buffer *process_outputs;
 	struct spa_fgn_property_info *properties;
 	uint32_t n_properties;
+	void *initial_prepared;
 	uint32_t indegree;
 };
 
@@ -246,24 +248,29 @@ static void storage_clear(struct fgn_storage *storage)
 	storage->memory = NULL;
 }
 
-static char *copy_json_value(struct spa_json *json, const char *value)
+static char *canonicalize_json_object(struct spa_json *json, const char *value,
+		int value_len)
 {
 	struct spa_json item = SPA_JSON_START(json, value);
 	const char *token;
-	char *result;
+	char *relaxed, *result;
 	int len;
 
+	if (!spa_json_is_object(value, value_len))
+		return NULL;
 	if ((len = spa_json_next(&item, &token)) <= 0)
 		return NULL;
 	if (spa_json_is_container(token, len) &&
 	    (len = spa_json_container_len(&item, token, len)) <= 0)
 		return NULL;
-	if ((result = malloc((size_t)len + 1)) == NULL)
+	if ((relaxed = malloc((size_t)len + 1)) == NULL)
 		return NULL;
-	if (spa_json_parse_stringn(token, len, result, len + 1) <= 0) {
-		free(result);
+	if (spa_json_parse_stringn(token, len, relaxed, len + 1) <= 0) {
+		free(relaxed);
 		return NULL;
 	}
+	result = spa_json_builder_reformat(relaxed, 0);
+	free(relaxed);
 	return result;
 }
 
@@ -633,7 +640,7 @@ static int value_from_json(const struct spa_fgn_property_info *info,
 	return validate_value(info, value);
 }
 
-static int node_set_initial_props(struct fgn_node *node, struct spa_json *json)
+static int node_prepare_initial_props(struct fgn_node *node, struct spa_json *json)
 {
 	struct spa_fgn_property *properties = NULL;
 	char **owned_strings = NULL;
@@ -650,8 +657,12 @@ static int node_set_initial_props(struct fgn_node *node, struct spa_json *json)
 		size_t properties_size, strings_size;
 		uint32_t i;
 
-		if (info == NULL || (info->flags & SPA_FGN_PROPERTY_FLAG_READONLY)) {
+		if (info == NULL) {
 			res = -ENOENT;
+			goto done;
+		}
+		if (!(info->flags & SPA_FGN_PROPERTY_FLAG_RUNTIME)) {
+			res = -EPERM;
 			goto done;
 		}
 		for (i = 0; i < n_properties; i++)
@@ -707,7 +718,7 @@ static int node_set_initial_props(struct fgn_node *node, struct spa_json *json)
 	if ((res = node->descriptor->prepare_props(node->instance, properties,
 			n_properties, &prepared)) < 0)
 		goto done;
-	node->descriptor->commit_props(node->instance, prepared);
+	node->initial_prepared = prepared;
 	prepared = NULL;
 done:
 	if (prepared != NULL && node->descriptor->discard_props != NULL)
@@ -725,6 +736,10 @@ static void node_free(struct fgn_node *node)
 
 	if (node == NULL)
 		return;
+	if (node->initial_prepared != NULL && node->instance != NULL &&
+	    node->descriptor != NULL && node->descriptor->discard_props != NULL)
+		node->descriptor->discard_props(node->instance,
+				node->initial_prepared);
 	if (node->instance != NULL && node->descriptor != NULL &&
 	    node->descriptor->cleanup != NULL)
 		node->descriptor->cleanup(node->instance);
@@ -783,7 +798,8 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 				goto error;
 			}
 		} else if (spa_streq(key, "config")) {
-			if ((config = copy_json_value(json, token)) == NULL) {
+			if (config != NULL || (config = canonicalize_json_object(json,
+					token, len)) == NULL) {
 				res = -EINVAL;
 				goto error;
 			}
@@ -952,7 +968,7 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 			node->properties[node->n_properties++] = info;
 		}
 	}
-	if (have_props && (res = node_set_initial_props(node, &props)) < 0)
+	if (have_props && (res = node_prepare_initial_props(node, &props)) < 0)
 		goto error;
 	{
 		struct fgn_node **tmp;
@@ -1139,7 +1155,7 @@ static int validate_graph(const struct spa_fgn_graph *graph)
 {
 	uint32_t i, j;
 
-	if (graph->n_inputs == 0 || graph->n_outputs == 0)
+	if (graph->n_inputs == 0 && graph->n_outputs == 0)
 		return -EINVAL;
 	for (i = 0; i < graph->n_nodes; i++) {
 		const struct fgn_node *node = graph->nodes[i];
@@ -1150,6 +1166,37 @@ static int validate_graph(const struct spa_fgn_graph *graph)
 				return -ENOTCONN;
 		}
 	}
+	return 0;
+}
+
+static int queue_initial_property_transaction(struct spa_fgn_graph *graph)
+{
+	struct fgn_transaction *transactions;
+	uint32_t count = 0, i;
+
+	for (i = 0; i < graph->n_nodes; i++)
+		if (graph->nodes[i]->initial_prepared != NULL)
+			count++;
+	if (count == 0)
+		return 0;
+	if ((transactions = calloc(count, sizeof(*transactions))) == NULL)
+		return -ENOMEM;
+	count = 0;
+	for (i = 0; i < graph->n_nodes; i++) {
+		struct fgn_node *node = graph->nodes[i];
+
+		if (node->initial_prepared == NULL)
+			continue;
+		transactions[count++] = (struct fgn_transaction) {
+			.node = node,
+			.prepared = node->initial_prepared,
+		};
+		node->initial_prepared = NULL;
+	}
+	graph->property_transactions = transactions;
+	graph->n_property_transactions = count;
+	atomic_store_explicit(&graph->property_transaction_state,
+			FGN_TRANSACTION_PENDING, memory_order_release);
 	return 0;
 }
 
@@ -1220,7 +1267,8 @@ int spa_fgn_graph_new(const char *config, struct spa_fgn_graph **result)
 		goto error;
 	if ((!have_inputs || !have_outputs) && (res = load_default_ports(graph)) < 0)
 		goto error;
-	if ((res = validate_graph(graph)) < 0 || (res = sort_graph(graph)) < 0)
+	if ((res = validate_graph(graph)) < 0 || (res = sort_graph(graph)) < 0 ||
+	    (res = queue_initial_property_transaction(graph)) < 0)
 		goto error;
 	*result = graph;
 	return 0;
@@ -1731,7 +1779,8 @@ static int validate_buffer(struct spa_buffer *buffer,
 	payload = (uintptr_t)data->data + data->chunk->offset;
 	if (payload % element_size != 0)
 		return -EINVAL;
-	if (!output && data->chunk->size < size)
+	if (!output && (data->chunk->size < size ||
+		data->chunk->size > data->maxsize - data->chunk->offset))
 		return -EMSGSIZE;
 	for (i = 0; i < buffer->n_metas; i++) {
 		const struct spa_meta *meta = &buffer->metas[i];
@@ -1858,11 +1907,33 @@ static int buffers_overlap(struct spa_buffer *first,
 	return 0;
 }
 
+static int buffer_overlaps_region(struct spa_buffer *buffer,
+		const struct spa_fgn_format *format, const void *pointer, size_t size,
+		bool *overlap)
+{
+	struct memory_region buffer_regions[MAX_BUFFER_REGIONS];
+	struct memory_region region;
+	uint32_t n_buffer_regions, i;
+	int res;
+
+	if ((res = collect_buffer_regions(buffer, format, buffer_regions,
+			&n_buffer_regions)) < 0 ||
+	    (res = memory_region_init(&region, pointer, size)) < 0)
+		return res;
+	*overlap = false;
+	for (i = 0; i < n_buffer_regions; i++)
+		if (memory_regions_overlap(&buffer_regions[i], &region)) {
+			*overlap = true;
+			break;
+		}
+	return 0;
+}
+
 static int validate_output_ownership(struct spa_fgn_graph *graph,
 		struct spa_buffer *const inputs[], uint32_t n_inputs,
 		struct spa_buffer *const outputs[], uint32_t n_outputs)
 {
-	uint32_t i, j;
+	uint32_t i, j, k;
 	bool overlap;
 	int res;
 
@@ -1870,6 +1941,38 @@ static int validate_output_ownership(struct spa_fgn_graph *graph,
 		if ((res = validate_buffer_nonalias(outputs[i],
 				graph->outputs[i]->format)) < 0)
 			return res;
+		if ((res = buffer_overlaps_region(outputs[i],
+				graph->outputs[i]->format, inputs,
+				n_inputs * sizeof(*inputs), &overlap)) < 0)
+			return res;
+		if (overlap)
+			return -EINVAL;
+		if ((res = buffer_overlaps_region(outputs[i],
+				graph->outputs[i]->format, outputs,
+				n_outputs * sizeof(*outputs), &overlap)) < 0)
+			return res;
+		if (overlap)
+			return -EINVAL;
+		for (k = 0; k < graph->n_nodes; k++) {
+			const struct fgn_node *node = graph->nodes[k];
+
+			if ((res = buffer_overlaps_region(outputs[i],
+					graph->outputs[i]->format,
+					node->process_inputs,
+					node->n_inputs * sizeof(*node->process_inputs),
+					&overlap)) < 0)
+				return res;
+			if (overlap)
+				return -EINVAL;
+			if ((res = buffer_overlaps_region(outputs[i],
+					graph->outputs[i]->format,
+					node->process_outputs,
+					node->n_outputs * sizeof(*node->process_outputs),
+					&overlap)) < 0)
+				return res;
+			if (overlap)
+				return -EINVAL;
+		}
 		for (j = 0; j < n_inputs; j++) {
 			if (inputs[j] == NULL)
 				continue;
@@ -1949,7 +2052,9 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 	int res, status = SPA_FGN_PROCESS_RESULT_NONE;
 
 	if (graph == NULL || !graph->active || n_inputs != graph->n_inputs ||
-	    n_outputs != graph->n_outputs || inputs == NULL || outputs == NULL)
+	    n_outputs != graph->n_outputs ||
+	    (n_inputs != 0 && inputs == NULL) ||
+	    (n_outputs != 0 && outputs == NULL))
 		return -EINVAL;
 	for (i = 0; i < graph->n_nodes; i++) {
 		struct fgn_node *node = graph->nodes[i];
