@@ -24,6 +24,7 @@ enum property_id {
 	PROPERTY_REQUESTED_PARAMETER_SEQUENCE,
 	PROPERTY_ACTIVE_PARAMETER_SEQUENCE,
 	PROPERTY_MODE,
+	PROPERTY_EXTENT,
 };
 
 #define PARAMETER_SLOT_NONE UINT32_MAX
@@ -336,6 +337,11 @@ static const struct spa_fgn_property_info property_infos[] = {
 		SPA_FGN_VALUE_ID_INIT(0),
 		SPA_FGN_VALUE_NONE_INIT, SPA_FGN_VALUE_NONE_INIT,
 		SPA_N_ELEMENTS(mode_choices), mode_choices),
+	[PROPERTY_EXTENT] = SPA_FGN_PROPERTY_INFO_INIT(
+		PROPERTY_EXTENT, SPA_FGN_PROPERTY_FLAG_CONSTRUCTION,
+		"extent", "Construction-time vector extent", "1",
+		SPA_FGN_VALUE_LONG_INIT(4),
+		SPA_FGN_VALUE_NONE_INIT, SPA_FGN_VALUE_NONE_INIT, 0, NULL),
 };
 
 static int enum_prop_info(void *data, uint32_t index,
@@ -389,6 +395,9 @@ static int get_prop(void *data, uint32_t id, struct spa_fgn_value *value)
 	}
 	case PROPERTY_MODE:
 		*value = id_value(0);
+		break;
+	case PROPERTY_EXTENT:
+		*value = long_value((int64_t)instance->n_values);
 		break;
 	default:
 		return -ENOENT;
