@@ -85,7 +85,9 @@ struct impl {
 	struct pw_filter *filter;
 	struct spa_hook filter_listener;
 	struct pw_loop *main_loop;
+	struct spa_source *main_event;
 	struct pw_thread_loop *parameter_loop;
+	struct spa_source *parameter_event;
 	bool parameter_loop_started;
 	pthread_mutex_t control_lock;
 	bool control_lock_initialized;
@@ -236,37 +238,47 @@ static int publish_graph_props(struct impl *impl)
 	return res;
 }
 
-static int do_publish_props(struct spa_loop *loop SPA_UNUSED,
-		bool async SPA_UNUSED, uint32_t seq SPA_UNUSED,
-		const void *data SPA_UNUSED, size_t size SPA_UNUSED, void *user_data)
+static void main_event(void *data, uint64_t count SPA_UNUSED)
 {
-	struct impl *impl = user_data;
+	struct impl *impl = data;
 	int res;
 
 	if (atomic_load_explicit(&impl->destroying, memory_order_acquire))
-		return 0;
-	if ((res = publish_graph_props(impl)) < 0 && impl->filter != NULL)
+		return;
+	res = atomic_exchange_explicit(&impl->process_error, 0,
+			memory_order_acq_rel);
+	if (res < 0 && impl->filter != NULL) {
+		pw_filter_set_error(impl->filter, res,
+				"ndarray graph process failed: %s", spa_strerror(res));
+		return;
+	}
+	if (!atomic_exchange_explicit(&impl->publish_after_process, false,
+			memory_order_acq_rel))
+		return;
+	res = publish_graph_props(impl);
+	if (res == -EAGAIN) {
+		atomic_store_explicit(&impl->publish_after_process, true,
+				memory_order_release);
+		return;
+	}
+	if (res < 0 && impl->filter != NULL)
 		pw_filter_set_error(impl->filter, res,
 				"can't publish ndarray graph properties: %s",
 				spa_strerror(res));
-	return 0;
 }
 
-static int do_parameter_update(struct spa_loop *loop SPA_UNUSED,
-		bool async SPA_UNUSED, uint32_t seq SPA_UNUSED,
-		const void *data SPA_UNUSED, size_t size SPA_UNUSED, void *user_data)
+static void update_parameter(struct port *port)
 {
-	struct port *port = user_data;
 	struct impl *impl = port->impl;
 	struct pw_buffer *buffer;
 	int res;
 
 	if (atomic_load_explicit(&impl->destroying, memory_order_acquire))
-		return 0;
+		return;
 	buffer = atomic_load_explicit(&port->pending_parameter,
 			memory_order_acquire);
 	if (buffer == NULL)
-		return 0;
+		return;
 	pthread_mutex_lock(&impl->control_lock);
 	res = spa_fgn_graph_update_parameter(impl->graph, port->index,
 			buffer->buffer);
@@ -274,7 +286,7 @@ static int do_parameter_update(struct spa_loop *loop SPA_UNUSED,
 	if (res == -EBUSY) {
 		atomic_store_explicit(&port->retry_parameter, true,
 				memory_order_release);
-		return 0;
+		return;
 	}
 	if (res < 0)
 		atomic_fetch_add_explicit(&port->dropped_parameters, 1,
@@ -282,13 +294,27 @@ static int do_parameter_update(struct spa_loop *loop SPA_UNUSED,
 	else {
 		atomic_store_explicit(&impl->publish_after_process, true,
 				memory_order_release);
-		pw_loop_invoke(impl->main_loop, do_publish_props, 0,
-				NULL, 0, false, impl);
+		pw_loop_signal_event(impl->main_loop, impl->main_event);
 	}
 	/* The data loop is the sole producer for pw_filter_queue_buffer(). */
 	atomic_store_explicit(&port->completed_parameter, true,
 			memory_order_release);
-	return 0;
+}
+
+static void parameter_event(void *data, uint64_t count SPA_UNUSED)
+{
+	struct impl *impl = data;
+	uint32_t i;
+
+	if (atomic_load_explicit(&impl->destroying, memory_order_acquire))
+		return;
+	for (i = 0; i < impl->n_inputs; i++) {
+		struct port *port = impl->inputs[i];
+		if ((port->flags & SPA_FGN_PORT_FLAG_PARAMETER) &&
+		    atomic_load_explicit(&port->pending_parameter,
+				memory_order_acquire) != NULL)
+			update_parameter(port);
+	}
 }
 
 static void schedule_parameter(struct port *port, struct pw_buffer *buffer)
@@ -304,8 +330,8 @@ static void schedule_parameter(struct port *port, struct pw_buffer *buffer)
 		pw_filter_queue_buffer(port, buffer);
 		return;
 	}
-	res = pw_loop_invoke(pw_thread_loop_get_loop(impl->parameter_loop),
-			do_parameter_update, port->index, NULL, 0, false, port);
+	res = pw_loop_signal_event(pw_thread_loop_get_loop(impl->parameter_loop),
+			impl->parameter_event);
 	if (res < 0) {
 		atomic_store_explicit(&port->pending_parameter, NULL,
 				memory_order_release);
@@ -335,19 +361,6 @@ static void dequeue_parameter(struct port *port)
 	}
 	if (buffer != NULL)
 		schedule_parameter(port, buffer);
-}
-
-static int do_process_error(struct spa_loop *loop SPA_UNUSED,
-		bool async SPA_UNUSED, uint32_t seq SPA_UNUSED,
-		const void *data SPA_UNUSED, size_t size SPA_UNUSED, void *user_data)
-{
-	struct impl *impl = user_data;
-	int res = atomic_load_explicit(&impl->process_error, memory_order_acquire);
-
-	if (res < 0 && impl->filter != NULL)
-		pw_filter_set_error(impl->filter, res,
-				"ndarray graph process failed: %s", spa_strerror(res));
-	return 0;
 }
 
 static void recycle_cycle_buffers(struct impl *impl)
@@ -408,28 +421,32 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 		res = spa_fgn_graph_process(impl->graph,
 				impl->process_inputs, impl->n_inputs,
 				impl->process_outputs, impl->n_outputs);
-		if (res < 0 && atomic_exchange_explicit(&impl->process_error, res,
-				memory_order_acq_rel) == 0)
-			pw_loop_invoke(impl->main_loop, do_process_error, 0,
-					NULL, 0, false, impl);
-		if (res >= 0) {
-			if (atomic_exchange_explicit(&impl->publish_after_process,
-					false, memory_order_acq_rel)) {
-				int invoke_res = pw_loop_invoke(impl->main_loop,
-						do_publish_props, 0, NULL, 0, false, impl);
-				if (invoke_res < 0)
-					atomic_store_explicit(&impl->publish_after_process,
-							true, memory_order_release);
+		if (res < 0) {
+			for (i = 0; i < impl->n_outputs; i++) {
+				struct spa_buffer *buffer = impl->process_outputs[i];
+				if (buffer != NULL && buffer->n_datas > 0 &&
+				    buffer->datas != NULL && buffer->datas[0].chunk != NULL)
+					buffer->datas[0].chunk->size = 0;
 			}
+			if (atomic_exchange_explicit(&impl->process_error, res,
+					memory_order_acq_rel) == 0)
+				pw_loop_signal_event(impl->main_loop, impl->main_event);
+		}
+		if (res >= 0) {
+			if (res & SPA_FGN_PROCESS_RESULT_PROPS_CHANGED)
+				atomic_store_explicit(&impl->publish_after_process, true,
+						memory_order_release);
+			if (atomic_load_explicit(&impl->publish_after_process,
+					memory_order_acquire))
+				pw_loop_signal_event(impl->main_loop, impl->main_event);
 			for (i = 0; i < impl->n_inputs; i++) {
 				struct port *port = impl->inputs[i];
 				if ((port->flags & SPA_FGN_PORT_FLAG_PARAMETER) &&
 				    atomic_exchange_explicit(&port->retry_parameter,
 						false, memory_order_acq_rel)) {
-					res = pw_loop_invoke(
+					res = pw_loop_signal_event(
 							pw_thread_loop_get_loop(impl->parameter_loop),
-							do_parameter_update, port->index,
-							NULL, 0, false, port);
+							impl->parameter_event);
 					if (res < 0)
 						atomic_store_explicit(&port->retry_parameter,
 								true, memory_order_release);
@@ -473,11 +490,9 @@ static void filter_param_changed(void *data, void *port_data,
 		pthread_mutex_lock(&impl->control_lock);
 		res = spa_fgn_graph_set_props(impl->graph, param);
 		pthread_mutex_unlock(&impl->control_lock);
-		if (res >= 0) {
+		if (res >= 0)
 			atomic_store_explicit(&impl->publish_after_process, true,
 					memory_order_release);
-			res = publish_graph_props(impl);
-		}
 	} else {
 		return;
 	}
@@ -680,6 +695,18 @@ static void impl_destroy(struct impl *impl)
 		pw_filter_disconnect(impl->filter);
 	if (impl->parameter_loop_started)
 		pw_thread_loop_stop(impl->parameter_loop);
+	if (impl->parameter_event != NULL) {
+		pw_loop_destroy_source(pw_thread_loop_get_loop(impl->parameter_loop),
+				impl->parameter_event);
+		impl->parameter_event = NULL;
+	}
+	/* Producers are quiescent. Cancel the preallocated notification source and
+	 * drain main-loop work before releasing callback storage. */
+	if (impl->main_event != NULL) {
+		pw_loop_destroy_source(impl->main_loop, impl->main_event);
+		impl->main_event = NULL;
+	}
+	pw_loop_invoke(impl->main_loop, NULL, 0, NULL, 0, false, impl);
 	for (i = 0; i < impl->n_inputs; i++)
 		if (impl->inputs != NULL && impl->inputs[i] != NULL) {
 			struct pw_buffer *buffer = atomic_exchange_explicit(
@@ -826,12 +853,25 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 		if ((res = add_graph_port(impl, SPA_FGN_PORT_OUTPUT, i)) < 0)
 			goto error;
 	impl->parameter_loop = pw_thread_loop_new("ndarray-parameters", NULL);
-	if (impl->parameter_loop == NULL ||
-	    (res = pw_thread_loop_start(impl->parameter_loop)) < 0)
+	if (impl->parameter_loop == NULL) {
+		res = -errno;
+		goto error;
+	}
+	impl->main_event = pw_loop_add_event(impl->main_loop, main_event, impl);
+	impl->parameter_event = pw_loop_add_event(
+			pw_thread_loop_get_loop(impl->parameter_loop),
+			parameter_event, impl);
+	if (impl->main_event == NULL || impl->parameter_event == NULL) {
+		res = -errno;
+		goto error;
+	}
+	if ((res = pw_thread_loop_start(impl->parameter_loop)) < 0)
 		goto error;
 	impl->parameter_loop_started = true;
-	if ((res = connect_filter(impl)) < 0)
+	if ((res = connect_filter(impl)) < 0) {
+		pw_log_error("can't connect ndarray filter: %s", spa_strerror(res));
 		goto error;
+	}
 	pw_impl_module_add_listener(module, &impl->module_listener,
 			&module_events, impl);
 	pw_impl_module_update_properties(module, &SPA_DICT_INIT_ARRAY(module_props));
