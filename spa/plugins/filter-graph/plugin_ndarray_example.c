@@ -661,6 +661,7 @@ static const struct spa_fgn_plugin plugin = {
 	.abi_version = SPA_FGN_PLUGIN_ABI_VERSION,
 	.name = "example-c",
 	.find_descriptor = find_descriptor,
+	.flags = SPA_FGN_PLUGIN_FLAG_NONE,
 };
 
 SPA_EXPORT
