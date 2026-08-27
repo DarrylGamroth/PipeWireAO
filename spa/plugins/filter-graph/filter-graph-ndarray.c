@@ -1472,12 +1472,14 @@ int spa_fgn_graph_get_props(struct spa_fgn_graph *graph,
 		struct spa_pod_builder *builder, struct spa_pod **props)
 {
 	struct spa_pod_frame object, values;
+	struct spa_pod_builder_state state;
 	struct spa_pod *pod;
 	uint32_t i, j;
 	int res;
 
 	if (graph == NULL || builder == NULL)
 		return -EINVAL;
+	spa_pod_builder_get_state(builder, &state);
 	spa_pod_builder_push_object(builder, &object,
 			SPA_TYPE_OBJECT_Props, SPA_PARAM_Props);
 	spa_pod_builder_prop(builder, SPA_PROP_params, 0);
@@ -1486,17 +1488,22 @@ int spa_fgn_graph_get_props(struct spa_fgn_graph *graph,
 		struct fgn_node *node = graph->nodes[i];
 		uint64_t revision = node->descriptor->get_prop_revision != NULL
 			? node->descriptor->get_prop_revision(node->instance) : 0;
-		if ((revision & 1u) != 0)
-			return -EAGAIN;
+		if ((revision & 1u) != 0) {
+			res = -EAGAIN;
+			goto error;
+		}
 		for (j = 0; j < node->n_properties; j++) {
 			struct spa_fgn_value value;
 			char name[512];
-			if (node->descriptor->get_prop == NULL ||
-			    (res = node->descriptor->get_prop(node->instance,
+			if (node->descriptor->get_prop == NULL) {
+				res = -ENOTSUP;
+				goto error;
+			}
+			if ((res = node->descriptor->get_prop(node->instance,
 					node->properties[j].id, &value)) < 0)
-				return node->descriptor->get_prop == NULL ? -ENOTSUP : res;
+				goto error;
 			if ((res = validate_value(&node->properties[j], &value)) < 0)
-				return res;
+				goto error;
 			spa_scnprintf(name, sizeof(name), "%s:%s",
 					node->name, node->properties[j].name);
 			spa_pod_builder_string(builder, name);
@@ -1505,17 +1512,24 @@ int spa_fgn_graph_get_props(struct spa_fgn_graph *graph,
 		if (node->descriptor->get_prop_revision != NULL) {
 			uint64_t current =
 					node->descriptor->get_prop_revision(node->instance);
-			if (current != revision || (current & 1u) != 0)
-				return -EAGAIN;
+			if (current != revision || (current & 1u) != 0) {
+				res = -EAGAIN;
+				goto error;
+			}
 		}
 	}
 	spa_pod_builder_pop(builder, &values);
 	pod = spa_pod_builder_pop(builder, &object);
-	if (pod == NULL)
-		return -ENOSPC;
+	if (pod == NULL) {
+		res = -ENOSPC;
+		goto error;
+	}
 	if (props != NULL)
 		*props = pod;
 	return 1;
+error:
+	spa_pod_builder_reset(builder, &state);
+	return res;
 }
 
 static int find_qualified_property(struct spa_fgn_graph *graph, const char *name,
