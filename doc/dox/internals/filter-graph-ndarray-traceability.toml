@@ -43,7 +43,7 @@ parent_or_rationale = "Exact per-port scientific compatibility"
 owner = "FGN ABI and graph host"
 applicability = "mandatory"
 claimed_surfaces = ["C graph host", "C plugin", "Rust plugin", "Calculon Rust", "PipeWire module"]
-closure_obligations = ["exact structural fields", "exact schema match", "no node-wide profile", "retired-key rejection", "ABI layout"]
+closure_obligations = ["exact structural fields", "exact schema match", "no node-wide profile", "node-wide profile-key rejection", "ABI layout"]
 implementation_state = "implemented"
 implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "spa/plugins/filter-graph/plugin_ndarray_example.c", "spa/plugins/filter-graph/plugin_ndarray_example.rs", "src/modules/module-ndarray-filter-chain.c", "spa/include/spa/param/format.h", "../calculon-algorithms/crates/calculon-fgn/src/abi.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs"]
 evidence_state = "validated"
@@ -51,7 +51,7 @@ evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "test/
 verified_revision = "FGN and Calculon portable declaration working trees, 2026-08-26"
 verified_environment = "C11 and Rust 1.97.1 on Linux x86_64"
 verified_surfaces = ["C graph host", "C plugin", "Rust plugin", "generated Calculon Rust", "PipeWire module"]
-verified_obligations = ["ABI v5 layout exercised across C and Rust", "exact rate and schema comparison", "C and Rust retired-key rejection", "otherwise identical schema mismatch rejection", "PipeWire SPA projection without profile"]
+verified_obligations = ["ABI v5 layout exercised across C and Rust", "exact rate and schema comparison", "C and Rust node-wide profile-key rejection", "otherwise identical schema mismatch rejection", "FGN SPA projection without the generic device-boundary profile"]
 
 [[requirements]]
 id = "FGN-LIFE-001"
