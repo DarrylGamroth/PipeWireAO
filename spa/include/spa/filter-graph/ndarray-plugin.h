@@ -23,24 +23,18 @@ extern "C" {
  * \{
  */
 
-/** Version of the C ABI exported by ndarray operation shared libraries. */
-#define SPA_FGN_PLUGIN_ABI_VERSION 2u
+/** Version of the C ABI exported by ndarray plugin libraries. */
+#define SPA_FGN_PLUGIN_ABI_VERSION 3u
 #define SPA_FGN_MAX_METAS 16u
 #define SPA_FGN_MAX_META_BYTES 4096u
 
-/** Symbol exported by an ndarray operation shared library. */
+/** Symbol exported by an ndarray plugin library. */
 #define SPA_FGN_PLUGIN_ENTRY_NAME "spa_filter_graph_ndarray_plugin_get_interface"
 
 /** Maximum UTF-8 byte length of a descriptor, port, or property local name. */
 #define SPA_FGN_LOCAL_NAME_MAX 255u
 
-/** Direction of an operation port. */
-enum spa_fgn_port_direction {
-	SPA_FGN_PORT_INPUT,
-	SPA_FGN_PORT_OUTPUT,
-};
-
-/** Descriptor flags for an operation port. */
+/** Descriptor flags for a plugin port. */
 enum spa_fgn_port_flag {
 	SPA_FGN_PORT_FLAG_NONE = 0,
 	SPA_FGN_PORT_FLAG_OPTIONAL = (1u << 0),
@@ -52,7 +46,7 @@ enum spa_fgn_port_flag {
  * One exact packed ndarray format.
  *
  * All pointed-to data is owned by the plugin and remains valid for the
- * lifetime of the operation instance. Integer fields are used instead of C
+ * lifetime of the plugin instance. Integer fields are used instead of C
  * enum fields to make the ABI straightforward to implement in Rust.
  */
 struct spa_fgn_format {
@@ -63,14 +57,13 @@ struct spa_fgn_format {
 	uint32_t n_dimensions;
 	const uint32_t *shape;
 	const char *schema;          /**< optional semantic schema */
-	const char *profile;         /**< optional interpretation profile */
 };
 
-/** Static description of one operation port. */
+/** Static description of one plugin port. */
 struct spa_fgn_port_info {
 	uint32_t struct_size;
 	uint32_t index;
-	uint32_t direction;          /**< one of enum spa_fgn_port_direction */
+	uint32_t direction;          /**< one of enum spa_direction */
 	uint32_t flags;              /**< a mask of enum spa_fgn_port_flag */
 	/** Non-empty; at most SPA_FGN_LOCAL_NAME_MAX bytes. */
 	const char *name;
@@ -201,7 +194,7 @@ struct spa_fgn_property {
 	struct spa_fgn_value value;
 };
 
-/** Buffer and negotiated format supplied to an operation callback. */
+/** Buffer and negotiated format supplied to a plugin-instance callback. */
 struct spa_fgn_buffer {
 	struct spa_buffer *buffer;
 	const struct spa_fgn_format *format;
@@ -210,7 +203,7 @@ struct spa_fgn_buffer {
 struct spa_fgn_descriptor;
 
 /**
- * Descriptor for one operation implementation.
+ * Descriptor for one ndarray filter-graph plugin.
  *
  * Descriptors and port arrays have static shared-library lifetime. Formats,
  * shapes, property descriptors, choices, and descriptor strings returned for
@@ -306,7 +299,7 @@ struct spa_fgn_descriptor {
 	 * multiple consumers. Input and output buffer descriptors, chunks,
 	 * metadata, and data regions do not overlap. Each buffer has exactly one
 	 * data plane and at most SPA_FGN_MAX_METAS entries containing at most
-	 * SPA_FGN_MAX_META_BYTES in total. An operation writes at the supplied
+	 * SPA_FGN_MAX_META_BYTES in total. A plugin instance writes at the supplied
 	 * output chunk offset, preserves that offset, and sets the completed size
 	 * only after successful processing. It leaves the completed size zero on
 	 * failure.
