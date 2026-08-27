@@ -24,9 +24,10 @@ extern "C" {
  */
 
 /** Version of the C ABI exported by ndarray plugin libraries. */
-#define SPA_FGN_PLUGIN_ABI_VERSION 3u
+#define SPA_FGN_PLUGIN_ABI_VERSION 4u
 #define SPA_FGN_MAX_METAS 16u
 #define SPA_FGN_MAX_META_BYTES 4096u
+#define SPA_FGN_MAX_PARAMETER_TRANSACTION_ASSIGNMENTS 4096u
 
 /** Symbol exported by an ndarray plugin library. */
 #define SPA_FGN_PLUGIN_ENTRY_NAME "spa_filter_graph_ndarray_plugin_get_interface"
@@ -200,6 +201,13 @@ struct spa_fgn_buffer {
 	const struct spa_fgn_format *format;
 };
 
+/** One sparse parameter assignment in a local prepared-plan transaction. */
+struct spa_fgn_parameter {
+	uint32_t port;
+	uint32_t reserved;
+	struct spa_fgn_buffer buffer;
+};
+
 struct spa_fgn_descriptor;
 
 /**
@@ -213,8 +221,12 @@ struct spa_fgn_descriptor;
  * instantiate(), admission enumeration, activate(), deactivate(), reset(), and
  * cleanup() are serial and do not overlap process(). Control callbacks are
  * serial with one another but get_prop(), prepare_props(), discard_props(), and
- * parameter callbacks may overlap process(). The host never locks process();
- * plugins use an explicit lock-free publication protocol for shared state.
+ * parameter preparation or discard may overlap process(). A legacy
+ * commit_parameter() may run on that serial owner and overlap process(); a
+ * graph-transaction commit and adopt_parameters() run on the data-loop owner
+ * before any node process callback in that cycle. The host never locks
+ * process(); plugins use an explicit lock-free publication protocol for shared
+ * state.
  */
 struct spa_fgn_descriptor {
 	uint32_t struct_size;
@@ -285,6 +297,23 @@ struct spa_fgn_descriptor {
 	void (*commit_parameter)(void *instance, void *prepared);
 	/** Release a parameter update that will not be committed. */
 	void (*discard_parameter)(void *instance, void *prepared);
+	/**
+	 * Failure-atomically prepare one nonempty local parameter transaction.
+	 *
+	 * Ports are unique parameter inputs on this instance. Buffers and formats
+	 * are borrowed only for this call. The returned token represents one
+	 * complete replacement and is consumed by commit_parameter() or
+	 * discard_parameter().
+	 */
+	int (*prepare_parameters)(void *instance,
+			const struct spa_fgn_parameter *parameters,
+			uint32_t n_parameters, void **prepared);
+	/**
+	 * Adopt every completely published parameter replacement at graph-cycle
+	 * start. This callback cannot fail, allocate, block, destroy retired state,
+	 * or unwind.
+	 */
+	void (*adopt_parameters)(void *instance);
 
 	int (*activate)(void *instance);
 	int (*deactivate)(void *instance);
