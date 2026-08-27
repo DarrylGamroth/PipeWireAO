@@ -761,16 +761,23 @@ and LeakSanitizer with leak detection enabled. The generated Rust bundle uses
 registry remains reachable while graph and algorithm instances are destroyed.
 
 The harness times only `spa_fgn_graph_process()`. In a stable five-run
-development-host experiment, the graph median-of-run p50 was 158.748
-microseconds and the direct typed replay p50 was 133.139 microseconds, a ratio
-of 1.1923. Per-run paired ratios ranged from 1.1873 to 1.1966. The processes
+development-host experiment, the graph median-of-run p50 was 128.241
+microseconds and the direct typed replay p50 was 133.992 microseconds, a ratio
+of 0.9571. Per-run paired ratios ranged from 0.9422 to 0.9790. The processes
 alternated order on one pinned Ryzen 7 6800H logical CPU, used `SCHED_FIFO`
-priority 1, and ran with the `performance` governor. Graph p50 varied by 0.95%
-and direct p50 by 0.31%. This establishes a repeatable callback-boundary
-development result, not scheduled end-to-end latency or a target-controller
-regression threshold. The reproducible driver records raw samples, process
-order, load, pressure, revisions, and artifact hashes. Exact method and
-limitations are in `scripts/qualify_fgn_revolt_classic.py` and
+priority 1, and ran with the `performance` governor. This establishes a
+repeatable callback-boundary development result, not scheduled end-to-end
+latency or a target-controller regression threshold.
+
+The earlier 1.1923 result was not filter-graph dispatch overhead. The complete
+decomposed graph was executing two exact 221 by 221 identity controller maps as
+dense GEMVs while the fused replay bypassed them. Calculon revision
+`19b2d6cc938bdfb84a42f32c58a2c8e1fb39a87f` recognizes those maps during
+preparation and retains the explicit scientific boundaries while executing
+bounded copy or sum paths. A post-change cycle profile attributed 0.64% of
+self samples to the C graph scheduler. The reproducible driver records raw
+samples, process order, load, pressure, revisions, and artifact hashes. Exact
+method and limitations are in `scripts/qualify_fgn_revolt_classic.py` and
 `docs/fgn-revolt-classic-qualification.md` in the Calculon repository.
 
 ## Adapter boundaries and remaining work
