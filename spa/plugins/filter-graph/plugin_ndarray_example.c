@@ -48,7 +48,6 @@ struct prepared_parameter {
 struct instance {
 	uint32_t shape[SPA_NDARRAY_MAX_DIMENSIONS];
 	char schema[256];
-	char profile[256];
 	struct spa_fgn_format format;
 	uint32_t n_values;
 	_Atomic uint64_t requested_state;
@@ -107,19 +106,19 @@ static const struct spa_fgn_port_info ports[] = {
 	{
 		.struct_size = sizeof(struct spa_fgn_port_info),
 		.index = 0,
-		.direction = SPA_FGN_PORT_INPUT,
+		.direction = SPA_DIRECTION_INPUT,
 		.name = "in",
 	},
 	{
 		.struct_size = sizeof(struct spa_fgn_port_info),
 		.index = 1,
-		.direction = SPA_FGN_PORT_OUTPUT,
+		.direction = SPA_DIRECTION_OUTPUT,
 		.name = "out",
 	},
 	{
 		.struct_size = sizeof(struct spa_fgn_port_info),
 		.index = 2,
-		.direction = SPA_FGN_PORT_INPUT,
+		.direction = SPA_DIRECTION_INPUT,
 		.flags = SPA_FGN_PORT_FLAG_OPTIONAL | SPA_FGN_PORT_FLAG_PARAMETER,
 		.name = "coefficients",
 	},
@@ -178,12 +177,6 @@ static int instantiate(const struct spa_fgn_descriptor *descriptor SPA_UNUSED,
 				res = -EINVAL;
 				goto error;
 			}
-		} else if (spa_streq(key, "profile")) {
-			if (spa_json_parse_stringn(token, len, instance->profile,
-					sizeof(instance->profile)) <= 0) {
-				res = -EINVAL;
-				goto error;
-			}
 		} else {
 			res = -EINVAL;
 			goto error;
@@ -223,8 +216,6 @@ static int instantiate(const struct spa_fgn_descriptor *descriptor SPA_UNUSED,
 	atomic_init(&instance->prepared_parameter_busy, false);
 	instance->format.schema = instance->schema[0] != '\0'
 		? instance->schema : NULL;
-	instance->format.profile = instance->profile[0] != '\0'
-		? instance->profile : NULL;
 	*result = instance;
 	return 0;
 error:

@@ -17,7 +17,7 @@
 #include <string.h>
 
 #include <spa/buffer/meta.h>
-#include <spa/filter-graph/ndarray-graph.h>
+#include <spa/filter-graph/filter-graph-ndarray.h>
 #include <spa/param/props.h>
 #include <spa/pod/builder.h>
 #include <spa/pod/iter.h>
@@ -70,8 +70,9 @@ static struct spa_pod *build_gain_update(void *data, size_t size,
 	return spa_pod_builder_pop(&builder, &object);
 }
 
-static struct spa_pod *build_calculon_update(void *data, size_t size,
-		float gain, float pole)
+static struct spa_pod *build_two_float_update(void *data, size_t size,
+		const char *first_name, float first,
+		const char *second_name, float second)
 {
 	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(data, size);
 	struct spa_pod_frame object, values;
@@ -81,8 +82,8 @@ static struct spa_pod *build_calculon_update(void *data, size_t size,
 	spa_pod_builder_prop(&builder, SPA_PROP_params, 0);
 	spa_pod_builder_push_struct(&builder, &values);
 	spa_pod_builder_add(&builder,
-			SPA_POD_String("integrator:gain"), SPA_POD_Float(gain),
-			SPA_POD_String("integrator:pole"), SPA_POD_Float(pole),
+			SPA_POD_String(first_name), SPA_POD_Float(first),
+			SPA_POD_String(second_name), SPA_POD_Float(second),
 			0);
 	spa_pod_builder_pop(&builder, &values);
 	return spa_pod_builder_pop(&builder, &object);
@@ -400,7 +401,7 @@ static void test_calculon_plugin(const char *plugin)
 		fprintf(stderr, "Calculon spa_fgn_graph_new failed: %s (%d)\n",
 				strerror(-res), res);
 	assert(res == 0);
-	assert(spa_fgn_graph_get_port_format(graph, SPA_FGN_PORT_INPUT,
+	assert(spa_fgn_graph_get_port_format(graph, SPA_DIRECTION_INPUT,
 			0, &format) == 0);
 	assert(format->element_type == SPA_ELEMENT_TYPE_F32_LE);
 	assert(format->n_dimensions == 1 && format->shape[0] == 2);
@@ -422,7 +423,9 @@ static void test_calculon_plugin(const char *plugin)
 	assert(spa_fgn_graph_process(graph, inputs, 1, outputs, 1) == -EINVAL);
 	outputs[0] = &output.buffer;
 
-	props = build_calculon_update(props_data, sizeof(props_data), -0.25f, 0.5f);
+	props = build_two_float_update(props_data, sizeof(props_data),
+			"integrator:gain", -0.25f,
+			"integrator:pole", 0.5f);
 	assert(props != NULL);
 	assert(spa_fgn_graph_set_props(graph, props) == 0);
 	assert(get_long_property(graph, "integrator:requested-generation") == 0);
@@ -455,7 +458,7 @@ static void test_calculon_plugin(const char *plugin)
 		fprintf(stderr, "Calculon PDM power-limit graph failed: %s (%d)\n",
 				strerror(-res), res);
 	assert(res == 0);
-	assert(spa_fgn_graph_get_port_format(graph, SPA_FGN_PORT_INPUT,
+	assert(spa_fgn_graph_get_port_format(graph, SPA_DIRECTION_INPUT,
 			0, &format) == 0);
 	assert(format->n_dimensions == 1 && format->shape[0] == 2);
 	assert(strcmp(format->schema,
@@ -494,7 +497,7 @@ static void test_calculon_plugin(const char *plugin)
 				strerror(-res), res);
 	assert(res == 0);
 	assert(spa_fgn_graph_get_n_inputs(graph) == 2);
-	assert(spa_fgn_graph_get_port_info(graph, SPA_FGN_PORT_INPUT,
+	assert(spa_fgn_graph_get_port_info(graph, SPA_DIRECTION_INPUT,
 			1, &node_name, &port_info) == 0);
 	assert(strcmp(node_name, "corrector") == 0);
 	assert(strcmp(port_info->name, "parameter") == 0);
@@ -554,7 +557,7 @@ static void test_calculon_plugin(const char *plugin)
 				strerror(-res), res);
 	assert(res == 0);
 	assert(spa_fgn_graph_get_n_inputs(graph) == 0);
-	assert(spa_fgn_graph_get_port_format(graph, SPA_FGN_PORT_OUTPUT,
+	assert(spa_fgn_graph_get_port_format(graph, SPA_DIRECTION_OUTPUT,
 			0, &format) == 0);
 	assert(strcmp(format->schema,
 			"org.calculon.ao.docrime-excitation/1") == 0);
@@ -611,6 +614,83 @@ static void test_calculon_plugin(const char *plugin)
 
 	assert(spa_fgn_graph_deactivate(graph) == 0);
 	spa_fgn_graph_free(graph);
+	graph = NULL;
+
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = regions plugin = \"%s\""
+		"   label = region-extraction-f32"
+		"   config = { image_rows = 2 image_columns = 2"
+		"              region_rows = 1 region_columns = 2"
+		"              origins = [ [ 0 0 ] [ 1 0 ] ]"
+		"              rate = [ 1000 1 ] } }"
+		" { type = ndarray name = slopes plugin = \"%s\""
+		"   label = shack-hartmann-f32"
+		"   config = { region_rows = 1 region_columns = 2"
+		"              subaperture_count = 2 coordinate_scale = 1.0"
+		"              pixel_threshold = 0.0 flux_threshold = 0.0"
+		"              rate = [ 1000 1 ] } }"
+		" { type = ndarray name = reconstruct plugin = \"%s\""
+		"   label = shwfs-reconstructor-f32"
+		"   config = { rows = 1 columns = 4"
+		"              matrix = [ 1.0 0.0 0.0 0.0 ]"
+		"              rate = [ 1000 1 ] } }"
+		" { type = ndarray name = integrate plugin = \"%s\""
+		"   label = leaky-integrator-f32"
+		"   config = { gain = 1.0 pole = 0.0 state = [ 0.0 ]"
+		"              rate = [ 1000 1 ] } }"
+		"] links = ["
+		" { output = \"regions:regions\" input = \"slopes:regions\" }"
+		" { output = \"slopes:slopes\" input = \"reconstruct:slopes\" }"
+		" { output = \"reconstruct:reconstructed\" input = \"integrate:in\" }"
+		"] inputs = [ \"regions:image\" \"reconstruct:reconstructor\" ]"
+		" outputs = [ \"integrate:out\" ] }",
+		plugin, plugin, plugin, plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	res = spa_fgn_graph_new(config, &graph);
+	if (res < 0)
+		fprintf(stderr, "Calculon SHWFS graph failed: %s (%d)\n",
+				strerror(-res), res);
+	assert(res == 0);
+	assert(spa_fgn_graph_get_n_inputs(graph) == 2);
+	assert(spa_fgn_graph_get_n_outputs(graph) == 1);
+	assert(spa_fgn_graph_get_port_format(graph, SPA_DIRECTION_INPUT,
+			0, &format) == 0);
+	assert(format->n_dimensions == 2 && format->shape[0] == 2 &&
+			format->shape[1] == 2);
+	assert(format->rate_num == 1000 && format->rate_denom == 1);
+
+	init_buffer(&input);
+	init_buffer(&output);
+	init_buffer(&parameter);
+	input.values[0] = 1.0f;
+	input.values[1] = 3.0f;
+	input.values[2] = 2.0f;
+	input.values[3] = 2.0f;
+	inputs[0] = &input.buffer;
+	inputs[1] = NULL;
+	outputs[0] = &output.buffer;
+	assert(spa_fgn_graph_activate(graph) == 0);
+	assert(spa_fgn_graph_process(graph, inputs, 2, outputs, 1) == 0);
+	assert(fabsf(output.values[0] - 0.25f) < 1.0e-6f);
+
+	parameter.values[0] = 0.0f;
+	parameter.values[1] = 0.0f;
+	parameter.values[2] = 1.0f;
+	parameter.values[3] = 0.0f;
+	parameter.header.seq = 17;
+	assert(spa_fgn_graph_update_parameter(graph, 1,
+			&parameter.buffer) == 0);
+	assert(get_long_property(graph,
+			"reconstruct:requested-parameter-sequence") == 17);
+	assert(spa_fgn_graph_process(graph, inputs, 2, outputs, 1) ==
+			SPA_FGN_PROCESS_RESULT_PROPS_CHANGED);
+	assert(output.values[0] == 0.0f);
+	assert(get_long_property(graph,
+			"reconstruct:active-parameter-sequence") == 17);
+
+	assert(spa_fgn_graph_deactivate(graph) == 0);
+	spa_fgn_graph_free(graph);
 }
 
 int main(int argc, char *argv[])
@@ -662,6 +742,47 @@ int main(int argc, char *argv[])
 	assert(res > 0 && (size_t)res < sizeof(config));
 	assert(spa_fgn_graph_new(config, &invalid_graph) == -EINVAL);
 	assert(invalid_graph == NULL);
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = audio_control plugin = \"%s\""
+		"   label = scale-f32 control = { gain = 2.0 } }"
+		"] }",
+		argv[1]);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &invalid_graph) == -EINVAL);
+	assert(invalid_graph == NULL);
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = retired_profile plugin = \"%s\""
+		"   label = scale-f32 config = { profile = retired } }"
+		"] }",
+		argv[1]);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &invalid_graph) == -EINVAL);
+	assert(invalid_graph == NULL);
+
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		"  { type = ndarray name = first plugin = \"%s\" label = scale-f32"
+		"    config = { shape = [ 2 2 ] schema = test.matrix/1 } }"
+		"  { type = ndarray name = second plugin = \"%s\" label = scale-f32"
+		"    config = { shape = [ 2 2 ] schema = test.other-matrix/1 } }"
+		"] links = [ { output = \"first:out\" input = \"second:in\" } ] }",
+		argv[1], argv[1]);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	res = spa_fgn_graph_new(config, &invalid_graph);
+	if (res == 0) {
+		/* A fixed-format plugin may ignore both schema configuration values;
+		 * in that case the host sees equal formats and correctly admits them. */
+		assert(spa_fgn_graph_get_port_format(invalid_graph,
+				SPA_DIRECTION_INPUT, 0, &format) == 0);
+		assert(strcmp(format->schema, "test.matrix/1") == 0);
+		spa_fgn_graph_free(invalid_graph);
+		invalid_graph = NULL;
+	} else {
+		assert(res == -EINVAL);
+		assert(invalid_graph == NULL);
+	}
 
 	res = snprintf(config, sizeof(config),
 		"{ nodes = ["
@@ -684,9 +805,9 @@ int main(int argc, char *argv[])
 	assert(graph != NULL);
 	assert(spa_fgn_graph_get_n_inputs(graph) == 2);
 	assert(spa_fgn_graph_get_n_outputs(graph) == 1);
-	assert(spa_fgn_graph_get_port_format(graph, SPA_FGN_PORT_INPUT,
+	assert(spa_fgn_graph_get_port_format(graph, SPA_DIRECTION_INPUT,
 			0, &format) == 0);
-	assert(spa_fgn_graph_get_port_info(graph, SPA_FGN_PORT_INPUT,
+	assert(spa_fgn_graph_get_port_info(graph, SPA_DIRECTION_INPUT,
 			1, &node_name, &port_info) == 0);
 	assert(strcmp(node_name, "first") == 0);
 	assert(strcmp(port_info->name, "coefficients") == 0);

@@ -74,7 +74,7 @@ extra_docs = [
   'dox/internals/polling-data-loop-benchmark.md',
   'dox/internals/polling-data-loop-profiling.md',
   'dox/internals/row-block-ndarrays.md',
-  'dox/internals/ndarray-filter-graph.md',
+  'dox/internals/filter-graph-ndarray.md',
   'dox/internals/acquisition-metadata.md',
   'dox/internals/driver.dox',
   'dox/internals/protocol.dox',

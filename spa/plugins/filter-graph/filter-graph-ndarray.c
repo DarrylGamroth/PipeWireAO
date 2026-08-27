@@ -15,7 +15,7 @@
 #include <string.h>
 
 #include <spa/buffer/meta.h>
-#include <spa/filter-graph/ndarray-graph.h>
+#include <spa/filter-graph/filter-graph-ndarray.h>
 #include <spa/param/ndarray.h>
 #include <spa/param/props.h>
 #include <spa/pod/parser.h>
@@ -185,8 +185,7 @@ static bool format_equal(const struct spa_fgn_format *a,
 	    a->layout != b->layout || a->rate_num != b->rate_num ||
 	    a->rate_denom != b->rate_denom ||
 	    a->n_dimensions != b->n_dimensions ||
-	    !string_equal(a->schema, b->schema) ||
-	    !string_equal(a->profile, b->profile))
+	    !string_equal(a->schema, b->schema))
 		return false;
 	for (i = 0; i < a->n_dimensions; i++)
 		if (a->shape[i] != b->shape[i])
@@ -286,7 +285,7 @@ static struct fgn_node *find_node(const struct spa_fgn_graph *graph,
 }
 
 static struct fgn_port *find_port(struct fgn_node *node, const char *name,
-		uint32_t direction)
+		enum spa_direction direction)
 {
 	uint32_t i, port_id = SPA_ID_INVALID;
 
@@ -304,7 +303,7 @@ static struct fgn_port *find_port(struct fgn_node *node, const char *name,
 }
 
 static struct fgn_port *resolve_port(const struct spa_fgn_graph *graph,
-		const char *reference, uint32_t direction)
+		const char *reference, enum spa_direction direction)
 {
 	char node_name[256], port_name[256];
 	const char *colon;
@@ -746,7 +745,7 @@ static void node_free(struct fgn_node *node)
 	if (node->ports != NULL)
 		for (i = 0; i < node->descriptor->n_ports; i++)
 			if (node->ports[i].info != NULL &&
-			    node->ports[i].info->direction == SPA_FGN_PORT_OUTPUT)
+			    node->ports[i].info->direction == SPA_DIRECTION_OUTPUT)
 				storage_clear(&node->ports[i].storage);
 	if (node->library != NULL)
 		dlclose(node->library);
@@ -886,11 +885,11 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 		    (info->flags & ~(SPA_FGN_PORT_FLAG_OPTIONAL |
 				SPA_FGN_PORT_FLAG_PARAMETER)) != 0 ||
 		    ((info->flags & SPA_FGN_PORT_FLAG_PARAMETER) &&
-		     (info->direction != SPA_FGN_PORT_INPUT ||
+		     (info->direction != SPA_DIRECTION_INPUT ||
 		      !(info->flags & SPA_FGN_PORT_FLAG_OPTIONAL) ||
 		      node->descriptor->prepare_parameter == NULL)) ||
-		    (info->direction != SPA_FGN_PORT_INPUT &&
-		     info->direction != SPA_FGN_PORT_OUTPUT)) {
+		    (info->direction != SPA_DIRECTION_INPUT &&
+		     info->direction != SPA_DIRECTION_OUTPUT)) {
 			res = -EINVAL;
 			goto error;
 		}
@@ -907,7 +906,7 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 				info->index, &port->format)) < 0 ||
 		    (res = format_size(port->format, &(size_t){ 0 })) < 0)
 			goto error;
-		if (info->direction == SPA_FGN_PORT_INPUT)
+		if (info->direction == SPA_DIRECTION_INPUT)
 			n_input++;
 		else
 			n_output++;
@@ -928,7 +927,7 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 	n_input = n_output = 0;
 	for (i = 0; i < node->descriptor->n_ports; i++) {
 		struct fgn_port *port = &node->ports[i];
-		if (port->info->direction == SPA_FGN_PORT_INPUT)
+		if (port->info->direction == SPA_DIRECTION_INPUT)
 			node->inputs[n_input++] = port;
 		else {
 			node->outputs[n_output++] = port;
@@ -968,7 +967,8 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 			node->properties[node->n_properties++] = info;
 		}
 	}
-	if (have_props && (res = node_prepare_initial_props(node, &props)) < 0)
+	if (have_props &&
+	    (res = node_prepare_initial_props(node, &props)) < 0)
 		goto error;
 	{
 		struct fgn_node **tmp;
@@ -1012,8 +1012,8 @@ static int load_link(struct spa_fgn_graph *graph, struct spa_json *json)
 		if (spa_json_parse_stringn(token, len, target, 512) <= 0)
 			return -EINVAL;
 	}
-	if ((out_port = resolve_port(graph, output, SPA_FGN_PORT_OUTPUT)) == NULL ||
-	    (in_port = resolve_port(graph, input, SPA_FGN_PORT_INPUT)) == NULL)
+	if ((out_port = resolve_port(graph, output, SPA_DIRECTION_OUTPUT)) == NULL ||
+	    (in_port = resolve_port(graph, input, SPA_DIRECTION_INPUT)) == NULL)
 		return -ENOENT;
 	if (in_port->info->flags & SPA_FGN_PORT_FLAG_PARAMETER)
 		return -ENOTSUP;
@@ -1038,11 +1038,11 @@ static int load_link(struct spa_fgn_graph *graph, struct spa_json *json)
 }
 
 static int load_external_ports(struct spa_fgn_graph *graph, struct spa_json *json,
-		uint32_t direction)
+		enum spa_direction direction)
 {
-	struct fgn_port ***ports = direction == SPA_FGN_PORT_INPUT
+	struct fgn_port ***ports = direction == SPA_DIRECTION_INPUT
 		? &graph->inputs : &graph->outputs;
-	uint32_t *n_ports = direction == SPA_FGN_PORT_INPUT
+	uint32_t *n_ports = direction == SPA_DIRECTION_INPUT
 		? &graph->n_inputs : &graph->n_outputs;
 	char reference[512];
 
@@ -1053,7 +1053,7 @@ static int load_external_ports(struct spa_fgn_graph *graph, struct spa_json *jso
 		int res;
 
 		if (port == NULL || port->external != SPA_ID_INVALID ||
-		    (direction == SPA_FGN_PORT_INPUT && port->source != NULL))
+		    (direction == SPA_DIRECTION_INPUT && port->source != NULL))
 			return -EINVAL;
 		if ((res = next_array_size(*n_ports, FGN_MAX_EXTERNAL_PORTS,
 				sizeof(*tmp), &ports_size)) < 0)
@@ -1260,10 +1260,10 @@ int spa_fgn_graph_new(const char *config, struct spa_fgn_graph **result)
 			if ((res = load_link(graph, &child)) < 0)
 				goto error;
 	if (have_inputs && (res = load_external_ports(graph, &inputs,
-			SPA_FGN_PORT_INPUT)) < 0)
+			SPA_DIRECTION_INPUT)) < 0)
 		goto error;
 	if (have_outputs && (res = load_external_ports(graph, &outputs,
-			SPA_FGN_PORT_OUTPUT)) < 0)
+			SPA_DIRECTION_OUTPUT)) < 0)
 		goto error;
 	if ((!have_inputs || !have_outputs) && (res = load_default_ports(graph)) < 0)
 		goto error;
@@ -1306,16 +1306,16 @@ uint32_t spa_fgn_graph_get_n_outputs(const struct spa_fgn_graph *graph)
 }
 
 int spa_fgn_graph_get_port_format(const struct spa_fgn_graph *graph,
-		uint32_t direction, uint32_t port,
+		enum spa_direction direction, uint32_t port,
 		const struct spa_fgn_format **format)
 {
 	if (graph == NULL || format == NULL)
 		return -EINVAL;
-	if (direction == SPA_FGN_PORT_INPUT) {
+	if (direction == SPA_DIRECTION_INPUT) {
 		if (port >= graph->n_inputs)
 			return -ENOENT;
 		*format = graph->inputs[port]->format;
-	} else if (direction == SPA_FGN_PORT_OUTPUT) {
+	} else if (direction == SPA_DIRECTION_OUTPUT) {
 		if (port >= graph->n_outputs)
 			return -ENOENT;
 		*format = graph->outputs[port]->format;
@@ -1326,18 +1326,18 @@ int spa_fgn_graph_get_port_format(const struct spa_fgn_graph *graph,
 }
 
 int spa_fgn_graph_get_port_info(const struct spa_fgn_graph *graph,
-		uint32_t direction, uint32_t port, const char **node_name,
+		enum spa_direction direction, uint32_t port, const char **node_name,
 		const struct spa_fgn_port_info **info)
 {
 	struct fgn_port *graph_port;
 
 	if (graph == NULL || node_name == NULL || info == NULL)
 		return -EINVAL;
-	if (direction == SPA_FGN_PORT_INPUT) {
+	if (direction == SPA_DIRECTION_INPUT) {
 		if (port >= graph->n_inputs)
 			return -ENOENT;
 		graph_port = graph->inputs[port];
-	} else if (direction == SPA_FGN_PORT_OUTPUT) {
+	} else if (direction == SPA_DIRECTION_OUTPUT) {
 		if (port >= graph->n_outputs)
 			return -ENOENT;
 		graph_port = graph->outputs[port];

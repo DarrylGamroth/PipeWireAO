@@ -1,6 +1,6 @@
-\page page_ndarray_filter_graph Ndarray filter-graph proof of concept
+\page page_filter_graph_ndarray Filter Graph Ndarray proof of concept
 
-# Ndarray filter-graph proof of concept
+# Filter Graph Ndarray proof of concept
 
 Status: active proof-of-concept contract
 
@@ -8,17 +8,41 @@ Review date: 2026-08-25
 
 ## Scope
 
-The proof of concept implements a synchronous graph of typed ndarray
-operations. The graph host is C. Individual operations are ordinary shared
-libraries and may be implemented in C, Rust, or another language that can
-export the versioned C ABI in
+The proof of concept implements a synchronous graph of typed ndarray plugins.
+The graph host is C. Plugin libraries may be implemented in C, Rust, or another
+language that can export the versioned C ABI in
 `spa/filter-graph/ndarray-plugin.h`.
 
-The proof of concept establishes the operation ABI, loader, graph validation,
+The proof of concept establishes the plugin ABI, loader, graph validation,
 intermediate buffer ownership, typed property routing, synchronous graph
 execution, and a `pw_filter` adapter. The adapter exposes the composite as one
 PipeWire node and translates external graph ports to ordinary SPA ndarray
 Format, Buffers, and Meta parameters.
+
+## Vocabulary
+
+FGN follows PipeWire filter-chain terminology wherever the two graph hosts
+share a concept:
+
+- A **plugin library** exports one `spa_fgn_plugin` descriptor registry.
+- A **descriptor** is selected by the configured node `label` and describes
+  one loadable plugin.
+- An **instance** is constructed from that descriptor and owns plugin state.
+- A graph contains **nodes**, **ports**, and **links**. Each node owns one
+  plugin instance.
+- A **property** is a typed low-rate value exposed through `SPA_PARAM_PropInfo`
+  and `SPA_PARAM_Props`. The node `props` object supplies initial runtime
+  property values. This differs deliberately from the audio filter chain's
+  `control` object because FGN values are typed properties, not control ports.
+- A **parameter port** carries a sparse large ndarray update. It is not a
+  scalar property or a per-frame data port.
+- A Calculon **algorithm** and its **plan** remain scientific-layer concepts.
+  The FGN adapter exposes an algorithm as a plugin without renaming the
+  scientific contract.
+
+The terms algorithm, plugin library, descriptor, instance, and node are not
+interchangeable at the FGN boundary. A filter is a graph role, while an
+operation remains a mathematical or scientific action inside an algorithm.
 
 ## Normative contract
 
@@ -28,16 +52,31 @@ meanings defined by BCP 14 (RFC 2119 and RFC 8174). There is no admitted
 latency target yet; real-time requirements below constrain mechanism and
 steady-state allocation rather than claiming a percentile latency.
 Implementation and verification status is maintained in
-`ndarray-filter-graph-traceability.toml` beside this document.
+`filter-graph-ndarray-traceability.toml` beside this document.
 
 ### FGN-ABI-001 — Versioned C boundary
 
-An operation plugin MUST expose the exact ABI version requested by the host and
+A plugin library MUST expose the exact ABI version requested by the host and
 use only the declared C-layout structures, fixed-width scalar fields, pointers,
 and callbacks across the shared-library boundary. Descriptors, port arrays,
 formats, shapes, descriptor strings, property descriptors, choices, and their
 strings remain valid until instance cleanup or library unload as documented in
 the public header.
+
+### FGN-FORMAT-001 — Exact per-port ndarray meaning
+
+Each port format MUST identify its element type, packed layout, positive exact
+shape, optional rate, and optional versioned scientific schema. Graph creation
+MUST compare all present fields exactly and reject a link whose schemas differ.
+The ABI and graph configuration MUST NOT add a node-wide interpretation
+profile: a node can transform between different scientific meanings, and one
+free-form string cannot identify every port. A future coordinate-basis or
+calibration identity requires a separately specified per-port field with
+defined lifecycle and parameter-update semantics.
+
+Verification intent: inspect the ABI layout, accept equal schemas, reject an
+otherwise identical link with different schemas, and reject the retired
+`profile` configuration key in C and generated Rust plugins.
 
 ### FGN-CONFIG-001 — Construction configuration boundary
 
@@ -106,17 +145,17 @@ and one transaction admits at most 4096 assignments per node.
 `spa_fgn_graph_set_props()` MUST parse its complete namespaced Props structure,
 and an initial node `props` object MUST parse its complete local property
 object. Both paths reject malformed/trailing/duplicate/unknown/non-runtime
-values and prepare every affected operation before publishing any of them. A
-preparation failure discards every prepared object and leaves the active and
-pending graph transaction unchanged.
+values and prepare every affected plugin instance before publishing any of
+them. A preparation failure discards every prepared object and leaves the
+active and pending graph transaction unchanged.
 
 ### FGN-PROP-002 — Graph-cycle publication
 
 One successfully prepared non-empty graph property transaction MUST occupy a
 bounded pending slot and return `-EBUSY` while that slot or its unreclaimed
 retired transaction is unavailable. At the beginning of one later graph cycle,
-the data-loop owner publishes every affected operation before processing any
-node, so one cycle cannot observe a transaction on only a subset of its
+the data-loop owner publishes every affected plugin instance before processing
+any node, so one cycle cannot observe a transaction on only a subset of its
 affected nodes. An empty transaction succeeds without occupying the slot.
 Initial runtime properties MUST be prepared by the admission owner into this
 same bounded pending transaction and committed at the first process boundary.
@@ -143,11 +182,11 @@ the PipeWire adapter retries and publishes the snapshot outside the data loop.
 ### FGN-RT-001 — Repeated graph path
 
 `spa_fgn_graph_process()`, graph-transaction publication, property-revision
-sampling, and operation `process()` callbacks MUST perform bounded work
+sampling, and plugin-instance `process()` callbacks MUST perform bounded work
 without allocation, blocking, locks, system calls, reference-count destruction,
 or unwinding. Graph construction, parsing, validation, preparation, and retired
 object reclamation remain off the repeated path. This syscall-free boundary is
-the FGN graph and operation path, not the outer PipeWire module notification:
+the FGN graph and plugin-instance path, not the outer PipeWire module notification:
 that adapter MAY issue one coalesced event-source wake-up after construction,
 but MUST NOT use a dynamically growing generic invoke queue from its data-loop
 callback.
@@ -169,13 +208,13 @@ zero.
 The PipeWire adapter MUST expose runtime scalar values through standard
 `SPA_PARAM_PropInfo` and `SPA_PARAM_Props` while documenting that this view
 does not preserve canonical units, local IDs, or distinct read-only,
-construction-only, and graph-rebuild classes. The operation ABI remains the
+construction-only, and graph-rebuild classes. The plugin ABI remains the
 complete descriptor authority.
 
 ### FGN-RUST-001 — Rust adaptation profile
 
-A Rust operation MUST be `Send + Sync`, use an unsafe extension contract for
-handwritten callback implementations, prevent unwinding across every C
+A Rust `PluginInstance` MUST be `Send + Sync`, use an unsafe extension contract
+for handwritten callback implementations, prevent unwinding across every C
 callback, keep Rust-only layouts and allocator-owned handles behind an opaque
 instance pointer, and use a panic-free, allocation-free processing
 implementation. Adapter-owned `UnsafeCell` workspaces MUST document and
@@ -224,7 +263,7 @@ filter chain:
 
 `plugin` is passed to `dlopen()` and `label` selects a descriptor exported by
 that library. Every port supplies one exact element type, shape, layout,
-optional rate, schema, and profile after instance construction. Graph creation
+optional rate, and schema after instance construction. Graph creation
 rejects incompatible links and cycles before activation.
 
 The graph host converts each relaxed `config` object to standard JSON before
@@ -255,26 +294,111 @@ pw-cli load-module libpipewire-module-ndarray-filter-chain '{
 External graph inputs and outputs become ports named `node:port`. Parameter
 inputs also set the standard `port.control = true` property.
 
+### Loading the current Calculon plugins
+
+No Calculon-specific C loader is required by the current implementation.
+`calculon-fgn` derives descriptors and callbacks directly from portable
+Calculon algorithm declarations. A deployment bundle selects declaration
+types but repeats no configuration, port, shape, schema, property, parameter,
+or callback facts. The proof library directly exports
+`spa_filter_graph_ndarray_plugin_get_interface`.
+
+The current loading path is:
+
+```mermaid
+flowchart LR
+    Algorithm["ordinary typed Calculon operation"]
+    Declaration["portable declaration<br/>config, ports, schemas, updates"]
+    Adapter["calculon-fgn<br/>generated FGN adapter"]
+    Library["deployment type selection<br/>ordinary FGN shared library"]
+    Loader["filter-graph-ndarray.c<br/>dlopen + label lookup"]
+    Module["module-ndarray-filter-chain<br/>PipeWire node"]
+
+    Algorithm --> Declaration --> Adapter --> Library --> Loader --> Module
+```
+
+Build the proof library in the Calculon repository with:
+
+```sh
+RUSTFLAGS='-C link-arg=-Wl,--exclude-libs,ALL' \
+  cargo build --release --locked -p calculon-fgn --features oxiblas \
+  --example calculon-fgn-declaration-fixture
+```
+
+Then point an ndarray node at that shared library and select one descriptor by
+label:
+
+```text
+{
+    type = ndarray
+    name = integrator
+    plugin = "/path/to/libcalculon_fgn_declaration_fixture.so"
+    label = leaky-integrator-f32
+    config = {
+        extent = 277
+        initial_state = 0.0
+        input_schema = "org.calculon.ao.controller-residual-error/1"
+        output_schema = "org.calculon.ao.controller-command/1"
+        rate = [ 1000 1 ]
+    }
+    props = { gain = 0.25 pole = 0.9 }
+}
+```
+
+For this node, the graph host opens the library, resolves the generic FGN
+entry point, requests the supported ABI version, finds the
+`leaky-integrator-f32` descriptor, and instantiates it. Port discovery,
+property transactions, parameter updates, and processing then use only the
+FGN ABI. The host neither knows nor needs to know that the implementation was
+generated from a Calculon algorithm.
+
+The proof library selects eleven portable declarations: leaky integration,
+optical-gain correction, image-backed Shack–Hartmann measurement, image-backed
+pyramid normalization, dense reconstruction, PDM command conditioning, and
+atomic closed-loop correction, plus the four controller/VDM/PDM projection
+operations.
+The reference SHWFS controller is this synchronous graph:
+
+```text
+calibrated image -> image-backed Shack-Hartmann -> reconstruction
+                 -> leaky integrator -> PDM command
+```
+
+Region origins, detector coordinates, reference slopes, threshold pairs,
+active subapertures, and the reconstruction matrix have typed sparse ndarray
+parameter ports. The C graph-host proof checks construction, formats,
+properties, metadata, standard rate projection, parameter adoption,
+and the four-node result. A separate REVOLT-scale benchmark uses a 352 by 352
+detector, 512 slopes, and 277 actuators.
+
+The same generated REVOLT library can expose the deformable-mirror boundary as
+five nodes: controller-to-VDM, VDM-to-PDM, atomic PDM command conditioning,
+PDM-feedback-to-VDM, and VDM-feedback-to-controller. Six sparse matrix
+parameter ports carry the projections; frame vectors remain data ports. The C
+host proves this acyclic path at 277 actuators. It does not close the feedback
+cycle or replace Calculon's fused deformable-mirror operation, whose rollback
+semantics require graph-wide failure atomicity that this host does not provide.
+
 ## Processing and ownership
 
 The host allocates fixed intermediate `spa_buffer` storage when it constructs
-the graph. Each operation receives arrays of `spa_fgn_buffer`, which pair the
-ordinary `spa_buffer` with its exact ndarray format. An operation may inspect
+the graph. Each plugin instance receives arrays of `spa_fgn_buffer`, which pair
+the ordinary `spa_buffer` with its exact ndarray format. An instance may inspect
 standard SPA data, chunk, Header, and Acquisition structures directly.
 
 `process()` handles exactly one complete buffer quantum. It must not allocate,
 block, retain or modify an input buffer, or unwind across the ABI. The host
-executes operations in topological order on the caller's data-loop thread. No
-scheduler boundary exists between operations in the composite. Input and
+executes nodes in topological order on the caller's data-loop thread. No
+scheduler boundary exists between nodes in the composite. Input and
 output structural, metadata, and data regions are distinct; an adapter rejects
-overlapping regions before constructing language-level borrowed views. An
-operation writes at the supplied output chunk offset, preserves it, keeps the
-completed size zero until success, and explicitly propagates
-any input metadata required by its output contract.
+overlapping regions before constructing language-level borrowed views. A
+plugin instance writes at the supplied output chunk offset, preserves it, keeps
+the completed size zero until success, and explicitly propagates any input
+metadata required by its output contract.
 
 ## Properties
 
-Operation descriptors enumerate local scalar property information. The host
+Plugin descriptors enumerate local scalar property information. The host
 exports it as standard `SPA_PARAM_PropInfo` and `SPA_PARAM_Props`, qualifying
 each name with its configured instance name:
 
@@ -299,14 +423,14 @@ and enumerated choices. Every property has exactly one update class:
 Ranges and choice sets are mutually exclusive. The graph validates descriptor
 metadata and every incoming value before it calls a plugin. Enum choices become
 standard SPA enum choices and label pairs. SPA PropInfo has no unit field, so
-the canonical unit remains available at the operation ABI but is not preserved
+the canonical unit remains available at the plugin ABI but is not preserved
 as machine-readable metadata in the standard PipeWire parameter view.
 
 A property update is a two-phase graph transaction. The host validates and
-prepares every affected operation first. It commits none if any preparation
+prepares every affected plugin instance first. It commits none if any preparation
 fails. A successful non-empty transaction occupies one graph-owned pending
 slot. At the start of a later graph cycle, the data loop invokes every commit
-callback before it processes any node. Each affected operation therefore sees
+callback before it processes any node. Each affected instance therefore sees
 the update at its process boundary in the same graph cycle. Commit callbacks
 use preallocated plugin storage and do not allocate or destroy prepared state.
 
@@ -315,7 +439,7 @@ reclamation slot is occupied. Individual plugins may apply a tighter bounded
 capacity. Requested and active generations are monotonic and independently
 observable; an empty graph transaction is a no-op and advances neither.
 
-An operation may expose a monotonic property revision as an even/odd sequence
+A plugin instance may expose a monotonic property revision as an even/odd sequence
 counter. The revision remains odd while one or more writers change observable
 state and advances to a greater even value after the final writer completes.
 The graph rejects a control snapshot
@@ -358,20 +482,20 @@ Reconstructors, calibration matrices, masks, reference vectors, and similarly
 large state use sparse ndarray input ports marked
 `SPA_FGN_PORT_FLAG_PARAMETER`. They are ordinary typed PipeWire ports at the
 outer node boundary, but they do not supply a buffer on every frame cycle.
-Their schema and profile distinguish their semantic role from frame data with
+Their schema distinguishes their semantic role from frame data with
 the same element type and shape.
 
 The adapter hands an arrived parameter buffer to
 `spa_fgn_graph_update_parameter()` on a serial control or worker context. The
-operation's `prepare_parameter()` callback must copy the array, build plans, or
+instance's `prepare_parameter()` callback must copy the array, build plans, or
 otherwise produce bounded plugin-owned state before returning. The borrowed
 `spa_buffer` is recycled by the data loop after the worker finishes with it.
 `commit_parameter()` publishes the prepared state, and `process()` adopts it at
 the next frame boundary.
-`spa_meta_header.seq` can carry the producer's update sequence; operations
+`spa_meta_header.seq` can carry the producer's update sequence; plugins
 expose requested and active sequences as read-only scalar properties.
 
-The example operations preallocate two coefficient slots. The control thread
+The example plugins preallocate two coefficient slots. The control thread
 writes only the inactive slot and publishes its index with a release store.
 The data loop observes that index with an acquire load, changes the active slot,
 then releases the old slot. If another update arrives before adoption, prepare
@@ -399,9 +523,9 @@ latest accepted requested sequence, not from a stale active slot.
 No matrix copy, allocation, destruction, lock, or reference-count operation is
 performed by `process()`.
 
-## Rust operations
+## Rust plugins
 
-Rust operations use `crate-type = ["cdylib"]` and export
+Rust plugins use `crate-type = ["cdylib"]` and export
 `spa_filter_graph_ndarray_plugin_get_interface`. Only `#[repr(C)]` structures,
 fixed-width integers, pointers, and `extern "C"` callbacks cross the boundary.
 The Rust side owns its plans and workspaces behind an opaque instance pointer.
@@ -411,54 +535,106 @@ no Rust reference, slice, trait object, `String`, `Vec`, or allocator-owned
 pointer is part of the ABI. Construction and property preparation may
 allocate. `process()` and state adoption may not.
 
-Calculon's raw `Operation` extension trait is unsafe and requires `Send + Sync`.
-The declarative scientist-facing macros implement that boundary using audited
+Calculon's raw `PluginInstance` extension trait is unsafe and requires
+`Send + Sync`.
+The declarative deployment macros implement that boundary using audited
 single-data-owner workspace adapters. Release artifacts use unwinding so the
 callback barrier can translate a panic to `-EFAULT`; a release cdylib fixture
 verifies this behavior through the exported C ABI.
 
-Calculon's `calculon-fgn` crate is the maintained Rust adaptation profile. A
-scientist-facing operation declaration supplies typed configuration, an
-ordinary Calculon plan and workspace preparation function, scientific schema,
-and property policy. Reusable operation-shape adapters own ports, formats,
-checked buffer views, workspace access, error translation, and every C
-callback. Property-enabled operations use the two-slot runtime; operations
-without properties use a fixed-plan store without implementing a dummy
-algorithm property interface. One registry exports multiple descriptors from
-the same shared library. The adapter owns schema projection, plan publication,
-generations, revision sequencing, panic containment, and retired-plan
-reclamation. The `leaky-integrator-f32`, `pdm-command-power-limit-f32`,
-`optical-gain-correction-f32`, `docrime-excitation-f32`, and
-`docrime-binary-excitation-f32` plugins are loaded and executed by this
-repository's C graph-host test; the leaky integrator also executes the shared
-two-property Calculon fixture. The optical-gain and DO-CRIME declarations use
-the generic bounded parameter-plan runtime: a sparse vector prepares a
-complete replacement plan off loop and processing adopts it at the next frame
-boundary without allocation or retired-plan destruction. The DO-CRIME pair
-also demonstrates the reusable stateful-source declaration and lifecycle
-reset.
+Calculon's `calculon-fgn` crate is the maintained Rust adaptation profile.
+Scientists implement an ordinary typed operation and one portable declaration
+beside it. `AlgorithmPlan` and the scalar-property interface remain useful but
+are not required merely to expose a prepared typed kernel. The declaration
+contains construction fields, logical ports and shapes, scientific schemas,
+property policy, parameter replacements, and direct preparation/process/reset
+expressions. It contains no FGN type or callback.
+
+The generic adapter derives the exact descriptor, row-major Rust formats,
+checked typed buffer views, workspace ownership, error translation, metadata
+policy, every C callback, two-slot publication, revision sequencing, panic
+containment, and retired-plan reclamation. Property-free declarations use a
+fixed plan owner; property and parameter declarations select the matching
+bounded plan owner at compile time.
+
+The proof library selects `leaky-integrator-f32`,
+`optical-gain-correction-f32`, `shack-hartmann-image-f32`,
+`pyramid-pixel-image-f32`,
+`shwfs-reconstructor-f32`, `pdm-command-f32`, and
+`closed-loop-correction-f32`, together with `controller-to-vdm-f32`,
+`vdm-to-pdm-f32`, `pdm-feedback-to-vdm-f32`, and
+`vdm-feedback-to-controller-f32`. Selection is a type list only. The generic
+checked-buffer surface admits packed Bool8, signed and unsigned integer widths,
+F32, and F64 arrays. Rust integration tests cover
+warmed process allocation/deallocation, state, sparse parameter adoption, and
+REVOLT dimensions. This does not replace process-wide allocator, lock, or
+system-call interposition.
 
 The current Calculon profile uses `config` for construction-only and
-graph-rebuild values. Its shared `PropertyRuntime` accepts only runtime
-properties in live or initial `props` transactions. A future construction
-adapter may translate initial properties before instantiation, but must not
-pretend that a post-instantiation plan update is construction.
+graph-rebuild values. Its shared `PropertyRuntime` and
+`PropertyParameterRuntime` accept only runtime properties in live or initial
+`props` transactions. A future construction adapter may translate initial
+properties before instantiation, but must not pretend that a
+post-instantiation plan update is construction.
 
-Calculon's `scripts/test_fgn_pipewire_live.py` starts an isolated PipeWireAO
-core, loads the release plugin through this module, discovers the node and its
-ports, checks their ndarray formats, enumerates standard PropInfo and Props,
-submits a two-property update followed by a core synchronization, and performs
-16 immediate module teardown iterations after synchronized property updates.
-It does not yet provide the live ndarray
-client needed to drive a process boundary and observe off-loop publication of
-the newly active values.
+The generated-declaration C integration test uses this graph host directly. An
+isolated live PipeWire smoke test loads a generated leaky-integrator
+descriptor, the four-node image-view REVOLT graph, and the five-node
+decomposed deformable-mirror graph. It discovers their ndarray ports and
+property descriptors, submits multi-property transactions, and exercises
+repeated synchronized teardown. The same smoke test loads closed-loop
+correction from its generated declaration and retains a legacy source fixture
+only for an adapter shape that has not yet migrated. It does not drive ndarray
+buffers or prove active-value republication through the complete PipeWire
+module; those remain separate admission work.
 
 The build contains C and Rust implementations of the same scalar-gain
-and sparse-coefficient operation. The same test loads each shared library,
+and sparse-coefficient plugin. The same test loads each shared library,
 constructs two linked instances, applies namespaced SPA properties
 transactionally, verifies bounded coefficient update back pressure and
 frame-boundary adoption, processes a two-dimensional F32 ndarray, and verifies
 standard Header propagation.
+
+## SHWFS direct-call benchmark
+
+`benchmark-filter-graph-ndarray-calculon` compares the existing fused Calculon
+SPA controller with either the generated four-node image-view graph or an
+eight-node graph with the deformable-mirror projections exposed. Both are
+selected by the type-only `calculon-fgn-revolt-fixture` deployment. The harness
+constructs the same input and reconstruction matrix, requires bit-exact
+demanded-command output before timing, alternates measurement order, reports
+mean and tail percentiles, and writes raw paired CSV observations. The fused
+baseline still materializes detector regions, so the comparison establishes
+viability of the intended graph rather than isolating dispatch from fusion.
+
+Across five CPU-pinned Ryzen 7 6800H development-host runs with a 352 by 352
+detector, 22 by 22-pixel subapertures, and 277 actuators, median p50 was 142.577
+microseconds for the generated graph and 178.074 microseconds for the existing
+fused node. The per-run graph/fused ratio was 0.7895 to 0.8038. Cycle sampling
+attributed 89.60% to center-of-gravity measurement, 4.97% to the OxiBLAS dot
+kernel, 0.78% to PDM processing, and 0.15% to the C graph scheduler. Adding an
+unused declaration changed linked code placement and performance, so each
+deployment must qualify its exact type selection rather than substitute an
+all-algorithm convenience bundle. The host used a `powersave` governor with
+boost enabled, so these values are engineering evidence rather than an
+acceptance threshold.
+
+The `PW_FGN_BENCHMARK_DM=direct|decomposed` environment variable selects the
+deformable-mirror boundary. In a separate three-run smoke experiment pinned to
+CPU 2, with 1,000 warmups and 10,000 calls per run, the direct graph's
+median-of-run p50 was 135.695 microseconds and the decomposed graph's was
+151.013 microseconds, an 11.3% increase. Both demanded-command results were
+bit-exact with the fused reference; the zero-feedback case also produced zero
+projected controller feedback. The additional time is not pure dispatch cost:
+the decomposed path executes six additional projections and publishes an extra
+output. Graph-only `perf stat` smoke runs reported approximately 13.4% more
+cycles and 7.3% more instructions for that path, with hardware events
+multiplexed to about 83%.
+
+This is preliminary direct callback service time, not PipeWire scheduling or
+device latency and not a normative percentile claim. The reproducible harness
+and full limitations are `scripts/benchmark_fgn_shwfs.py` and
+`docs/fgn-shwfs-performance.md` in the Calculon repository.
 
 ## Adapter boundaries and remaining work
 
@@ -467,11 +643,43 @@ standard Buffer, Header, and Acquisition parameters. It passes frame buffers
 directly to `spa_fgn_graph_process()`, forwards graph PropInfo and Props, and
 moves parameter preparation to a dedicated worker. One parameter buffer may be
 in flight per parameter port. A newer arrival is rejected and recycled while
-that slot is occupied; an operation's `-EBUSY` response is retried after the
-next graph process boundary.
+that slot is occupied; a plugin instance's `-EBUSY` response is retried after
+the next graph process boundary.
 
 The adapter does not yet rebuild a graph when a format-defining configuration
-value changes, expose the dropped-parameter counter as a node property, or
-provide latency benchmark results. The operation ABI does not need to become a
-full SPA-node ABI for those additions. Only the composite adapter participates
-in the PipeWire graph.
+value changes or expose the dropped-parameter counter as a node property. The
+direct callback benchmark does not yet cover the outer PipeWire scheduler,
+device I/O, overload, or a declared percentile deadline. The plugin ABI does
+not need to become a full SPA-node ABI for those additions. Only the composite
+adapter participates in the PipeWire graph.
+
+The graph also has no atomic transaction spanning parameter ports on several
+nodes, no graph-wide rollback after a downstream failure, no explicit
+feedback-delay primitive, and no multi-rate scheduler. Related projection
+matrices therefore need inactive initialization or a future coherent update
+mechanism before the decomposed deformable-mirror path can replace an atomic
+scientific operation with those requirements.
+
+## Julia and additional language bindings
+
+Status: non-normative future admission work.
+
+The portable declaration is a source-level scientist API, while the FGN C ABI
+is already the language-neutral deployment boundary. A second Calculon plugin
+ABI and `plugin_calculon.c` are not justified unless they add a capability the
+FGN ABI cannot express; a forwarding ABI would add ownership and lifetime
+surface without reducing scientist work.
+
+Julia now has a native declaration macro with stateful processing, sources,
+properties, sparse parameters, and explicit column-major formats. It can be
+used by a Julia or AdaptiveOpticsSim graph without PipeWire. This does not by
+itself admit Julia on a PipeWire data-loop thread.
+
+A Julia FGN implementation must choose and qualify one runtime ownership
+model, normally one preinitialized runtime and registry rather than one runtime
+per graph node. Acceptance requires ahead-of-time preparation, safe foreign
+thread entry, explicit GC and lock behavior, bounded allocation-free processing,
+panic/exception containment, parameter/property frame-boundary equivalence,
+unload stress, and numerical fixtures shared with native execution. Until
+those gates close, Julia is supported for native simulation and off-loop
+preparation but is not claimed as a hard-real-time FGN plugin.
