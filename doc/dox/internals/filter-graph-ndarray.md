@@ -100,7 +100,9 @@ The host and plugin MUST follow this callback matrix:
 | prepare properties | serial control owner | yes | assignments and strings only for prepare call |
 | commit properties | data-loop owner at graph-cycle start | no node processing has begun | prepared object transfers to plugin |
 | discard properties | serial control owner | yes | prepared object consumed by callback |
-| prepare/commit/discard parameter | serial parameter owner | yes | input buffer only for prepare call |
+| prepare/discard parameter or parameter set | serial parameter owner | yes | input buffers only for prepare call |
+| commit parameter | serial parameter owner, or data-loop owner for a graph transaction | legacy serial commit may overlap | prepared object transfers to plugin |
+| adopt parameter set | data-loop owner at graph-cycle start | no node processing has begun | none |
 | activate, deactivate, reset | serial lifecycle owner | no | no retained host data |
 | property revision | control and data-loop observers | yes | none |
 | process | data-loop owner | one data-loop caller | buffers only for process call |
@@ -118,7 +120,7 @@ element and known-metadata alignment, reject duplicate metadata types, and
 reject overlap among data, chunk, metadata, input, and mutable output regions.
 Mutable output regions MUST also be disjoint from the caller's outer input and
 output pointer arrays and from every graph-owned plugin-facing buffer array.
-The admitted profile permits at most 16 metadata entries and 4096 total
+The admitted limits permit at most 16 metadata entries and 4096 total
 metadata bytes per buffer. A plugin MUST preserve the supplied output offset,
 leave output size zero until processing succeeds, publish the exact completed
 size only after success, and leave size zero on failure.
@@ -179,6 +181,76 @@ revision odd until all writers complete. The graph rejects an
 odd or changed control snapshot, reports one bounded process change flag, and
 the PipeWire adapter retries and publishes the snapshot outside the data loop.
 
+### FGN-PARAM-001 — Failure-atomic ndarray parameter preparation
+
+`spa_fgn_graph_set_parameters()` MUST accept a non-empty bounded set of unique
+external parameter input ports, validate every buffer before scientific
+preparation, group assignments by plugin instance, and invoke each affected
+instance's `prepare_parameters()` callback exactly once. One local callback
+MUST compose all of its assignments into one complete private replacement.
+The host MUST prepare every affected instance before publishing any of them.
+If validation or preparation fails, it MUST discard every prepared token and
+leave active and requested plans unchanged.
+
+`spa_fgn_graph_update_parameter()` MUST use this transaction path when the
+descriptor exposes the batch callbacks. Descriptors without those callbacks
+MAY retain the legacy single-parameter publication behavior. One transaction
+admits at most 4096 assignments.
+
+Verification intent: replace two calibration planes on one node without an
+observable mixed plane, reject duplicate ports and inconsistent scientific
+preparation, and discard an already prepared first node when a later node
+rejects its assignment.
+
+### FGN-PARAM-002 — Graph-cycle ndarray parameter publication
+
+One successfully prepared graph parameter transaction MUST occupy one bounded
+pending graph slot and return `-EBUSY` while that slot or its unreclaimed
+retired transaction is unavailable. At one later graph-cycle start, the data
+loop MUST publish every affected instance and then invoke every affected
+instance's `adopt_parameters()` callback before processing any node. Commit
+and adoption MUST be bounded, non-failing, allocation-free, lock-free,
+destruction-free, syscall-free, and unwind-contained. Prepared and retired
+tokens MUST be destroyed only on the serial control path.
+
+This guarantee is a coherent graph-cycle plan change. It does not roll back
+algorithm state if numerical processing later fails.
+
+Verification intent: update parameters on two linked nodes, verify that the
+next output uses both replacements, observe deterministic backpressure, and
+verify that a failed multi-node preparation preserves both active plans.
+
+### FGN-EXEC-001 — Synchronous single-rate acyclic execution
+
+One graph process call MUST execute one complete quantum on every node in
+topological order. The host MUST reject a directed cycle. Every specified
+port rate in one graph MUST use the same exact numerator and denominator; the
+host MUST reject mixed specified rates, and MUST NOT imply resampling,
+decimation, interpolation, or a multi-rate schedule.
+
+A feedback decomposition therefore requires an explicit unit-delay operation
+with specified initial value, state, metadata, reset, and failure behavior.
+No such operation is admitted in this proof of concept. A scientific
+operation that requires feedback MUST remain atomic until that operation and
+its equivalence evidence exist.
+
+Verification intent: reject a two-node cycle and a graph containing two
+different specified rates, while admitting and executing an equal-rate DAG.
+
+### FGN-FAIL-001 — Processing failure and rollback boundary
+
+The host MUST validate the complete external buffer set before invoking any
+plugin. If a plugin fails after graph execution begins, the host MUST leave
+every external output size zero. The host does not roll back workspaces,
+internal buffers, or state already changed by earlier plugin callbacks in that
+cycle. A decomposition whose scientific contract requires whole-operation
+rollback MUST remain one atomic algorithm or add a separately specified
+prepare/commit/abort processing protocol before replacing it.
+
+Verification intent: verify pre-callback buffer rejection and zero external
+output sizes after a numerical failure; inspect stateful decompositions and
+retain fused implementations wherever rollback equivalence is required.
+
 ### FGN-RT-001 — Repeated graph path
 
 `spa_fgn_graph_process()`, graph-transaction publication, property-revision
@@ -211,16 +283,16 @@ does not preserve canonical units, local IDs, or distinct read-only,
 construction-only, and graph-rebuild classes. The plugin ABI remains the
 complete descriptor authority.
 
-### FGN-RUST-001 — Rust adaptation profile
+### FGN-RUST-001 — Rust adaptation contract
 
 A Rust `PluginInstance` MUST be `Send + Sync`, use an unsafe extension contract
 for handwritten callback implementations, prevent unwinding across every C
 callback, keep Rust-only layouts and allocator-owned handles behind an opaque
 instance pointer, and use a panic-free, allocation-free processing
 implementation. Adapter-owned `UnsafeCell` workspaces MUST document and
-enforce the single-data-owner rule. The delivered build profile and tests must
-establish ABI layout, callback containment, and warmed processing behavior for
-each admitted plugin.
+enforce the single-data-owner rule. The delivered build configuration and tests
+must establish ABI layout, callback containment, and warmed processing behavior
+for each admitted plugin.
 
 ## Configuration
 
@@ -264,7 +336,8 @@ filter chain:
 `plugin` is passed to `dlopen()` and `label` selects a descriptor exported by
 that library. Every port supplies one exact element type, shape, layout,
 optional rate, and schema after instance construction. Graph creation
-rejects incompatible links and cycles before activation.
+rejects incompatible links, directed cycles, and mixed specified port rates
+before activation.
 
 The graph host converts each relaxed `config` object to standard JSON before
 calling the plugin. Plugin authors can therefore use ordinary typed JSON
@@ -352,11 +425,11 @@ property transactions, parameter updates, and processing then use only the
 FGN ABI. The host neither knows nor needs to know that the implementation was
 generated from a Calculon algorithm.
 
-The proof library selects eleven portable declarations: leaky integration,
-optical-gain correction, image-backed Shack–Hartmann measurement, image-backed
-pyramid normalization, dense reconstruction, PDM command conditioning, and
-atomic closed-loop correction, plus the four controller/VDM/PDM projection
-operations.
+The declaration proof library selects all 36 current production Rust
+declarations. Selection is a deployment type list; descriptor facts remain
+owned by the declarations beside the scientific implementations. A smaller
+REVOLT fixture selects only the eight declarations used by its SHWFS and
+deformable-mirror direct-call tests.
 The reference SHWFS controller is this synchronous graph:
 
 ```text
@@ -376,8 +449,9 @@ five nodes: controller-to-VDM, VDM-to-PDM, atomic PDM command conditioning,
 PDM-feedback-to-VDM, and VDM-feedback-to-controller. Six sparse matrix
 parameter ports carry the projections; frame vectors remain data ports. The C
 host proves this acyclic path at 277 actuators. It does not close the feedback
-cycle or replace Calculon's fused deformable-mirror operation, whose rollback
-semantics require graph-wide failure atomicity that this host does not provide.
+cycle or replace Calculon's fused deformable-mirror operation. That replacement
+requires an explicit unit delay and whole-operation rollback semantics that
+the current synchronous graph does not provide.
 
 ## Processing and ownership
 
@@ -409,7 +483,7 @@ controller:requested-generation
 controller:active-generation
 ```
 
-ABI version 2 describes stable local IDs and names, Bool, Int, Long, Float,
+ABI version 4 describes stable local IDs and names, Bool, Int, Long, Float,
 Double, Id, and String values, defaults, descriptions, canonical units, ranges,
 and enumerated choices. Every property has exactly one update class:
 
@@ -495,6 +569,22 @@ the next frame boundary.
 `spa_meta_header.seq` can carry the producer's update sequence; plugins
 expose requested and active sequences as read-only scalar properties.
 
+For a coherent replacement containing several parameter ports,
+`spa_fgn_graph_set_parameters()` validates the complete assignment set and
+calls `prepare_parameters()` once per affected instance. It prepares all
+instances before publication. At the next graph-cycle boundary, the data loop
+commits every token and adopts every affected instance before executing the
+first node. The generated Calculon adapter composes same-node assignments into
+one private plan, rejects duplicate ports, and requires all Header sequences
+present on one node to agree. Headerless assignments use the next adapter-owned
+sequence. A later preparation failure discards earlier prepared tokens.
+
+The direct graph API therefore supports atomic multi-port and multi-node
+replacement. The outer PipeWire module currently delivers one arrived
+parameter buffer at a time and has no standard buffer-level transaction marker;
+it does not yet expose this batching guarantee to unrelated asynchronous port
+arrivals.
+
 The example plugins preallocate two coefficient slots. The control thread
 writes only the inactive slot and publishes its index with a release store.
 The data loop observes that index with an acquire load, changes the active slot,
@@ -542,7 +632,7 @@ single-data-owner workspace adapters. Release artifacts use unwinding so the
 callback barrier can translate a panic to `-EFAULT`; a release cdylib fixture
 verifies this behavior through the exported C ABI.
 
-Calculon's `calculon-fgn` crate is the maintained Rust adaptation profile.
+Calculon's `calculon-fgn` crate is the maintained Rust adaptation contract.
 Scientists implement an ordinary typed operation and one portable declaration
 beside it. `AlgorithmPlan` and the scalar-property interface remain useful but
 are not required merely to expose a prepared typed kernel. The declaration
@@ -557,20 +647,16 @@ containment, and retired-plan reclamation. Property-free declarations use a
 fixed plan owner; property and parameter declarations select the matching
 bounded plan owner at compile time.
 
-The proof library selects `leaky-integrator-f32`,
-`optical-gain-correction-f32`, `shack-hartmann-image-f32`,
-`pyramid-pixel-image-f32`,
-`shwfs-reconstructor-f32`, `pdm-command-f32`, and
-`closed-loop-correction-f32`, together with `controller-to-vdm-f32`,
-`vdm-to-pdm-f32`, `pdm-feedback-to-vdm-f32`, and
-`vdm-feedback-to-controller-f32`. Selection is a type list only. The generic
-checked-buffer surface admits packed Bool8, signed and unsigned integer widths,
-F32, and F64 arrays. Rust integration tests cover
+The proof library's 36-entry type list covers every current production Rust
+declaration, including mixed U16/F32 pixel calibration, image views,
+reconstruction, control, calibration, optical-gain, and deformable-mirror
+operations. The generic checked-buffer surface admits packed Bool8, signed and
+unsigned integer widths, F32, and F64 arrays. Rust integration tests cover
 warmed process allocation/deallocation, state, sparse parameter adoption, and
 REVOLT dimensions. This does not replace process-wide allocator, lock, or
 system-call interposition.
 
-The current Calculon profile uses `config` for construction-only and
+The current Calculon adapter uses `config` for construction-only and
 graph-rebuild values. Its shared `PropertyRuntime` and
 `PropertyParameterRuntime` accept only runtime properties in live or initial
 `props` transactions. A future construction adapter may translate initial
@@ -653,12 +739,14 @@ device I/O, overload, or a declared percentile deadline. The plugin ABI does
 not need to become a full SPA-node ABI for those additions. Only the composite
 adapter participates in the PipeWire graph.
 
-The graph also has no atomic transaction spanning parameter ports on several
-nodes, no graph-wide rollback after a downstream failure, no explicit
-feedback-delay primitive, and no multi-rate scheduler. Related projection
-matrices therefore need inactive initialization or a future coherent update
-mechanism before the decomposed deformable-mirror path can replace an atomic
-scientific operation with those requirements.
+The direct graph API has atomic preparation and same-cycle adoption across
+parameter ports on several nodes. The PipeWire module does not yet assemble
+asynchronous parameter buffers into that API. The graph has no graph-wide
+rollback after a downstream failure, no explicit feedback-delay primitive,
+and no multi-rate scheduler; mixed specified rates and directed cycles are
+rejected. Related projection matrices therefore need coherent initialization,
+and the fused deformable-mirror and closed-loop operations remain authoritative
+where delay or rollback semantics are part of their scientific contract.
 
 ## Julia and additional language bindings
 
