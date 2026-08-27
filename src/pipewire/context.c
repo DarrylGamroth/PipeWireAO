@@ -747,16 +747,21 @@ static struct pw_data_loop *acquire_data_loop(struct impl *impl, const char *nam
 	for (i = 0; i < impl->n_data_loops; i++) {
 		struct data_loop *l = &impl->data_loops[i];
 		const char *ln = l->impl->loop->name;
+		const char *lk = klass != NULL ? klass : l->impl->class;
 		int score = 0;
 
-		if (klass == NULL)
-			klass = l->impl->class;
+		/* A polling loop cannot host the fd and timer sources used by
+		 * arbitrary SPA nodes. Keep it opt-in through an explicit loop name
+		 * or class instead of including it in unqualified load balancing. */
+		if (name == NULL && klass == NULL &&
+				pw_data_loop_is_polling(l->impl))
+			continue;
 
 		if (name && ln && fnmatch(name, ln, FNM_EXTMATCH) == 0)
 			score += 2;
-		if (klass && l->impl->classes) {
+		if (lk && l->impl->classes) {
 			for (j = 0; l->impl->classes[j]; j++) {
-				if (fnmatch(klass, l->impl->classes[j], FNM_EXTMATCH) == 0) {
+				if (fnmatch(lk, l->impl->classes[j], FNM_EXTMATCH) == 0) {
 					score += 1;
 					break;
 				}

@@ -50,6 +50,34 @@ static void fixture_clear(struct fixture *fixture)
 	pw_main_loop_destroy(fixture->main_loop);
 }
 
+static void test_polling_loop_requires_explicit_selection(void)
+{
+	static const char data_loops[] =
+		"[ { loop.name = ordinary thread.name = ordinary "
+		"loop.class = data.rt loop.idle = eventfd } "
+		"{ loop.name = rtc thread.name = rtc "
+		"loop.class = data.rt loop.idle = busy-spin } ]";
+	struct fixture fixture;
+	struct pw_properties *properties;
+	struct pw_loop *loop;
+
+	fixture_init_data_loops(&fixture, data_loops);
+	loop = pw_context_acquire_loop(fixture.context, NULL);
+	spa_assert_se(loop != NULL);
+	spa_assert_se(spa_streq(loop->name, "ordinary"));
+	loop = pw_context_acquire_loop(fixture.context, NULL);
+	spa_assert_se(loop != NULL);
+	spa_assert_se(spa_streq(loop->name, "ordinary"));
+
+	properties = pw_properties_new(PW_KEY_NODE_LOOP_NAME, "rtc", NULL);
+	spa_assert_se(properties != NULL);
+	loop = pw_context_acquire_loop(fixture.context, &properties->dict);
+	spa_assert_se(loop != NULL);
+	spa_assert_se(spa_streq(loop->name, "rtc"));
+	pw_properties_free(properties);
+	fixture_clear(&fixture);
+}
+
 static void wait_until_at_least(uint32_t *value, uint32_t target)
 {
 	struct timespec start, now;
@@ -1291,6 +1319,7 @@ int main(int argc, char *argv[])
 	}
 
 	test_polling_data_loop_lifecycle();
+	test_polling_loop_requires_explicit_selection();
 	test_regular_node_polling_activation();
 	test_poll_driver_cycles_without_eventfd();
 	test_cross_process_polling_activation();
