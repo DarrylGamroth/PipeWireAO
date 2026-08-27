@@ -199,6 +199,42 @@ static void check_properties(struct spa_fgn_graph *graph)
 	assert(pod != NULL);
 }
 
+static void check_failed_property_snapshot(const char *plugin)
+{
+	uint8_t data[4096];
+	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(data, sizeof(data));
+	struct spa_pod_builder_state state;
+	struct spa_pod_frame outer;
+	struct spa_fgn_graph *graph = NULL;
+	struct spa_pod *pod;
+	char config[2048];
+	uint32_t outer_size;
+	int res;
+
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = unstable plugin = \"%s\""
+		"   label = unstable-properties }"
+		"] inputs = [ \"unstable:in\" ] outputs = [ ] }",
+		plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == 0);
+
+	spa_pod_builder_push_struct(&builder, &outer);
+	spa_pod_builder_int(&builder, 42);
+	spa_pod_builder_get_state(&builder, &state);
+	outer_size = outer.pod.size;
+	assert(spa_fgn_graph_get_props(graph, &builder, &pod) == -EAGAIN);
+	assert(builder.state.offset == state.offset);
+	assert(builder.state.flags == state.flags);
+	assert(builder.state.frame == state.frame);
+	assert(outer.pod.size == outer_size);
+	spa_pod_builder_int(&builder, 24);
+	assert(spa_pod_builder_pop(&builder, &outer) != NULL);
+
+	spa_fgn_graph_free(graph);
+}
+
 static int64_t get_long_property(struct spa_fgn_graph *graph, const char *wanted)
 {
 	uint8_t data[4096];
@@ -715,7 +751,9 @@ int main(int argc, char *argv[])
 	uint32_t i;
 	int res;
 
-	assert(argc == 2 || argc == 3);
+	assert(argc >= 2 && argc <= 4);
+	if (argc >= 3)
+		check_failed_property_snapshot(argv[2]);
 	res = snprintf(config, sizeof(config),
 		"{ nodes = ["
 		" { type = ndarray name = duplicate plugin = \"%s\""
@@ -1041,7 +1079,7 @@ int main(int argc, char *argv[])
 	assert(spa_fgn_graph_process(graph, inputs, 1, NULL, 0) == 0);
 	assert(spa_fgn_graph_deactivate(graph) == 0);
 	spa_fgn_graph_free(graph);
-	if (argc == 3)
-		test_calculon_plugin(argv[2]);
+	if (argc == 4)
+		test_calculon_plugin(argv[3]);
 	return EXIT_SUCCESS;
 }
