@@ -18,7 +18,7 @@
 - \subpage page_polling_data_loop_profiling
 - \subpage page_polling_remote_graph_benchmark
 - \subpage page_row_block_ndarrays
-- \subpage page_ndarray_filter_graph
+- \subpage page_filter_graph_ndarray
 - \subpage page_acquisition_metadata
 - \subpage page_driver
 - \subpage page_latency

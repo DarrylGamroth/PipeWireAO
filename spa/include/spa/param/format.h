@@ -252,7 +252,6 @@ enum spa_format {
 	SPA_FORMAT_NDARRAY_layout,		/**< storage order (Id enum spa_ndarray_layout) */
 	SPA_FORMAT_NDARRAY_rate,		/**< optional sample rate (Fraction) */
 	SPA_FORMAT_NDARRAY_schema,		/**< semantic schema identifier (String) */
-	SPA_FORMAT_NDARRAY_profile,		/**< semantic interpretation profile (String) */
 };
 
 SPA_STATIC_ASSERT(SPA_MEDIA_SUBTYPE_ndarray == 0x1000000,
@@ -267,8 +266,6 @@ SPA_STATIC_ASSERT(SPA_FORMAT_NDARRAY_rate == 0x1000004,
 		"PipeWireAO ndarray rate key ABI");
 SPA_STATIC_ASSERT(SPA_FORMAT_NDARRAY_schema == 0x1000005,
 		"PipeWireAO ndarray schema key ABI");
-SPA_STATIC_ASSERT(SPA_FORMAT_NDARRAY_profile == 0x1000006,
-		"PipeWireAO ndarray profile key ABI");
 
 #define SPA_KEY_FORMAT_DSP		"format.dsp"		/**< a predefined DSP format,
 								  *  Ex. "32 bit float mono audio" */

@@ -1,5 +1,5 @@
 ndarray_filter_graph = static_library('spa-filter-graph-ndarray',
-  [ 'ndarray-graph.c' ],
+  [ 'filter-graph-ndarray.c' ],
   include_directories : [configinc],
   dependencies : [ spa_dep, dl_lib ],
   install : false,
@@ -14,7 +14,15 @@ if get_option('tests').allowed()
   )
 
   ndarray_filter_graph_test = executable('test-filter-graph-ndarray',
-    [ 'test-ndarray-graph.c' ],
+    [ 'test-filter-graph-ndarray.c' ],
+    include_directories : [configinc],
+    dependencies : [ spa_dep, dl_lib, mathlib ],
+    link_with : ndarray_filter_graph,
+    install : false,
+  )
+
+  executable('benchmark-filter-graph-ndarray-calculon',
+    [ 'benchmark-filter-graph-ndarray-calculon.c' ],
     include_directories : [configinc],
     dependencies : [ spa_dep, dl_lib, mathlib ],
     link_with : ndarray_filter_graph,
