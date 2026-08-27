@@ -13,6 +13,14 @@ if get_option('tests').allowed()
     install : false,
   )
 
+  spa_filter_graph_plugin_ndarray_test_unstable = shared_library(
+    'spa-filter-graph-ndarray-test-unstable',
+    [ 'plugin_ndarray_test_unstable.c' ],
+    include_directories : [configinc],
+    dependencies : [ spa_dep ],
+    install : false,
+  )
+
   ndarray_filter_graph_test = executable('test-filter-graph-ndarray',
     [ 'test-filter-graph-ndarray.c' ],
     include_directories : [configinc],
@@ -39,8 +47,10 @@ if get_option('tests').allowed()
 
   test('spa-filter-graph-ndarray-c',
     ndarray_filter_graph_test,
-    args : [ spa_filter_graph_plugin_ndarray_example.full_path() ],
-    depends : [ spa_filter_graph_plugin_ndarray_example ],
+    args : [ spa_filter_graph_plugin_ndarray_example.full_path(),
+             spa_filter_graph_plugin_ndarray_test_unstable.full_path() ],
+    depends : [ spa_filter_graph_plugin_ndarray_example,
+                spa_filter_graph_plugin_ndarray_test_unstable ],
   )
 
   rustc = find_program('rustc', required : false)
@@ -54,8 +64,10 @@ if get_option('tests').allowed()
     )
     test('spa-filter-graph-ndarray-rust',
       ndarray_filter_graph_test,
-      args : [ spa_filter_graph_plugin_ndarray_example_rust.full_path() ],
-      depends : [ spa_filter_graph_plugin_ndarray_example_rust ],
+      args : [ spa_filter_graph_plugin_ndarray_example_rust.full_path(),
+               spa_filter_graph_plugin_ndarray_test_unstable.full_path() ],
+      depends : [ spa_filter_graph_plugin_ndarray_example_rust,
+                  spa_filter_graph_plugin_ndarray_test_unstable ],
     )
   endif
 endif
