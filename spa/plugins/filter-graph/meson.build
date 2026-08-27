@@ -29,6 +29,14 @@ if get_option('tests').allowed()
     install : false,
   )
 
+  executable('benchmark-filter-graph-ndarray-revolt-classic',
+    [ 'benchmark-filter-graph-ndarray-revolt-classic.c' ],
+    include_directories : [configinc],
+    dependencies : [ spa_dep, dl_lib, mathlib ],
+    link_with : ndarray_filter_graph,
+    install : false,
+  )
+
   test('spa-filter-graph-ndarray-c',
     ndarray_filter_graph_test,
     args : [ spa_filter_graph_plugin_ndarray_example.full_path() ],

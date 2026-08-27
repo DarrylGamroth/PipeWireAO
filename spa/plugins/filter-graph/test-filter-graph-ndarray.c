@@ -948,7 +948,7 @@ int main(int argc, char *argv[])
 	parameter_updates[0].input_port = 1;
 	parameter_updates[1] = parameter_updates[0];
 	assert(spa_fgn_graph_set_parameters(graph, parameter_updates, 2) == -EEXIST);
-	/* ABI-v4 batch publication is optional for legacy-shaped plugins. */
+	/* ABI-v5 batch publication is optional for legacy-shaped descriptors. */
 	assert(spa_fgn_graph_set_parameters(graph, parameter_updates, 1) == -ENOTSUP);
 	assert(spa_fgn_graph_update_parameter(graph, 0, &parameter.buffer) == -EINVAL);
 	parameter.chunk.offset = sizeof(float);
