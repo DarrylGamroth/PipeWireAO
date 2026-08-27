@@ -109,12 +109,22 @@ struct spa_fgn_graph {
 	struct fgn_transaction *property_transactions;
 	uint32_t n_property_transactions;
 	_Atomic uint32_t property_transaction_state;
+	struct fgn_parameter_transaction *parameter_transactions;
+	uint32_t n_parameter_transactions;
+	_Atomic uint32_t parameter_transaction_state;
 };
 
 struct fgn_transaction {
 	struct fgn_node *node;
 	struct spa_fgn_property *properties;
 	uint32_t n_properties;
+	void *prepared;
+};
+
+struct fgn_parameter_transaction {
+	struct fgn_node *node;
+	struct spa_fgn_parameter *parameters;
+	uint32_t n_parameters;
 	void *prepared;
 };
 
@@ -130,6 +140,7 @@ static int validate_buffer(struct spa_buffer *buffer,
 static int validate_buffer_nonalias(struct spa_buffer *buffer,
 		const struct spa_fgn_format *format);
 static void clear_graph_property_transaction(struct spa_fgn_graph *graph);
+static void clear_graph_parameter_transaction(struct spa_fgn_graph *graph);
 
 static bool string_equal(const char *a, const char *b)
 {
@@ -861,6 +872,12 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 	     (node->descriptor->prepare_parameter == NULL ||
 	      node->descriptor->commit_parameter == NULL ||
 	      node->descriptor->discard_parameter == NULL)) ||
+	    ((node->descriptor->prepare_parameters != NULL ||
+	      node->descriptor->adopt_parameters != NULL) &&
+	     (node->descriptor->prepare_parameters == NULL ||
+	      node->descriptor->adopt_parameters == NULL ||
+	      node->descriptor->commit_parameter == NULL ||
+	      node->descriptor->discard_parameter == NULL)) ||
 	    node->descriptor->process == NULL) {
 		res = -ENOTSUP;
 		goto error;
@@ -1153,12 +1170,25 @@ static int sort_graph(struct spa_fgn_graph *graph)
 
 static int validate_graph(const struct spa_fgn_graph *graph)
 {
-	uint32_t i, j;
+	uint32_t rate_num = 0, rate_denom = 0, i, j;
 
 	if (graph->n_inputs == 0 && graph->n_outputs == 0)
 		return -EINVAL;
 	for (i = 0; i < graph->n_nodes; i++) {
 		const struct fgn_node *node = graph->nodes[i];
+		for (j = 0; j < node->descriptor->n_ports; j++) {
+			const struct spa_fgn_format *format = node->ports[j].format;
+
+			if (format->rate_num == 0)
+				continue;
+			if (rate_num == 0) {
+				rate_num = format->rate_num;
+				rate_denom = format->rate_denom;
+			} else if (format->rate_num != rate_num ||
+				   format->rate_denom != rate_denom) {
+				return -EINVAL;
+			}
+		}
 		for (j = 0; j < node->n_inputs; j++) {
 			const struct fgn_port *port = node->inputs[j];
 			if (port->source == NULL && port->external == SPA_ID_INVALID &&
@@ -1285,6 +1315,7 @@ void spa_fgn_graph_free(struct spa_fgn_graph *graph)
 		return;
 	spa_fgn_graph_deactivate(graph);
 	clear_graph_property_transaction(graph);
+	clear_graph_parameter_transaction(graph);
 	for (i = graph->n_nodes; i > 0; i--)
 		node_free(graph->nodes[i - 1]);
 	free(graph->outputs);
@@ -1651,6 +1682,157 @@ done:
 	return res;
 }
 
+static struct fgn_parameter_transaction *get_parameter_transaction(
+		struct fgn_parameter_transaction *transactions,
+		uint32_t *n_transactions, struct fgn_node *node)
+{
+	uint32_t i;
+
+	for (i = 0; i < *n_transactions; i++)
+		if (transactions[i].node == node)
+			return &transactions[i];
+	transactions[*n_transactions].node = node;
+	return &transactions[(*n_transactions)++];
+}
+
+static void clear_parameter_transactions(
+		struct fgn_parameter_transaction *transactions,
+		uint32_t n_transactions)
+{
+	uint32_t i;
+
+	for (i = 0; i < n_transactions; i++) {
+		struct fgn_parameter_transaction *transaction = &transactions[i];
+		if (transaction->prepared != NULL &&
+		    transaction->node->descriptor->discard_parameter != NULL)
+			transaction->node->descriptor->discard_parameter(
+					transaction->node->instance,
+					transaction->prepared);
+		free(transaction->parameters);
+	}
+	free(transactions);
+}
+
+static void clear_graph_parameter_transaction(struct spa_fgn_graph *graph)
+{
+	clear_parameter_transactions(graph->parameter_transactions,
+			graph->n_parameter_transactions);
+	graph->parameter_transactions = NULL;
+	graph->n_parameter_transactions = 0;
+	atomic_store_explicit(&graph->parameter_transaction_state,
+			FGN_TRANSACTION_EMPTY, memory_order_release);
+}
+
+static void reclaim_graph_parameter_transaction(struct spa_fgn_graph *graph)
+{
+	if (atomic_load_explicit(&graph->parameter_transaction_state,
+			memory_order_acquire) == FGN_TRANSACTION_RETIRED)
+		clear_graph_parameter_transaction(graph);
+}
+
+int spa_fgn_graph_set_parameters(struct spa_fgn_graph *graph,
+		const struct spa_fgn_parameter_update *updates,
+		uint32_t n_updates)
+{
+	struct fgn_parameter_transaction *transactions = NULL;
+	uint32_t n_transactions = 0, i;
+	int res = 0;
+
+	if (graph == NULL || updates == NULL || n_updates == 0)
+		return -EINVAL;
+	if (n_updates > SPA_FGN_MAX_PARAMETER_TRANSACTION_ASSIGNMENTS)
+		return -E2BIG;
+	reclaim_graph_parameter_transaction(graph);
+	if (atomic_load_explicit(&graph->parameter_transaction_state,
+			memory_order_acquire) != FGN_TRANSACTION_EMPTY)
+		return -EBUSY;
+	if ((transactions = calloc(n_updates, sizeof(*transactions))) == NULL)
+		return -ENOMEM;
+
+	for (i = 0; i < n_updates; i++) {
+		const struct spa_fgn_parameter_update *source = &updates[i];
+		struct fgn_parameter_transaction *transaction;
+		struct spa_fgn_parameter *parameters;
+		struct fgn_port *port;
+		uint32_t j;
+		size_t parameters_size;
+
+		if (source->reserved != 0 || source->input_port >= graph->n_inputs ||
+		    source->buffer == NULL) {
+			res = -EINVAL;
+			goto done;
+		}
+		for (j = 0; j < i; j++)
+			if (updates[j].input_port == source->input_port) {
+				res = -EEXIST;
+				goto done;
+			}
+		port = graph->inputs[source->input_port];
+		if (!(port->info->flags & SPA_FGN_PORT_FLAG_PARAMETER)) {
+			res = -EINVAL;
+			goto done;
+		}
+		if ((res = validate_buffer(source->buffer, port->format, false)) < 0 ||
+		    (res = validate_buffer_nonalias(source->buffer, port->format)) < 0)
+			goto done;
+
+		transaction = get_parameter_transaction(transactions,
+				&n_transactions, port->node);
+		if ((res = next_array_size(transaction->n_parameters,
+				SPA_FGN_MAX_PARAMETER_TRANSACTION_ASSIGNMENTS,
+				sizeof(*parameters), &parameters_size)) < 0)
+			goto done;
+		parameters = realloc(transaction->parameters, parameters_size);
+		if (parameters == NULL) {
+			res = -ENOMEM;
+			goto done;
+		}
+		transaction->parameters = parameters;
+		transaction->parameters[transaction->n_parameters++] =
+				(struct spa_fgn_parameter) {
+					.port = port->info->index,
+					.buffer = {
+						.buffer = source->buffer,
+						.format = port->format,
+					},
+				};
+	}
+
+	for (i = 0; i < n_transactions; i++) {
+		struct fgn_parameter_transaction *transaction = &transactions[i];
+		const struct spa_fgn_descriptor *descriptor = transaction->node->descriptor;
+
+		if (descriptor->prepare_parameters == NULL ||
+		    descriptor->adopt_parameters == NULL ||
+		    descriptor->commit_parameter == NULL ||
+		    descriptor->discard_parameter == NULL) {
+			res = -ENOTSUP;
+			goto done;
+		}
+		res = descriptor->prepare_parameters(transaction->node->instance,
+				transaction->parameters, transaction->n_parameters,
+				&transaction->prepared);
+		if (res < 0)
+			goto done;
+		if (transaction->prepared == NULL) {
+			res = -EFAULT;
+			goto done;
+		}
+		free(transaction->parameters);
+		transaction->parameters = NULL;
+	}
+
+	graph->parameter_transactions = transactions;
+	graph->n_parameter_transactions = n_transactions;
+	transactions = NULL;
+	n_transactions = 0;
+	atomic_store_explicit(&graph->parameter_transaction_state,
+			FGN_TRANSACTION_PENDING, memory_order_release);
+done:
+	clear_parameter_transactions(transactions, n_transactions);
+	return res;
+}
+
 int spa_fgn_graph_update_parameter(struct spa_fgn_graph *graph,
 		uint32_t input_port, struct spa_buffer *buffer)
 {
@@ -1664,6 +1846,18 @@ int spa_fgn_graph_update_parameter(struct spa_fgn_graph *graph,
 	port = graph->inputs[input_port];
 	if (!(port->info->flags & SPA_FGN_PORT_FLAG_PARAMETER))
 		return -EINVAL;
+	if (port->node->descriptor->prepare_parameters != NULL &&
+	    port->node->descriptor->adopt_parameters != NULL) {
+		const struct spa_fgn_parameter_update transaction = {
+			.input_port = input_port,
+			.buffer = buffer,
+		};
+		return spa_fgn_graph_set_parameters(graph, &transaction, 1);
+	}
+	reclaim_graph_parameter_transaction(graph);
+	if (atomic_load_explicit(&graph->parameter_transaction_state,
+			memory_order_acquire) != FGN_TRANSACTION_EMPTY)
+		return -EBUSY;
 	if ((res = validate_buffer(buffer, port->format, false)) < 0)
 		return res;
 	if ((res = validate_buffer_nonalias(buffer, port->format)) < 0)
@@ -2019,6 +2213,35 @@ static bool publish_graph_property_transaction(struct spa_fgn_graph *graph)
 	return true;
 }
 
+static bool publish_graph_parameter_transaction(struct spa_fgn_graph *graph)
+{
+	uint32_t expected = FGN_TRANSACTION_PENDING;
+	uint32_t i;
+
+	if (!atomic_compare_exchange_strong_explicit(
+			&graph->parameter_transaction_state, &expected,
+			FGN_TRANSACTION_PROCESSING,
+			memory_order_acquire, memory_order_relaxed))
+		return false;
+	for (i = 0; i < graph->n_parameter_transactions; i++) {
+		struct fgn_parameter_transaction *transaction =
+				&graph->parameter_transactions[i];
+		transaction->node->descriptor->commit_parameter(
+				transaction->node->instance,
+				transaction->prepared);
+		transaction->prepared = NULL;
+	}
+	for (i = 0; i < graph->n_parameter_transactions; i++) {
+		struct fgn_parameter_transaction *transaction =
+				&graph->parameter_transactions[i];
+		transaction->node->descriptor->adopt_parameters(
+				transaction->node->instance);
+	}
+	atomic_store_explicit(&graph->parameter_transaction_state,
+			FGN_TRANSACTION_RETIRED, memory_order_release);
+	return true;
+}
+
 static void clear_external_output_sizes(struct spa_buffer *const outputs[],
 		uint32_t n_outputs)
 {
@@ -2104,6 +2327,8 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		graph->outputs[i]->cycle_offset = data->chunk->offset;
 	}
 	if (publish_graph_property_transaction(graph))
+		status |= SPA_FGN_PROCESS_RESULT_PROPS_CHANGED;
+	if (publish_graph_parameter_transaction(graph))
 		status |= SPA_FGN_PROCESS_RESULT_PROPS_CHANGED;
 	for (i = 0; i < graph->n_nodes; i++) {
 		struct fgn_node *node = graph->order[i];

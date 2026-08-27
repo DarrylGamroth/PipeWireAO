@@ -13,7 +13,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
-const ABI_VERSION: u32 = 3;
+const ABI_VERSION: u32 = 4;
 const DIRECTION_INPUT: u32 = 0;
 const DIRECTION_OUTPUT: u32 = 1;
 const PORT_OPTIONAL: u32 = 1;
@@ -167,6 +167,13 @@ struct FgnBuffer {
     format: *const Format,
 }
 
+#[repr(C)]
+struct Parameter {
+    port: u32,
+    reserved: u32,
+    buffer: FgnBuffer,
+}
+
 type Instantiate = unsafe extern "C" fn(*const Descriptor, *const c_char, *mut *mut c_void) -> i32;
 type Cleanup = unsafe extern "C" fn(*mut c_void);
 type GetPortFormat = unsafe extern "C" fn(*mut c_void, u32, *mut *const Format) -> i32;
@@ -178,6 +185,9 @@ type PrepareProps =
 type PropsAction = unsafe extern "C" fn(*mut c_void, *mut c_void);
 type PrepareParameter =
     unsafe extern "C" fn(*mut c_void, u32, *const FgnBuffer, *mut *mut c_void) -> i32;
+type PrepareParameters =
+    unsafe extern "C" fn(*mut c_void, *const Parameter, u32, *mut *mut c_void) -> i32;
+type AdoptParameters = unsafe extern "C" fn(*mut c_void);
 type Lifecycle = unsafe extern "C" fn(*mut c_void) -> i32;
 type Process = unsafe extern "C" fn(*mut c_void, *const FgnBuffer, u32, *mut FgnBuffer, u32) -> i32;
 
@@ -200,6 +210,8 @@ struct Descriptor {
     prepare_parameter: Option<PrepareParameter>,
     commit_parameter: Option<PropsAction>,
     discard_parameter: Option<PropsAction>,
+    prepare_parameters: Option<PrepareParameters>,
+    adopt_parameters: Option<AdoptParameters>,
     activate: Option<Lifecycle>,
     deactivate: Option<Lifecycle>,
     reset: Option<Lifecycle>,
@@ -379,7 +391,7 @@ unsafe extern "C" fn instantiate(
         if result.is_null() || config.is_null() {
             return -EINVAL;
         }
-        // The host supplies canonical JSON. ABI v3 retires this key even for
+        // The host supplies canonical JSON. The ndarray contract retires this key even for
         // plugins, such as this fixed-format example, that ignore other
         // construction configuration.
         // SAFETY: FGN lends a NUL-terminated configuration string for this call.
@@ -1002,6 +1014,8 @@ static DESCRIPTOR: Descriptor = Descriptor {
     prepare_parameter: Some(prepare_parameter),
     commit_parameter: Some(commit_parameter),
     discard_parameter: Some(discard_parameter),
+    prepare_parameters: None,
+    adopt_parameters: None,
     activate: None,
     deactivate: None,
     reset: None,
