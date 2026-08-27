@@ -73,9 +73,18 @@ shape, optional rate, and optional versioned scientific schema. Graph creation
 MUST compare all present fields exactly and reject a link whose schemas differ.
 The ABI and graph configuration MUST NOT add a node-wide interpretation
 profile: a node can transform between different scientific meanings, and one
-free-form string cannot identify every port. A future coordinate-basis or
-calibration identity requires a separately specified per-port field with
-defined lifecycle and parameter-update semantics.
+free-form string cannot identify every port. The FGN ABI does not currently
+project the generic SPA per-port interpretation profile. Adding that capability
+requires a separately specified per-port field with defined lifecycle and
+parameter-update semantics.
+
+This restriction is specific to the FGN descriptor and graph configuration.
+The generic SPA ndarray Format retains the optional per-port
+`SPA_FORMAT_NDARRAY_profile` compatibility identity used at device boundaries.
+It is fixed for a negotiated format and changes only through format
+renegotiation. FGN does not currently project that optional field; a
+device-boundary adapter that requires it remains outside the generated
+scientific graph and adds or validates it on its own SPA port.
 
 Verification intent: inspect the ABI layout, accept equal schemas, reject an
 otherwise identical link with different schemas, and reject the retired
