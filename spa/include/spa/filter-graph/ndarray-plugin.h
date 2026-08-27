@@ -24,7 +24,7 @@ extern "C" {
  */
 
 /** Version of the C ABI exported by ndarray plugin libraries. */
-#define SPA_FGN_PLUGIN_ABI_VERSION 4u
+#define SPA_FGN_PLUGIN_ABI_VERSION 5u
 #define SPA_FGN_MAX_METAS 16u
 #define SPA_FGN_MAX_META_BYTES 4096u
 #define SPA_FGN_MAX_PARAMETER_TRANSACTION_ASSIGNMENTS 4096u
@@ -34,6 +34,19 @@ extern "C" {
 
 /** Maximum UTF-8 byte length of a descriptor, port, or property local name. */
 #define SPA_FGN_LOCAL_NAME_MAX 255u
+
+/** Shared-library lifetime requested by a plugin registry. */
+enum spa_fgn_plugin_flag {
+	SPA_FGN_PLUGIN_FLAG_NONE = 0,
+	/**
+	 * Keep the library mapped until process termination.
+	 *
+	 * This supports language runtimes whose immutable descriptor registry has
+	 * process lifetime and cannot be destroyed safely by dlclose(). The plugin
+	 * MUST bound retained state per mapped library rather than per instance.
+	 */
+	SPA_FGN_PLUGIN_FLAG_RETAIN_LIBRARY = (1u << 0),
+};
 
 /** Descriptor flags for a plugin port. */
 enum spa_fgn_port_flag {
@@ -354,6 +367,7 @@ struct spa_fgn_plugin {
 	uint32_t abi_version;
 	const char *name;              /**< non-empty plugin family name */
 	const struct spa_fgn_descriptor *(*find_descriptor)(const char *name);
+	uint32_t flags;                /**< enum spa_fgn_plugin_flag */
 };
 
 typedef const struct spa_fgn_plugin *

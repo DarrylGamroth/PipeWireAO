@@ -13,7 +13,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
-const ABI_VERSION: u32 = 4;
+const ABI_VERSION: u32 = 5;
 const DIRECTION_INPUT: u32 = 0;
 const DIRECTION_OUTPUT: u32 = 1;
 const PORT_OPTIONAL: u32 = 1;
@@ -228,6 +228,7 @@ struct Plugin {
     abi_version: u32,
     name: *const c_char,
     find_descriptor: Option<FindDescriptor>,
+    flags: u32,
 }
 
 unsafe impl Sync for Plugin {}
@@ -1027,6 +1028,7 @@ static PLUGIN: Plugin = Plugin {
     abi_version: ABI_VERSION,
     name: c"example-rust".as_ptr(),
     find_descriptor: Some(find_descriptor),
+    flags: 0,
 };
 
 #[unsafe(no_mangle)]
