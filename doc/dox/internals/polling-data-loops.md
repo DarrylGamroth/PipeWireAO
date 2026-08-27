@@ -72,6 +72,11 @@ loop is running. Put independent latency-critical loops on distinct physical
 cores. An observer loop normally remains eventfd-driven behind a bounded
 asynchronous queue.
 
+Unqualified loop acquisition excludes `busy-spin` loops because arbitrary SPA
+nodes can require fd or timer dispatch. Select a polling loop explicitly with
+`node.loop.name` or `node.loop.class`; ordinary unqualified nodes continue to
+use eventfd loops.
+
 The public `pw_data_loop_is_polling()` query reports the configured policy.
 No private RTC data-loop type or per-node polling thread exists.
 
