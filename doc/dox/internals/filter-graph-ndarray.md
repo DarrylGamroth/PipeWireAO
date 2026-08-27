@@ -752,12 +752,12 @@ and LeakSanitizer with leak detection enabled. The generated Rust bundle uses
 registry remains reachable while graph and algorithm instances are destroyed.
 
 The harness times only `spa_fgn_graph_process()`. In a stable five-run
-development-host experiment, the graph median-of-run p50 was 158.397
-microseconds and the direct typed replay p50 was 132.779 microseconds, a ratio
-of 1.1929. Per-run paired ratios ranged from 1.1157 to 1.1990. The processes
+development-host experiment, the graph median-of-run p50 was 158.748
+microseconds and the direct typed replay p50 was 133.139 microseconds, a ratio
+of 1.1923. Per-run paired ratios ranged from 1.1873 to 1.1966. The processes
 alternated order on one pinned Ryzen 7 6800H logical CPU, used `SCHED_FIFO`
-priority 1, and ran with the `performance` governor. Graph p50 varied by 0.50%
-and direct p50 by 7.85%. This establishes a repeatable callback-boundary
+priority 1, and ran with the `performance` governor. Graph p50 varied by 0.95%
+and direct p50 by 0.31%. This establishes a repeatable callback-boundary
 development result, not scheduled end-to-end latency or a target-controller
 regression threshold. The reproducible driver records raw samples, process
 order, load, pressure, revisions, and artifact hashes. Exact method and
