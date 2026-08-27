@@ -74,6 +74,7 @@ struct fgn_port {
 struct fgn_node {
 	char *name;
 	void *library;
+	bool retain_library;
 	const struct spa_fgn_plugin *plugin;
 	const struct spa_fgn_descriptor *descriptor;
 	void *instance;
@@ -758,7 +759,7 @@ static void node_free(struct fgn_node *node)
 			if (node->ports[i].info != NULL &&
 			    node->ports[i].info->direction == SPA_DIRECTION_OUTPUT)
 				storage_clear(&node->ports[i].storage);
-	if (node->library != NULL)
+	if (node->library != NULL && !node->retain_library)
 		dlclose(node->library);
 	free(node->properties);
 	free(node->process_outputs);
@@ -848,7 +849,13 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 	    node->plugin->abi_version != SPA_FGN_PLUGIN_ABI_VERSION ||
 	    node->plugin->name == NULL || node->plugin->name[0] == '\0' ||
 	    node->plugin->find_descriptor == NULL ||
-	    (node->descriptor = node->plugin->find_descriptor(label)) == NULL ||
+	    (node->plugin->flags & ~SPA_FGN_PLUGIN_FLAG_RETAIN_LIBRARY) != 0) {
+		res = -ENOTSUP;
+		goto error;
+	}
+	node->retain_library =
+		(node->plugin->flags & SPA_FGN_PLUGIN_FLAG_RETAIN_LIBRARY) != 0;
+	if ((node->descriptor = node->plugin->find_descriptor(label)) == NULL ||
 	    node->descriptor->struct_size < sizeof(*node->descriptor) ||
 	    node->descriptor->version != SPA_FGN_PLUGIN_ABI_VERSION ||
 	    node->descriptor->name == NULL ||
