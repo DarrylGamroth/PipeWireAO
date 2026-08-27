@@ -702,6 +702,7 @@ int main(int argc, char *argv[])
 	const char *node_name;
 	struct test_buffer input, output, parameter;
 	struct spa_buffer *inputs[2], *outputs[1];
+	struct spa_fgn_parameter_update parameter_updates[2];
 	uint8_t props_data[1024];
 	struct spa_pod *props;
 	char config[8192];
@@ -759,6 +760,22 @@ int main(int argc, char *argv[])
 		argv[1]);
 	assert(res > 0 && (size_t)res < sizeof(config));
 	assert(spa_fgn_graph_new(config, &invalid_graph) == -EINVAL);
+	assert(invalid_graph == NULL);
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = cycle-first plugin = \"%s\""
+		"   label = scale-f32 }"
+		" { type = ndarray name = cycle-second plugin = \"%s\""
+		"   label = scale-f32 }"
+		"] links = ["
+		" { output = \"cycle-first:out\" input = \"cycle-second:in\" }"
+		" { output = \"cycle-second:out\" input = \"cycle-first:in\" }"
+		"] inputs = [ \"cycle-first:coefficients\""
+		"             \"cycle-second:coefficients\" ]"
+		" outputs = [ \"cycle-second:out\" ] }",
+		argv[1], argv[1]);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &invalid_graph) == -ELOOP);
 	assert(invalid_graph == NULL);
 
 	res = snprintf(config, sizeof(config),
@@ -915,6 +932,24 @@ int main(int argc, char *argv[])
 	for (i = 0; i < 4; i++)
 		parameter.values[i] = (float)i + 1.0f;
 	parameter.header.seq = 7;
+	parameter_updates[0] = (struct spa_fgn_parameter_update) {
+		.input_port = 1,
+		.buffer = &parameter.buffer,
+	};
+	assert(spa_fgn_graph_set_parameters(NULL, parameter_updates, 1) == -EINVAL);
+	assert(spa_fgn_graph_set_parameters(graph, parameter_updates, 0) == -EINVAL);
+	assert(spa_fgn_graph_set_parameters(graph, parameter_updates,
+			SPA_FGN_MAX_PARAMETER_TRANSACTION_ASSIGNMENTS + 1u) == -E2BIG);
+	parameter_updates[0].reserved = 1;
+	assert(spa_fgn_graph_set_parameters(graph, parameter_updates, 1) == -EINVAL);
+	parameter_updates[0].reserved = 0;
+	parameter_updates[0].input_port = 0;
+	assert(spa_fgn_graph_set_parameters(graph, parameter_updates, 1) == -EINVAL);
+	parameter_updates[0].input_port = 1;
+	parameter_updates[1] = parameter_updates[0];
+	assert(spa_fgn_graph_set_parameters(graph, parameter_updates, 2) == -EEXIST);
+	/* ABI-v4 batch publication is optional for legacy-shaped plugins. */
+	assert(spa_fgn_graph_set_parameters(graph, parameter_updates, 1) == -ENOTSUP);
 	assert(spa_fgn_graph_update_parameter(graph, 0, &parameter.buffer) == -EINVAL);
 	parameter.chunk.offset = sizeof(float);
 	parameter.chunk.size = parameter.data.maxsize;

@@ -25,6 +25,8 @@ struct spa_fgn_graph;
  * descriptor within that library. Nodes may contain a plugin-specific relaxed
  * SPA `config` object, which the host canonicalizes to standard JSON before
  * instance construction, and an initial runtime-only scalar `props` object.
+ * The graph is acyclic and single-rate: every specified port rate must use the
+ * same exact numerator and denominator.
  */
 int spa_fgn_graph_new(const char *config, struct spa_fgn_graph **graph);
 void spa_fgn_graph_free(struct spa_fgn_graph *graph);
@@ -70,6 +72,29 @@ int spa_fgn_graph_set_props(struct spa_fgn_graph *graph,
 int spa_fgn_graph_update_parameter(struct spa_fgn_graph *graph,
 		uint32_t input_port, struct spa_buffer *buffer);
 
+/** One external parameter-port assignment in a graph transaction. */
+struct spa_fgn_parameter_update {
+	uint32_t input_port;
+	uint32_t reserved;
+	struct spa_buffer *buffer;
+};
+
+/**
+ * Failure-atomically prepare one nonempty graph parameter transaction.
+ *
+ * External input ports are unique. Assignments for one node compose one
+ * complete replacement plan. A successful transaction occupies one bounded
+ * pending graph slot. At a later graph-cycle start, the data-loop owner first
+ * publishes every affected node and then adopts all replacements before any
+ * numerical process callback. Returns -EBUSY until the pending or retired
+ * transaction can be reclaimed on the serial control path. The complete graph
+ * transaction admits at most
+ * SPA_FGN_MAX_PARAMETER_TRANSACTION_ASSIGNMENTS entries.
+ */
+int spa_fgn_graph_set_parameters(struct spa_fgn_graph *graph,
+		const struct spa_fgn_parameter_update *updates,
+		uint32_t n_updates);
+
 int spa_fgn_graph_activate(struct spa_fgn_graph *graph);
 int spa_fgn_graph_deactivate(struct spa_fgn_graph *graph);
 int spa_fgn_graph_reset(struct spa_fgn_graph *graph);
@@ -86,7 +111,8 @@ enum spa_fgn_process_result {
  *
  * Returns a negative errno-style error or a mask of enum
  * spa_fgn_process_result. An inputs or outputs array may be NULL exactly when
- * its corresponding count is zero.
+ * its corresponding count is zero. A processing error clears external output
+ * sizes but does not roll back state already changed by an earlier node.
  */
 int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		struct spa_buffer *const inputs[], uint32_t n_inputs,
