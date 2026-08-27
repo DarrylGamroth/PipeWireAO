@@ -2,8 +2,8 @@
 /* SPDX-FileCopyrightText: Copyright © 2026 PipeWireAO contributors */
 /* SPDX-License-Identifier: MIT */
 
-#ifndef SPA_FILTER_GRAPH_NDARRAY_GRAPH_H
-#define SPA_FILTER_GRAPH_NDARRAY_GRAPH_H
+#ifndef SPA_FILTER_GRAPH_NDARRAY_H
+#define SPA_FILTER_GRAPH_NDARRAY_H
 
 #include <stdint.h>
 
@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-/** Opaque synchronous ndarray operation graph. */
+/** Opaque synchronous ndarray filter graph. */
 struct spa_fgn_graph;
 
 /**
@@ -33,12 +33,12 @@ uint32_t spa_fgn_graph_get_n_inputs(const struct spa_fgn_graph *graph);
 uint32_t spa_fgn_graph_get_n_outputs(const struct spa_fgn_graph *graph);
 
 int spa_fgn_graph_get_port_format(const struct spa_fgn_graph *graph,
-		uint32_t direction, uint32_t port,
+		enum spa_direction direction, uint32_t port,
 		const struct spa_fgn_format **format);
 
-/** Get borrowed configured-node and operation-port information. */
+/** Get borrowed configured-node and plugin-port information. */
 int spa_fgn_graph_get_port_info(const struct spa_fgn_graph *graph,
-		uint32_t direction, uint32_t port, const char **node_name,
+		enum spa_direction direction, uint32_t port, const char **node_name,
 		const struct spa_fgn_port_info **info);
 
 /** Build one namespaced SPA_PARAM_PropInfo object. */
@@ -53,7 +53,7 @@ int spa_fgn_graph_get_props(struct spa_fgn_graph *graph,
  * Failure-atomically prepare one namespaced SPA_PARAM_Props update.
  *
  * A non-empty successful transaction occupies one bounded pending slot. The
- * data-loop owner publishes all affected operations together at the beginning
+ * data-loop owner publishes all affected plugin instances at the beginning
  * of a later graph cycle. Returns -EBUSY until the pending or retired slot is
  * available. An empty update is a successful no-op.
  */
@@ -96,4 +96,4 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 } /* extern "C" */
 #endif
 
-#endif /* SPA_FILTER_GRAPH_NDARRAY_GRAPH_H */
+#endif /* SPA_FILTER_GRAPH_NDARRAY_H */

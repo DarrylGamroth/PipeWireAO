@@ -14,7 +14,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <spa/filter-graph/ndarray-graph.h>
+#include <spa/filter-graph/filter-graph-ndarray.h>
 #include <spa/param/buffers.h>
 #include <spa/param/ndarray-utils.h>
 #include <spa/pod/dynamic.h>
@@ -32,7 +32,7 @@ PW_LOG_TOPIC_STATIC(mod_topic, "mod." NAME);
 
 /** \page page_module_ndarray_filter_chain Ndarray Filter Chain
  *
- * Expose a synchronous ndarray operation graph as one native PipeWire node.
+ * Expose a synchronous ndarray filter graph as one native PipeWire node.
  * The module accepts standard PipeWire configuration syntax:
  *
  * \code{.unparsed}
@@ -63,7 +63,7 @@ struct impl;
 struct port {
 	struct impl *impl;
 	uint32_t index;
-	uint32_t direction;
+	enum spa_direction direction;
 	uint32_t flags;
 	_Atomic(struct pw_buffer *) pending_parameter;
 	_Atomic bool retry_parameter;
@@ -163,9 +163,6 @@ static struct spa_pod *build_format(struct spa_pod_builder *builder,
 	if (format->schema != NULL)
 		spa_pod_builder_add(builder, SPA_FORMAT_NDARRAY_schema,
 				SPA_POD_String(format->schema), 0);
-	if (format->profile != NULL)
-		spa_pod_builder_add(builder, SPA_FORMAT_NDARRAY_profile,
-				SPA_POD_String(format->profile), 0);
 	return spa_pod_builder_pop(builder, &object);
 }
 
@@ -192,7 +189,7 @@ static int validate_port_format(struct port *port, const struct spa_pod *param)
 {
 	const struct spa_fgn_format *expected;
 	struct spa_ndarray_info actual;
-	const char *schema, *profile;
+	const char *schema;
 	uint32_t i;
 	int res;
 
@@ -200,17 +197,14 @@ static int validate_port_format(struct port *port, const struct spa_pod *param)
 			port->direction, port->index, &expected)) < 0 ||
 	    (res = spa_format_ndarray_parse(param, &actual)) < 0 ||
 	    (res = get_optional_format_string(param,
-			SPA_FORMAT_NDARRAY_schema, &schema)) < 0 ||
-	    (res = get_optional_format_string(param,
-			SPA_FORMAT_NDARRAY_profile, &profile)) < 0)
+			SPA_FORMAT_NDARRAY_schema, &schema)) < 0)
 		return res;
 	if ((uint32_t)actual.element_type != expected->element_type ||
 	    (uint32_t)actual.layout != expected->layout ||
 	    actual.rate.num != expected->rate_num ||
 	    actual.rate.denom != expected->rate_denom ||
 	    actual.n_dimensions != expected->n_dimensions ||
-	    !strings_equal(schema, expected->schema) ||
-	    !strings_equal(profile, expected->profile))
+	    !strings_equal(schema, expected->schema))
 		return -EINVAL;
 	for (i = 0; i < actual.n_dimensions; i++)
 		if (actual.shape[i] != expected->shape[i])
@@ -518,7 +512,8 @@ static const struct pw_filter_events filter_events = {
 	.process = process,
 };
 
-static int add_graph_port(struct impl *impl, uint32_t direction, uint32_t index)
+static int add_graph_port(struct impl *impl, enum spa_direction direction,
+		uint32_t index)
 {
 	uint8_t buffer[4096];
 	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
@@ -576,7 +571,7 @@ static int add_graph_port(struct impl *impl, uint32_t direction, uint32_t index)
 			return -ENOSPC;
 		}
 	port = pw_filter_add_port(impl->filter,
-			direction == SPA_FGN_PORT_INPUT
+			direction == SPA_DIRECTION_INPUT
 				? PW_DIRECTION_INPUT : PW_DIRECTION_OUTPUT,
 			PW_FILTER_PORT_FLAG_MAP_BUFFERS, sizeof(*port), properties,
 			params, n_params);
@@ -590,7 +585,7 @@ static int add_graph_port(struct impl *impl, uint32_t direction, uint32_t index)
 	atomic_init(&port->retry_parameter, false);
 	atomic_init(&port->completed_parameter, false);
 	atomic_init(&port->dropped_parameters, 0);
-	if (direction == SPA_FGN_PORT_INPUT)
+	if (direction == SPA_DIRECTION_INPUT)
 		impl->inputs[index] = port;
 	else
 		impl->outputs[index] = port;
@@ -853,10 +848,10 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 	pw_filter_add_listener(impl->filter, &impl->filter_listener,
 			&filter_events, impl);
 	for (i = 0; i < impl->n_inputs; i++)
-		if ((res = add_graph_port(impl, SPA_FGN_PORT_INPUT, i)) < 0)
+		if ((res = add_graph_port(impl, SPA_DIRECTION_INPUT, i)) < 0)
 			goto error;
 	for (i = 0; i < impl->n_outputs; i++)
-		if ((res = add_graph_port(impl, SPA_FGN_PORT_OUTPUT, i)) < 0)
+		if ((res = add_graph_port(impl, SPA_DIRECTION_OUTPUT, i)) < 0)
 			goto error;
 	impl->parameter_loop = pw_thread_loop_new("ndarray-parameters", NULL);
 	if (impl->parameter_loop == NULL) {

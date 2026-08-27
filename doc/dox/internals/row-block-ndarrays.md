@@ -103,13 +103,13 @@ schema       = org.calculon.ao.raw-pixel-row-block/1
 elementType  = U16_LE
 shape        = [N, width]
 layout       = ROW_MAJOR
-profile      = detector profile
 rate         = frame_rate * height / N
 ```
 
 The calibrated schema is
 `org.calculon.ao.calibrated-pixel-row-block/1` with the same shape, layout,
-profile, and rate, but `F32_LE` elements. Both use ordinary
+and rate, but `F32_LE` elements. Detector model and calibration identity are
+construction configuration, not a node-wide ndarray format field. Both use ordinary
 `SPA_IO_Buffers`; a buffer is immutable and complete when published.
 
 ## Frame and block identity
@@ -151,7 +151,7 @@ For row-block mode:
 6. If no ordinary output buffer is available, the source abandons the
    remaining blocks and marks the next frame discontinuous.
 
-Row-block mode requires a detector profile and qualified
+Row-block mode requires qualified detector construction configuration and
 `StartOfCameraReadout`/filled-size support. Direct DMA-BUF row publication is
 not used because the CPU must read the in-progress camera allocation. The
 complete-frame mode remains the zero-copy and DMA-BUF option.
