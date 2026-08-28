@@ -180,11 +180,17 @@ frame and publish nothing until a complete frame uses one plan. In row-block
 mode calibration consumes the raw block after producing the corresponding
 calibrated block; no camera lease crosses the node.
 
-Frame assembly owns one preallocated F32 workspace. It accepts only the next
-expected offset for the active sequence. A gap, overlap, changed sequence,
-out-of-range block, or invalid marker abandons the partial frame. It publishes
-nothing until the final valid block arrives. The next completed frame after an
-abandonment carries `DISCONT`.
+Frame assembly is a structural ndarray transform. One prepared instance owns a
+preallocated byte workspace for the exact negotiated element type, layout,
+block shape, complete-frame shape, and every present rate, profile, and schema
+field. It accepts clocked or unclocked standard fixed-width rank-two ndarrays
+in row-major or column-major layout without interpreting or converting element
+values. It accepts only the next expected offset for the active sequence. A
+gap, overlap,
+changed sequence, out-of-range block, or invalid marker abandons the partial
+frame. It publishes nothing until the final valid block arrives. Non-marker
+Header flags accumulate across accepted blocks, and the next completed frame
+after an abandonment carries `DISCONT`.
 
 Consumers that understand row blocks can branch before assembly. Full-frame
 algorithms, telemetry, GUI, recording, and standard video conversion normally
