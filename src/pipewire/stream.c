@@ -2562,7 +2562,20 @@ struct pw_buffer *pw_stream_dequeue_buffer(struct pw_stream *stream)
 		}
 	}
 
-	if ((b = queue_pop(impl, &impl->dequeued)) == NULL) {
+	/* A buffer id denotes one ownership transfer.  A graph recovery or a
+	 * misbehaving peer must not make the same buffer visible to the stream
+	 * user again before the first transfer is returned.  In particular, an
+	 * input stream increments the Busy meta for every entry it places in the
+	 * dequeued ring, so balance the duplicate entry while retaining the
+	 * original application's ownership. */
+	while ((b = queue_pop(impl, &impl->dequeued)) != NULL &&
+			SPA_UNLIKELY(SPA_FLAG_IS_SET(b->flags,
+					BUFFER_FLAG_DEQUEUED))) {
+		pw_log_warn("%p: discard duplicate dequeued buffer %d", stream, b->id);
+		if (b->busy && impl->direction == SPA_DIRECTION_INPUT)
+			SPA_ATOMIC_DEC(b->busy->count);
+	}
+	if (b == NULL) {
 		res = -errno;
 		pw_log_trace_fp("%p: no more buffers: %m", stream);
 		errno = -res;
