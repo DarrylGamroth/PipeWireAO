@@ -45,10 +45,19 @@ if get_option('tests').allowed()
     install : false,
   )
 
+  executable('benchmark-filter-graph-ndarray-row',
+    [ 'benchmark-filter-graph-ndarray-row.c' ],
+    include_directories : [configinc],
+    dependencies : [ spa_dep, dl_lib, mathlib ],
+    link_with : ndarray_filter_graph,
+    install : false,
+  )
+
   test('spa-filter-graph-ndarray-c',
     ndarray_filter_graph_test,
     args : [ spa_filter_graph_plugin_ndarray_example.full_path(),
-             spa_filter_graph_plugin_ndarray_test_unstable.full_path() ],
+             spa_filter_graph_plugin_ndarray_test_unstable.full_path(),
+             'conditional' ],
     depends : [ spa_filter_graph_plugin_ndarray_example,
                 spa_filter_graph_plugin_ndarray_test_unstable ],
   )

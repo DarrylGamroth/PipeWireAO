@@ -357,7 +357,7 @@ static void dequeue_parameter(struct port *port)
 		schedule_parameter(port, buffer);
 }
 
-static void recycle_cycle_buffers(struct impl *impl)
+static void recycle_cycle_inputs(struct impl *impl)
 {
 	uint32_t i;
 
@@ -366,11 +366,26 @@ static void recycle_cycle_buffers(struct impl *impl)
 			pw_filter_queue_buffer(impl->inputs[i], impl->input_buffers[i]);
 			impl->input_buffers[i] = NULL;
 		}
-	for (i = 0; i < impl->n_outputs; i++)
-		if (impl->output_buffers[i] != NULL) {
-			pw_filter_queue_buffer(impl->outputs[i], impl->output_buffers[i]);
-			impl->output_buffers[i] = NULL;
-		}
+}
+
+static void publish_completed_outputs(struct impl *impl)
+{
+	uint32_t i;
+
+	for (i = 0; i < impl->n_outputs; i++) {
+		struct pw_buffer *buffer = impl->output_buffers[i];
+		struct spa_buffer *spa_buffer;
+
+		if (buffer == NULL)
+			continue;
+		spa_buffer = buffer->buffer;
+		if (spa_buffer != NULL && spa_buffer->n_datas > 0 &&
+		    spa_buffer->datas != NULL && spa_buffer->datas[0].chunk != NULL &&
+		    spa_buffer->datas[0].chunk->size == 0)
+			continue;
+		pw_filter_queue_buffer(impl->outputs[i], buffer);
+		impl->output_buffers[i] = NULL;
+	}
 }
 
 static void process(void *data, struct spa_io_position *position SPA_UNUSED)
@@ -406,7 +421,10 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 			ready = false;
 	}
 	for (i = 0; i < impl->n_outputs; i++) {
-		struct pw_buffer *buffer = pw_filter_dequeue_buffer(impl->outputs[i]);
+		struct pw_buffer *buffer = impl->output_buffers[i];
+
+		if (buffer == NULL)
+			buffer = pw_filter_dequeue_buffer(impl->outputs[i]);
 		impl->output_buffers[i] = buffer;
 		if (buffer == NULL)
 			ready = false;
@@ -449,8 +467,12 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 				}
 			}
 		}
+		/* Queueing an output buffer publishes it. A failed graph call keeps
+		 * every dequeued output owned by this filter until error teardown. */
+		if (res >= 0)
+			publish_completed_outputs(impl);
 	}
-	recycle_cycle_buffers(impl);
+	recycle_cycle_inputs(impl);
 }
 
 static void filter_state_changed(void *data, enum pw_filter_state old SPA_UNUSED,

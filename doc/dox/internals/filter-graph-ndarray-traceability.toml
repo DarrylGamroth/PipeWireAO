@@ -1,5 +1,5 @@
 schema_version = 1
-specification_baseline = "ABI-v5 retained-library and parameter-transaction working trees, reviewed 2026-08-27"
+specification_baseline = "ABI-v6 conditional-publication and parameter-transaction working trees, reviewed 2026-08-27"
 specification_files = ["doc/dox/internals/filter-graph-ndarray.md"]
 
 [[requirements]]
@@ -30,7 +30,7 @@ closure_obligations = ["object admission", "relaxed SPA parsing", "standard JSON
 implementation_state = "implemented"
 implementation_links = ["spa/plugins/filter-graph/filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-algorithms/src/declaration.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs", "../calculon-algorithms/crates/calculon-fgn/src/unary.rs", "../calculon-algorithms/crates/calculon-fgn/src/source.rs", "../calculon-algorithms/crates/calculon-fgn/src/declaration.rs"]
 evidence_state = "validated"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_integration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py"]
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py"]
 verified_revision = "FGN and Calculon working trees reviewed 2026-08-25"
 verified_environment = "C11, Rust 1.97.1, and live PipeWireAO on Linux x86_64"
 verified_surfaces = ["C graph host", "C plugin", "Rust plugin", "Calculon Rust"]
@@ -51,7 +51,7 @@ evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "test/
 verified_revision = "FGN and Calculon portable declaration working trees, 2026-08-26"
 verified_environment = "C11 and Rust 1.97.1 on Linux x86_64"
 verified_surfaces = ["C graph host", "C plugin", "Rust plugin", "generated Calculon Rust", "PipeWire module"]
-verified_obligations = ["ABI v5 layout exercised across C and Rust", "exact rate and schema comparison", "C and Rust node-wide profile-key rejection", "otherwise identical schema mismatch rejection", "FGN SPA projection without the generic device-boundary profile"]
+verified_obligations = ["ABI v6 layout exercised across C and Rust", "exact rate and schema comparison", "conditional-output flag projection", "C and Rust node-wide profile-key rejection", "otherwise identical schema mismatch rejection", "FGN SPA projection without the generic device-boundary profile"]
 
 [[requirements]]
 id = "FGN-LIFE-001"
@@ -64,7 +64,7 @@ closure_obligations = ["callback serialization", "borrowed lifetimes", "release/
 implementation_state = "implemented"
 implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "src/modules/module-ndarray-filter-chain.c", "../calculon-algorithms/crates/calculon-fgn/src/publication.rs", "../calculon-algorithms/crates/calculon-fgn/src/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/unary.rs", "../calculon-algorithms/crates/calculon-fgn/src/source.rs", "../calculon-algorithms/crates/calculon-fgn/src/declaration.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs"]
 evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/tests/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/crates/calculon-fgn-plugins/tests/process_allocation.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_integration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py"]
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/tests/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py"]
 remaining_gaps = ["A live ndarray client has not yet forced teardown while a data-loop notification is outstanding."]
 
 [[requirements]]
@@ -74,15 +74,15 @@ parent_or_rationale = "Safe ndarray ownership at the plugin boundary"
 owner = "FGN graph host"
 applicability = "mandatory"
 claimed_surfaces = ["C graph host", "Calculon Rust adapter"]
-closure_obligations = ["one data plane", "bounds and alignment", "metadata caps", "nonaliasing", "offset preservation", "failure size zero"]
+closure_obligations = ["one data plane", "bounds and alignment", "metadata caps", "nonaliasing", "offset preservation", "failure size zero", "conditional size-zero artifact"]
 implementation_state = "implemented"
 implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/src/lib.rs", "../calculon-algorithms/crates/calculon-fgn/src/source.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs"]
 evidence_state = "validated"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/crates/calculon-fgn-plugins/tests/process_allocation.rs", "../calculon-algorithms/crates/calculon-fgn-plugins/tests/shwfs_chain.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py"]
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py"]
 verified_revision = "FGN and Calculon working trees reviewed 2026-08-25"
 verified_environment = "Meson/Ninja normal and ASan+UBSan C/Rust plugin tests on Linux x86_64"
 verified_surfaces = ["C graph host", "Calculon Rust adapter"]
-verified_obligations = ["one data plane", "bounds and alignment", "metadata caps", "nonaliasing including caller and plugin-facing arrays", "offset preservation", "failure size zero"]
+verified_obligations = ["one data plane", "bounds and alignment", "metadata caps", "nonaliasing including caller and plugin-facing arrays", "offset preservation", "failure size zero", "conditional size-zero artifact"]
 
 [[requirements]]
 id = "FGN-SCHEMA-001"
@@ -126,7 +126,7 @@ closure_obligations = ["bounded slot", "backpressure", "publish before nodes", "
 implementation_state = "implemented"
 implementation_links = ["spa/plugins/filter-graph/filter-graph-ndarray.c"]
 evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/scripts/test_fgn_integration.py"]
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
 remaining_gaps = ["A barrier-controlled concurrent set/process test is not yet maintained."]
 
 [[requirements]]
@@ -154,7 +154,7 @@ closure_obligations = ["returned-value validation", "even/odd revision", "retry"
 implementation_state = "implemented"
 implementation_links = ["spa/plugins/filter-graph/filter-graph-ndarray.c", "spa/plugins/filter-graph/plugin_ndarray_example.c", "spa/plugins/filter-graph/plugin_ndarray_example.rs", "src/modules/module-ndarray-filter-chain.c", "../calculon-algorithms/crates/calculon-fgn/src/publication.rs", "../calculon-algorithms/crates/calculon-fgn/src/properties.rs", "../calculon-algorithms/crates/calculon-fgn/src/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs"]
 evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/tests/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/crates/calculon-fgn-plugins/tests/shwfs_chain.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_integration.py"]
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/tests/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py"]
 verified_revision = "FGN and Calculon working trees reviewed 2026-08-25"
 verified_environment = "C11 and Rust 1.97.1 forced publication stress on Linux x86_64"
 verified_surfaces = ["C graph host", "C plugin", "Rust plugin", "Calculon Rust", "PipeWire module"]
@@ -173,7 +173,7 @@ implementation_state = "implemented"
 implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/include/spa/filter-graph/filter-graph-ndarray.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-algorithms/src/declaration.rs", "../calculon-algorithms/crates/calculon-fgn/src/abi.rs", "../calculon-algorithms/crates/calculon-fgn/src/lib.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs"]
 evidence_state = "validated"
 evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-revolt-classic.c", "../calculon-algorithms/crates/calculon-algorithms/tests/pixel_calibration.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration_graph.c", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/qualify_fgn_revolt_classic.py"]
-verified_revision = "ABI-v5 retained-library and parameter-transaction working trees, 2026-08-27"
+verified_revision = "ABI-v6 conditional-publication and parameter-transaction working trees, 2026-08-27"
 verified_environment = "C11 and Rust 1.97.1 on Linux x86_64"
 verified_surfaces = ["C graph host", "generated Calculon Rust"]
 verified_obligations = ["bounded assignment set", "unique ports", "same-node composition", "prepare all nodes", "discard on failure", "legacy fallback"]
@@ -190,7 +190,7 @@ implementation_state = "implemented"
 implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/include/spa/filter-graph/filter-graph-ndarray.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/src/publication.rs", "../calculon-algorithms/crates/calculon-fgn/src/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs"]
 evidence_state = "validated"
 evidence_links = ["spa/plugins/filter-graph/benchmark-filter-graph-ndarray-revolt-classic.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration_graph.c", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/qualify_fgn_revolt_classic.py"]
-verified_revision = "ABI-v5 retained-library and parameter-transaction working trees, 2026-08-27"
+verified_revision = "ABI-v6 conditional-publication and parameter-transaction working trees, 2026-08-27"
 verified_environment = "C11 and Rust 1.97.1 on Linux x86_64"
 verified_surfaces = ["C graph host", "generated Calculon Rust"]
 verified_obligations = ["bounded graph slot", "backpressure", "commit all before adoption", "adopt all before processing", "retired control-path reclamation", "same-cycle linked-node result"]
@@ -203,16 +203,16 @@ parent_or_rationale = "Do not imply scheduling semantics the synchronous host do
 owner = "FGN graph host"
 applicability = "mandatory"
 claimed_surfaces = ["C graph host"]
-closure_obligations = ["topological execution", "cycle rejection", "single exact specified rate", "mixed-rate rejection", "no implicit rate conversion", "explicit feedback-delay gate"]
-implementation_state = "partial"
-implementation_links = ["spa/plugins/filter-graph/filter-graph-ndarray.c"]
+closure_obligations = ["topological ready execution", "cycle rejection", "exact linked rates", "one external activation rate", "explicit conditional rate transition", "required-consumer skip", "no implicit conversion", "explicit feedback-delay gate"]
+implementation_state = "implemented"
+implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/include/spa/filter-graph/filter-graph-ndarray.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "src/modules/module-ndarray-filter-chain.c"]
 evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-revolt-classic.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration_graph.c", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/qualify_fgn_revolt_classic.py"]
-verified_revision = "ABI-v5 retained-library and parameter-transaction working trees, 2026-08-27"
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-row.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-revolt-classic.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration_graph.c", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/qualify_fgn_revolt_classic.py"]
+verified_revision = "ABI-v6 conditional-publication working trees, 2026-08-27"
 verified_environment = "C11 and Rust 1.97.1 on Linux x86_64"
 verified_surfaces = ["C graph host"]
-verified_obligations = ["topological execution", "cycle rejection", "single exact specified rate", "mixed-rate rejection", "no implicit rate conversion"]
-remaining_gaps = ["No explicit unit-delay operation with initial-value, metadata, reset, and failure semantics is admitted; feedback-dependent decompositions remain atomic."]
+verified_obligations = ["topological ready execution", "cycle rejection", "exact linked rates", "one external activation rate", "conditional block-to-frame rate transition", "required-consumer skip", "no implicit rate conversion"]
+remaining_gaps = ["The direct graph host proves conditional skip and rate transition. A live PipeWire client has not yet driven deferred output retention through completion.", "No explicit unit-delay operation with initial-value, metadata, reset, and failure semantics is admitted; feedback-dependent decompositions remain atomic."]
 
 [[requirements]]
 id = "FGN-FAIL-001"
@@ -226,7 +226,7 @@ implementation_state = "implemented"
 implementation_links = ["spa/plugins/filter-graph/filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-algorithms/src/algorithms/control/closed_loop_correction.rs", "../calculon-algorithms/crates/calculon-algorithms/src/composites/deformable_mirror_command.rs"]
 evidence_state = "partial"
 evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration_graph.c"]
-verified_revision = "ABI-v5 retained-library and parameter-transaction working trees, 2026-08-27"
+verified_revision = "ABI-v6 conditional-publication and parameter-transaction working trees, 2026-08-27"
 verified_environment = "C11 and Rust 1.97.1 on Linux x86_64"
 verified_surfaces = ["C graph host", "Calculon deployment design"]
 verified_obligations = ["pre-callback admission", "external output invalidation", "explicit no-rollback boundary", "fused retention where required"]
@@ -243,7 +243,7 @@ closure_obligations = ["bounded work", "zero allocation", "no locks", "no destru
 implementation_state = "implemented"
 implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "spa/plugins/filter-graph/plugin_ndarray_example.c", "spa/plugins/filter-graph/plugin_ndarray_example.rs", "src/modules/module-ndarray-filter-chain.c", "../calculon-algorithms/crates/calculon-algorithms/src/declaration.rs", "../calculon-algorithms/crates/calculon-algorithms/src/algorithms/control/closed_loop_correction.rs", "../calculon-algorithms/crates/calculon-fgn/src/publication.rs", "../calculon-algorithms/crates/calculon-fgn/src/properties.rs", "../calculon-algorithms/crates/calculon-fgn/src/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/lib.rs", "../calculon-algorithms/crates/calculon-fgn/src/declaration.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs"]
 evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-calculon.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-revolt-classic.c", "../calculon-algorithms/crates/calculon-algorithms/tests/closed_loop_correction_declaration.rs", "../calculon-algorithms/crates/calculon-algorithms/tests/deformable_mirror_declarations.rs", "../calculon-algorithms/crates/calculon-algorithms/tests/pyramid_pixel_image_declaration.rs", "../calculon-algorithms/crates/calculon-algorithms/tests/shack_hartmann_image_declaration.rs", "../calculon-algorithms/crates/calculon-fgn/examples/calculon-fgn-revolt-fixture.rs", "../calculon-algorithms/crates/calculon-fgn/tests/properties.rs", "../calculon-algorithms/crates/calculon-fgn/tests/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/crates/calculon-fgn-plugins/tests/process_allocation.rs", "../calculon-algorithms/crates/calculon-fgn-plugins/tests/shwfs_chain.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_integration.py", "../calculon-algorithms/scripts/benchmark_fgn_shwfs.py", "../calculon-algorithms/scripts/qualify_fgn_revolt_classic.py", "../calculon-algorithms/docs/fgn-revolt-classic-qualification.md"]
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-calculon.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-row.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-revolt-classic.c", "../calculon-algorithms/crates/calculon-algorithms/tests/closed_loop_correction_declaration.rs", "../calculon-algorithms/crates/calculon-algorithms/tests/deformable_mirror_declarations.rs", "../calculon-algorithms/crates/calculon-algorithms/tests/pyramid_pixel_image_declaration.rs", "../calculon-algorithms/crates/calculon-algorithms/tests/pyramid_pixel_row.rs", "../calculon-algorithms/crates/calculon-algorithms/tests/shack_hartmann_image_declaration.rs", "../calculon-algorithms/crates/calculon-algorithms/tests/shack_hartmann_row_reconstruction.rs", "../calculon-algorithms/crates/calculon-fgn/examples/calculon-fgn-revolt-fixture.rs", "../calculon-algorithms/crates/calculon-fgn/tests/properties.rs", "../calculon-algorithms/crates/calculon-fgn/tests/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/benchmark_fgn_shwfs.py", "../calculon-algorithms/scripts/benchmark_fgn_row_processing.py", "../calculon-algorithms/scripts/qualify_fgn_revolt_classic.py", "../calculon-algorithms/docs/fgn-revolt-classic-qualification.md", "../calculon-algorithms/docs/fgn-row-processing-performance.md"]
 remaining_gaps = ["The generated path has warmed allocation/deallocation counters for leaky integration, optical-gain correction, image-backed Shack-Hartmann and pyramid processing, reconstruction, native PDM processing/reset, and the four deformable-mirror projection declarations; the complete generated PDM and projection C callbacks are exercised but are not independently interposed. The outer PipeWire adapter uses preallocated coalesced event sources and is explicitly outside the graph's syscall-free boundary. Process-wide C allocation/free, lock, destruction, and syscall interposition, end-to-end scheduled latency, overload behavior, and a percentile latency contract remain unvalidated."]
 
 [[requirements]]
@@ -255,7 +255,7 @@ applicability = "mandatory"
 claimed_surfaces = ["C host", "C plugin", "Rust plugin", "PipeWire module"]
 closure_obligations = ["data ports", "parameter ports", "property surface", "bounded parameter backpressure", "zero-sided graphs"]
 implementation_state = "implemented"
-implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "src/modules/module-ndarray-filter-chain.c", "../calculon-algorithms/crates/calculon-algorithms/src/declaration.rs", "../calculon-algorithms/crates/calculon-algorithms/src/algorithms/control/closed_loop_correction.rs", "../calculon-algorithms/crates/calculon-fgn/src/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/source.rs", "../calculon-algorithms/crates/calculon-fgn/src/declaration.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs", "../calculon-algorithms/crates/calculon-fgn-plugins/src/shwfs.rs"]
+implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "src/modules/module-ndarray-filter-chain.c", "../calculon-algorithms/crates/calculon-algorithms/src/declaration.rs", "../calculon-algorithms/crates/calculon-algorithms/src/algorithms/control/closed_loop_correction.rs", "../calculon-algorithms/crates/calculon-algorithms/src/algorithms/image/pixel_calibration.rs", "../calculon-algorithms/crates/calculon-algorithms/src/composites/row_block.rs", "../calculon-algorithms/crates/calculon-algorithms/src/composites/shack_hartmann_row_reconstruction.rs", "../calculon-algorithms/crates/calculon-algorithms/src/composites/pyramid_pixel_row.rs", "../calculon-algorithms/crates/calculon-fgn/src/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/source.rs", "../calculon-algorithms/crates/calculon-fgn/src/declaration.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs"]
 evidence_state = "validated"
 evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-algorithms/tests/declaration.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py"]
 verified_revision = "FGN and Calculon working trees reviewed 2026-08-25"
@@ -286,9 +286,9 @@ applicability = "mandatory"
 claimed_surfaces = ["Rust example", "Calculon Rust release"]
 closure_obligations = ["no unwind", "opaque ownership", "ABI layout", "zero-allocation process", "build configuration"]
 implementation_state = "implemented"
-implementation_links = ["spa/plugins/filter-graph/plugin_ndarray_example.rs", "../calculon-algorithms/crates/calculon-algorithms/src/declaration.rs", "../calculon-algorithms/crates/calculon-algorithms/src/algorithms/control/closed_loop_correction.rs", "../calculon-algorithms/crates/calculon-fgn/src/lib.rs", "../calculon-algorithms/crates/calculon-fgn/src/publication.rs", "../calculon-algorithms/crates/calculon-fgn/src/unary.rs", "../calculon-algorithms/crates/calculon-fgn/src/source.rs", "../calculon-algorithms/crates/calculon-fgn/src/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/declaration.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs", "../calculon-algorithms/crates/calculon-fgn-plugins/src/shwfs.rs", "../calculon-algorithms/Cargo.toml"]
+implementation_links = ["spa/plugins/filter-graph/plugin_ndarray_example.rs", "../calculon-algorithms/crates/calculon-algorithms/src/declaration.rs", "../calculon-algorithms/crates/calculon-algorithms/src/algorithms/control/closed_loop_correction.rs", "../calculon-algorithms/crates/calculon-algorithms/src/algorithms/image/pixel_calibration.rs", "../calculon-algorithms/crates/calculon-algorithms/src/composites/row_block.rs", "../calculon-algorithms/crates/calculon-algorithms/src/composites/shack_hartmann_row_reconstruction.rs", "../calculon-algorithms/crates/calculon-algorithms/src/composites/pyramid_pixel_row.rs", "../calculon-algorithms/crates/calculon-fgn/src/lib.rs", "../calculon-algorithms/crates/calculon-fgn/src/publication.rs", "../calculon-algorithms/crates/calculon-fgn/src/unary.rs", "../calculon-algorithms/crates/calculon-fgn/src/source.rs", "../calculon-algorithms/crates/calculon-fgn/src/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/declaration.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs", "../calculon-algorithms/Cargo.toml"]
 evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/src/lib.rs", "../calculon-algorithms/crates/calculon-fgn/tests/properties.rs", "../calculon-algorithms/crates/calculon-fgn/tests/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/crates/calculon-fgn-plugins/tests/process_allocation.rs", "../calculon-algorithms/crates/calculon-fgn-plugins/tests/shwfs_chain.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_integration.py", "../calculon-algorithms/scripts/test_fgn_release_panic.py"]
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/src/lib.rs", "../calculon-algorithms/crates/calculon-fgn/tests/properties.rs", "../calculon-algorithms/crates/calculon-fgn/tests/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_release_panic.py"]
 verified_revision = "FGN and Calculon working trees reviewed 2026-08-25"
 verified_environment = "Rust 1.97.1 unwind release cdylib and C host on Linux x86_64"
 verified_surfaces = ["Rust example", "Calculon Rust release"]
@@ -298,4 +298,4 @@ remaining_gaps = ["The raw unsafe Send + Sync PluginInstance boundary, checked b
 id = "fgn-v4-ndarray"
 requirements = ["FGN-ABI-001", "FGN-CONFIG-001", "FGN-FORMAT-001", "FGN-LIFE-001", "FGN-BUF-001", "FGN-SCHEMA-001", "FGN-PROP-001", "FGN-PROP-002", "FGN-PROP-003", "FGN-PROP-004", "FGN-PARAM-001", "FGN-PARAM-002", "FGN-EXEC-001", "FGN-FAIL-001", "FGN-RT-001", "FGN-PORT-001", "FGN-SPA-001", "FGN-RUST-001"]
 state = "partial"
-acceptance_evidence = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-revolt-classic.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_integration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py", "../calculon-algorithms/scripts/qualify_fgn_revolt_classic.py", "../calculon-algorithms/docs/fgn-revolt-classic-qualification.md"]
+acceptance_evidence = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-revolt-classic.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py", "../calculon-algorithms/scripts/qualify_fgn_revolt_classic.py", "../calculon-algorithms/docs/fgn-revolt-classic-qualification.md"]
