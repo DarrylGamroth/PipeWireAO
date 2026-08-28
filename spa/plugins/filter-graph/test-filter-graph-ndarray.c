@@ -18,6 +18,7 @@
 
 #include <spa/buffer/meta.h>
 #include <spa/filter-graph/filter-graph-ndarray.h>
+#include <spa/filter-graph/ndarray-executor.h>
 #include <spa/param/props.h>
 #include <spa/pod/builder.h>
 #include <spa/pod/iter.h>
@@ -803,6 +804,336 @@ static void test_conditional_outputs(const char *plugin)
 	spa_fgn_graph_free(graph);
 }
 
+struct process_thread_context {
+	struct spa_fgn_graph *graph;
+	struct spa_buffer **inputs;
+	struct spa_buffer **outputs;
+	int result;
+};
+
+static void *process_on_foreign_thread(void *data)
+{
+	struct process_thread_context *context = data;
+
+	context->result = spa_fgn_graph_process(context->graph,
+			context->inputs, 1, context->outputs, 1);
+	return NULL;
+}
+
+static void test_process_thread_preparation(const char *plugin)
+{
+	struct spa_fgn_graph *graph = NULL;
+	struct test_buffer input, output;
+	struct spa_buffer *inputs[1], *outputs[1];
+	struct process_thread_context context;
+	pthread_t thread;
+	char config[2048];
+	uint32_t i;
+	int res;
+
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = prepared plugin = \"%s\""
+		"   label = thread-preparation-f32 }"
+		"] inputs = [ \"prepared:in\" ] outputs = [ \"prepared:out\" ] }",
+		plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == 0);
+	init_buffer(&input);
+	init_buffer(&output);
+	for (i = 0; i < 4; i++) {
+		input.values[i] = (float)i + 1.0f;
+		output.values[i] = -1.0f;
+	}
+	inputs[0] = &input.buffer;
+	outputs[0] = &output.buffer;
+
+	assert(spa_fgn_graph_prepare_process_thread(graph) == -EINVAL);
+	assert(spa_fgn_graph_activate(graph) == 0);
+	assert(spa_fgn_graph_process(graph, inputs, 1, outputs, 1) == -EAGAIN);
+	assert(spa_fgn_graph_prepare_process_thread(graph) == 0);
+	assert(spa_fgn_graph_prepare_process_thread(graph) == 0);
+	assert(spa_fgn_graph_process(graph, inputs, 1, outputs, 1) == 0);
+	for (i = 0; i < 4; i++)
+		assert(output.values[i] == input.values[i]);
+
+	context = (struct process_thread_context) {
+		.graph = graph,
+		.inputs = inputs,
+		.outputs = outputs,
+	};
+	assert(pthread_create(&thread, NULL, process_on_foreign_thread,
+			&context) == 0);
+	assert(pthread_join(thread, NULL) == 0);
+	assert(context.result == -EPERM);
+	assert(output.chunk.size == 0);
+
+	assert(spa_fgn_graph_deactivate(graph) == 0);
+	assert(spa_fgn_graph_activate(graph) == 0);
+	assert(spa_fgn_graph_process(graph, inputs, 1, outputs, 1) == -EAGAIN);
+	assert(spa_fgn_graph_prepare_process_thread(graph) == 0);
+	assert(spa_fgn_graph_process(graph, inputs, 1, outputs, 1) == 0);
+	assert(spa_fgn_graph_deactivate(graph) == 0);
+	spa_fgn_graph_free(graph);
+}
+
+static void reference_dense_f32(const float *matrix, const float *input,
+		float *output, uint32_t rows, uint32_t columns)
+{
+	uint32_t row;
+
+	for (row = 0; row < rows; row++) {
+		float sum = 0.0f;
+		uint32_t column;
+
+		for (column = 0; column < columns; column++)
+			sum += matrix[(size_t)row * columns + column] * input[column];
+		output[row] = sum;
+	}
+}
+
+struct lane_test_context {
+	_Atomic uint32_t visited;
+	int status[4];
+};
+
+static int record_lane(void *data, uint32_t lane, uint32_t n_lanes)
+{
+	struct lane_test_context *context = data;
+
+	assert(context != NULL);
+	assert(n_lanes > 0 && n_lanes <= 4 && lane < n_lanes);
+	atomic_fetch_or_explicit(&context->visited, 1u << lane,
+			memory_order_relaxed);
+	return context->status[lane];
+}
+
+static void test_lane_executor(void)
+{
+	struct spa_fgn_worker_group *group = NULL;
+	const struct spa_fgn_executor *executor;
+	struct lane_test_context context = { 0 };
+	struct spa_fgn_lanes_task task = {
+		.struct_size = sizeof(task),
+		.data = &context,
+		.run = record_lane,
+		.n_lanes = 4,
+	};
+
+	assert(atomic_is_lock_free(&context.visited));
+	assert(spa_fgn_worker_group_new(3, &group) == 0);
+	executor = spa_fgn_worker_group_get_executor(group);
+	assert(executor != NULL && executor->run_lanes != NULL);
+	assert(executor->cache_line_size == SPA_CACHE_LINE_SIZE);
+	assert(executor->reserved == 0);
+	assert(spa_fgn_worker_group_activate(group) == 0);
+	assert(executor->run_lanes(executor->data, &task) == 0);
+	assert(atomic_load_explicit(&context.visited,
+			memory_order_relaxed) == 0x0fu);
+
+	/* Coordinator failure wins, followed by the lowest helper lane. */
+	atomic_store_explicit(&context.visited, 0, memory_order_relaxed);
+	context.status[0] = -EIO;
+	context.status[1] = -ERANGE;
+	assert(executor->run_lanes(executor->data, &task) == -EIO);
+	assert(atomic_load_explicit(&context.visited,
+			memory_order_relaxed) == 0x0fu);
+	context.status[0] = 0;
+	assert(executor->run_lanes(executor->data, &task) == -ERANGE);
+	context.status[1] = 0;
+
+	/* Malformed tasks are rejected before dispatch. */
+	atomic_store_explicit(&context.visited, 0, memory_order_relaxed);
+	task.flags = 1;
+	assert(executor->run_lanes(executor->data, &task) == -EINVAL);
+	task.flags = 0;
+	task.n_lanes = 5;
+	assert(executor->run_lanes(executor->data, &task) == -EINVAL);
+	assert(atomic_load_explicit(&context.visited,
+			memory_order_relaxed) == 0);
+	task.n_lanes = 4;
+	assert(spa_fgn_worker_group_deactivate(group) == 0);
+	assert(executor->run_lanes(executor->data, &task) == -EINVAL);
+	/* Restart observes the retained generation and cannot replay shutdown. */
+	atomic_store_explicit(&context.visited, 0, memory_order_relaxed);
+	assert(spa_fgn_worker_group_activate(group) == 0);
+	assert(executor->run_lanes(executor->data, &task) == 0);
+	assert(atomic_load_explicit(&context.visited,
+			memory_order_relaxed) == 0x0fu);
+	assert(spa_fgn_worker_group_deactivate(group) == 0);
+	spa_fgn_worker_group_free(group);
+}
+
+static void test_dense_executor(void)
+{
+	enum { ROWS = 277, COLUMNS = 376 };
+	struct spa_fgn_worker_group *serial = NULL, *parallel = NULL;
+	const struct spa_fgn_executor *executor;
+	struct spa_fgn_dense_f32_task task;
+	float *matrix, *input, *reference, *batch_reference, *storage, *output;
+	size_t matrix_bytes = (size_t)ROWS * COLUMNS * sizeof(float);
+	size_t output_bytes = (ROWS + 1u) * sizeof(float);
+	uint32_t row, column, iteration;
+
+	assert(posix_memalign((void **)&matrix, SPA_CACHE_LINE_SIZE,
+			matrix_bytes) == 0);
+	assert(posix_memalign((void **)&input, SPA_CACHE_LINE_SIZE,
+			COLUMNS * sizeof(float)) == 0);
+	assert(posix_memalign((void **)&reference, SPA_CACHE_LINE_SIZE,
+			ROWS * sizeof(float)) == 0);
+	assert(posix_memalign((void **)&batch_reference, SPA_CACHE_LINE_SIZE,
+			ROWS * sizeof(float)) == 0);
+	assert(posix_memalign((void **)&storage, SPA_CACHE_LINE_SIZE,
+			output_bytes) == 0);
+	output = storage + 1; /* Exercise a non-cache-line-aligned output base. */
+	for (row = 0; row < ROWS; row++)
+		for (column = 0; column < COLUMNS; column++)
+			matrix[(size_t)row * COLUMNS + column] =
+				(float)((int)((row * 17u + column * 7u) % 29u) - 14) /
+				127.0f;
+	for (column = 0; column < COLUMNS; column++)
+		input[column] = (float)((int)(column % 23u) - 11) / 37.0f;
+	reference_dense_f32(matrix, input, reference, ROWS, COLUMNS);
+
+	task = (struct spa_fgn_dense_f32_task) {
+		.struct_size = sizeof(task),
+		.matrix = matrix,
+		.input = input,
+		.output = output,
+		.n_rows = ROWS,
+		.matrix_row_stride = COLUMNS,
+		.n_columns = COLUMNS,
+	};
+	assert(spa_fgn_worker_group_new(0, &serial) == 0);
+	assert(spa_fgn_worker_group_activate(serial) == 0);
+	assert(spa_fgn_worker_group_run_dense_f32(serial, &task) == 0);
+	for (row = 0; row < ROWS; row++)
+		assert(fabsf(output[row] - reference[row]) <=
+				1.0e-4f * SPA_MAX(fabsf(reference[row]), 1.0f));
+	memcpy(reference, output, ROWS * sizeof(float));
+
+	/* Establish the one-lane oracle for three ordered column batches. */
+	memset(batch_reference, 0, ROWS * sizeof(float));
+	task.output = batch_reference;
+	task.n_columns = 113;
+	assert(spa_fgn_worker_group_run_dense_f32(serial, &task) == 0);
+	task.flags = SPA_FGN_DENSE_F32_FLAG_ACCUMULATE;
+	task.first_column = 113;
+	task.input = input + 113;
+	task.n_columns = 127;
+	assert(spa_fgn_worker_group_run_dense_f32(serial, &task) == 0);
+	task.first_column = 240;
+	task.input = input + 240;
+	task.n_columns = COLUMNS - 240;
+	assert(spa_fgn_worker_group_run_dense_f32(serial, &task) == 0);
+	task = (struct spa_fgn_dense_f32_task) {
+		.struct_size = sizeof(task),
+		.matrix = matrix,
+		.input = input,
+		.output = output,
+		.n_rows = ROWS,
+		.matrix_row_stride = COLUMNS,
+		.n_columns = COLUMNS,
+	};
+	assert(spa_fgn_worker_group_deactivate(serial) == 0);
+	assert(spa_fgn_worker_group_run_dense_f32(serial, &task) == -EINVAL);
+	spa_fgn_worker_group_free(serial);
+
+	assert(spa_fgn_worker_group_new(3, &parallel) == 0);
+	executor = spa_fgn_worker_group_get_executor(parallel);
+	assert(executor != NULL && executor->struct_size == sizeof(*executor));
+	assert(executor->version == SPA_FGN_EXECUTOR_VERSION);
+	assert(executor->n_lanes == 4);
+	assert(executor->flags == SPA_FGN_EXECUTOR_FLAG_POLLING);
+	assert(spa_fgn_worker_group_activate(parallel) == 0);
+	for (iteration = 0; iteration < 64; iteration++) {
+		memset(output, 0xa5, ROWS * sizeof(float));
+		assert(executor->run_dense_f32(executor->data, &task) == 0);
+		assert(memcmp(output, reference, ROWS * sizeof(float)) == 0);
+	}
+
+	/* The same primitive admits ordered progressive column batches. */
+	memset(output, 0, ROWS * sizeof(float));
+	task.n_columns = 113;
+	assert(executor->run_dense_f32(executor->data, &task) == 0);
+	task.flags = SPA_FGN_DENSE_F32_FLAG_ACCUMULATE;
+	task.first_column = 113;
+	task.input = input + 113;
+	task.n_columns = 127;
+	assert(executor->run_dense_f32(executor->data, &task) == 0);
+	task.first_column = 240;
+	task.input = input + 240;
+	task.n_columns = COLUMNS - 240;
+	assert(executor->run_dense_f32(executor->data, &task) == 0);
+	assert(memcmp(output, batch_reference, ROWS * sizeof(float)) == 0);
+
+	/* Mutable output aliases are rejected before any lane is dispatched. */
+	task = (struct spa_fgn_dense_f32_task) {
+		.struct_size = sizeof(task),
+		.matrix = matrix,
+		.input = input,
+		.output = input,
+		.n_rows = ROWS,
+		.matrix_row_stride = COLUMNS,
+		.n_columns = COLUMNS,
+	};
+	assert(executor->run_dense_f32(executor->data, &task) == -EINVAL);
+	assert(spa_fgn_worker_group_deactivate(parallel) == 0);
+	spa_fgn_worker_group_free(parallel);
+	free(storage);
+	free(batch_reference);
+	free(reference);
+	free(input);
+	free(matrix);
+}
+
+static void test_dense_graph_workers(const char *plugin)
+{
+	struct spa_fgn_graph *graph = NULL;
+	struct test_buffer input, output;
+	struct spa_buffer *inputs[] = { &input.buffer };
+	struct spa_buffer *outputs[] = { &output.buffer };
+	char config[2048];
+	uint32_t i;
+	int res;
+
+	res = snprintf(config, sizeof(config),
+		"{ workers = { helpers = 3 } nodes = ["
+		" { type = ndarray name = dense plugin = \"%s\""
+		"   label = dense-example-f32 config = { rows = 4 columns = 4 } }"
+		"] }", plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == 0);
+	init_buffer(&input);
+	init_buffer(&output);
+	for (i = 0; i < 4; i++) {
+		input.values[i] = (float)i + 0.5f;
+		output.values[i] = -1.0f;
+	}
+	assert(spa_fgn_graph_activate(graph) == 0);
+	assert(spa_fgn_graph_process(graph, inputs, 1, outputs, 1) == 0);
+	for (i = 0; i < 4; i++)
+		assert(output.values[i] == input.values[i]);
+	assert(spa_fgn_graph_deactivate(graph) == 0);
+	spa_fgn_graph_free(graph);
+
+	res = snprintf(config, sizeof(config),
+		"{ workers = { helpers = 64 } nodes = ["
+		" { type = ndarray name = dense plugin = \"%s\""
+		"   label = dense-example-f32 } ] }", plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == -EINVAL);
+	assert(graph == NULL);
+
+	res = snprintf(config, sizeof(config),
+		"{ workers = { threads = 3 } nodes = ["
+		" { type = ndarray name = dense plugin = \"%s\""
+		"   label = dense-example-f32 } ] }", plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == -EINVAL);
+	assert(graph == NULL);
+}
+
 int main(int argc, char *argv[])
 {
 	struct spa_fgn_graph *graph = NULL;
@@ -826,10 +1157,16 @@ int main(int argc, char *argv[])
 	int res;
 
 	assert(argc >= 2 && argc <= 4);
+	test_lane_executor();
+	test_dense_executor();
 	if (argc >= 3)
 		check_failed_property_snapshot(argv[2]);
 	if (argc == 4 && spa_streq(argv[3], "conditional"))
 		test_conditional_outputs(argv[1]);
+	if (argc == 4 && spa_streq(argv[3], "conditional"))
+		test_dense_graph_workers(argv[1]);
+	if (argc == 4 && spa_streq(argv[3], "conditional"))
+		test_process_thread_preparation(argv[1]);
 	res = snprintf(config, sizeof(config),
 		"{ nodes = ["
 		" { type = ndarray name = duplicate plugin = \"%s\""
@@ -1062,7 +1399,7 @@ int main(int argc, char *argv[])
 	parameter_updates[0].input_port = 1;
 	parameter_updates[1] = parameter_updates[0];
 	assert(spa_fgn_graph_set_parameters(graph, parameter_updates, 2) == -EEXIST);
-	/* ABI-v6 batch publication is optional for legacy-shaped descriptors. */
+	/* Batch publication is optional for legacy-shaped descriptors. */
 	assert(spa_fgn_graph_set_parameters(graph, parameter_updates, 1) == -ENOTSUP);
 	assert(spa_fgn_graph_update_parameter(graph, 0, &parameter.buffer) == -EINVAL);
 	parameter.chunk.offset = sizeof(float);

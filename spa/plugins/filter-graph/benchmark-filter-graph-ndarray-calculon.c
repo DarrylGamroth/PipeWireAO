@@ -99,6 +99,18 @@ static uint32_t parse_u32(const char *text, uint32_t maximum)
 	return (uint32_t)value;
 }
 
+static uint32_t parse_u32_allow_zero(const char *text, uint32_t maximum)
+{
+	char *end = NULL;
+	unsigned long value;
+
+	errno = 0;
+	value = strtoul(text, &end, 10);
+	spa_assert_se(errno == 0 && end != text && *end == '\0' &&
+			value <= maximum);
+	return (uint32_t)value;
+}
+
 static struct loaded_plugin load_plugin(const char *path)
 {
 	struct loaded_plugin plugin = { 0 };
@@ -327,7 +339,7 @@ static char *make_graph_config(const char *plugin, const char *origins,
 		uint32_t width, uint32_t height,
 		uint32_t region_width, uint32_t region_height,
 		uint32_t region_count, uint32_t actuators, bool image_views,
-		bool decomposed_dm)
+		bool decomposed_dm, uint32_t worker_helpers)
 {
 	const char *measurement_link, *measurement_input;
 	size_t measurement_capacity = strlen(plugin) * 2u + strlen(origins) +
@@ -378,7 +390,7 @@ static char *make_graph_config(const char *plugin, const char *origins,
 	spa_assert_se(config != NULL);
 	if (decomposed_dm) {
 		written = snprintf(config, capacity,
-		"{\"nodes\":[%s,"
+		"{\"workers\":{\"helpers\":%u},\"nodes\":[%s,"
 		"{\"type\":\"ndarray\",\"name\":\"reconstruct\",\"plugin\":\"%s\","
 		"\"label\":\"shwfs-reconstructor-f32\",\"config\":{"
 		"\"actuator_count\":%u,\"subaperture_count\":%u,"
@@ -429,7 +441,7 @@ static char *make_graph_config(const char *plugin, const char *origins,
 		"\"vdm-feedback-to-controller:vdm-to-controller\"],"
 		"\"outputs\":[\"command:demanded\","
 		"\"vdm-feedback-to-controller:controller-constraint-feedback\"]}",
-		measurement,
+		worker_helpers, measurement,
 		plugin, actuators, region_count,
 		plugin, actuators,
 		plugin, actuators, actuators,
@@ -440,7 +452,7 @@ static char *make_graph_config(const char *plugin, const char *origins,
 		measurement_link, measurement_input);
 	} else {
 		written = snprintf(config, capacity,
-		"{\"nodes\":[%s,"
+		"{\"workers\":{\"helpers\":%u},\"nodes\":[%s,"
 		"{\"type\":\"ndarray\",\"name\":\"reconstruct\",\"plugin\":\"%s\","
 		"\"label\":\"shwfs-reconstructor-f32\",\"config\":{"
 		"\"actuator_count\":%u,\"subaperture_count\":%u,"
@@ -461,7 +473,7 @@ static char *make_graph_config(const char *plugin, const char *origins,
 		"{\"output\":\"integrate:output\",\"input\":\"command:requested\"}],"
 		"\"inputs\":[%s,\"reconstruct:reconstructor\"],"
 		"\"outputs\":[\"command:demanded\"]}",
-		measurement,
+		worker_helpers, measurement,
 		plugin, actuators, region_count,
 		plugin, actuators, plugin, actuators,
 		measurement_link, measurement_input);
@@ -539,12 +551,14 @@ int main(int argc, char *argv[])
 	uint32_t region_width = DEFAULT_REGION_WIDTH;
 	uint32_t region_height = DEFAULT_REGION_HEIGHT;
 	uint32_t actuators = DEFAULT_ACTUATORS, fused_regions, json_regions;
+	uint32_t worker_helpers = 0;
 	uint64_t *fused_times, *graph_times, fused_median, graph_median;
 	float *matrix_values;
 	size_t image_bytes, output_bytes, matrix_bytes, dm_matrix_bytes = 0;
 	const char *mode = getenv("PW_FGN_BENCHMARK_MODE");
 	const char *sensor_mode = getenv("PW_FGN_BENCHMARK_SENSOR");
 	const char *dm_mode = getenv("PW_FGN_BENCHMARK_DM");
+	const char *worker_helpers_text = getenv("PW_FGN_BENCHMARK_WORKER_HELPERS");
 	bool run_fused, run_graph, image_views, decomposed_dm;
 
 	spa_assert_se(argc == 3 || argc == 4 || argc == 9);
@@ -559,6 +573,8 @@ int main(int argc, char *argv[])
 	}
 	if (getenv("PW_FGN_BENCHMARK_WARMUP") != NULL)
 		warmup = parse_u32(getenv("PW_FGN_BENCHMARK_WARMUP"), UINT32_MAX);
+	if (worker_helpers_text != NULL)
+		worker_helpers = parse_u32_allow_zero(worker_helpers_text, 63u);
 	if (mode == NULL)
 		mode = "both";
 	if (sensor_mode == NULL)
@@ -634,7 +650,7 @@ int main(int argc, char *argv[])
 	configure_fused(&fused, factory, &info, &fused_input, &fused_output);
 	config = make_graph_config(argv[2], json_origins, width, height,
 			region_width, region_height, fused_regions, actuators, image_views,
-			decomposed_dm);
+			decomposed_dm, worker_helpers);
 	spa_assert_se(spa_fgn_graph_new(config, &graph) == 0);
 	spa_assert_se(spa_fgn_graph_get_n_inputs(graph) ==
 			(decomposed_dm ? 8u : 2u) &&
@@ -668,6 +684,7 @@ int main(int argc, char *argv[])
 	printf("measurement-mode: %s\n", mode);
 	printf("sensor-boundary: %s\n", sensor_mode);
 	printf("dm-boundary: %s\n", dm_mode);
+	printf("worker-helpers: %u\n", worker_helpers);
 	/* One untimed call per implementation proves numerical equivalence. */
 	fused_input.header.seq++;
 	graph_input.header.seq++;
