@@ -170,10 +170,15 @@ Pixel calibration accepts either:
   ranges while holding the input lease; or
 - one complete raw row-block ndarray per graph cycle.
 
-It snapshots its selected flat/background plan at the first block of a frame.
-A plan change applies to the next frame. In row-block mode it consumes the raw
-block after producing the corresponding calibrated block; no camera lease
-crosses the node.
+A node with frame-scoped calibration selection snapshots its selected
+flat/background plan at the first block of a frame, so a new selection applies
+to the next frame. The generated FGN declaration instead adopts a published
+parameter plan at the next graph-cycle boundary, as required by the FGN
+parameter contract. If that occurs after row zero, it marks the first block
+using the new plan `DISCONT`; frame aggregators then abandon the mixed partial
+frame and publish nothing until a complete frame uses one plan. In row-block
+mode calibration consumes the raw block after producing the corresponding
+calibrated block; no camera lease crosses the node.
 
 Frame assembly owns one preallocated F32 workspace. It accepts only the next
 expected offset for the active sequence. A gap, overlap, changed sequence,
@@ -184,6 +189,60 @@ abandonment carries `DISCONT`.
 Consumers that understand row blocks can branch before assembly. Full-frame
 algorithms, telemetry, GUI, recording, and standard video conversion normally
 branch after assembly.
+
+## Conditional scientific aggregation
+
+An FGN node that consumes row blocks and produces one frame-rate artifact is
+an explicit rate-changing aggregator. Its input format uses the block rate and
+its output format uses the frame rate. The two sides do not link directly to
+ports with unequal rates; the aggregator is the declared scientific boundary
+that relates them.
+
+The aggregator declares its output conditional. On a nonterminal block it
+returns success with output size zero. The graph treats that artifact as
+absent, skips required consumers, and retains any unpublished external output
+buffer. On the terminal block it publishes a complete artifact and only then
+does the frame-rate suffix execute. No changing or partial output buffer is
+visible outside the aggregator.
+
+The row-block Shack–Hartmann/reconstructor composition uses a private detector
+frame, measurement workspace, and reconstruction accumulator. Uniform
+subaperture size is construction configuration. Every subaperture has an
+explicit zero-based origin, and declaration order remains the slope and
+reconstructor-column order. A separate prepared schedule sorts subapertures by
+the row at which they become complete. The implementation may process only the
+greatest ready prefix in scientific order; unusual origin order can delay work
+but cannot reorder coordinates.
+
+For each admitted block, the composition copies pixels into private frame
+storage, measures newly ready subapertures, and accumulates only their
+reconstructor columns. It publishes the reconstructed vector after the final
+contiguous block. A gap, overlap, sequence change, invalid terminal marker,
+mid-frame discontinuity, out-of-range block, or corrupt block abandons private
+state and publishes nothing. The next complete result carries `DISCONT`, even
+when the loss was detected inside the graph rather than by the source.
+
+The row-block pyramid composition uses the same block identity and recovery
+rules. It owns a private detector frame and complete pupil-major output. It
+processes only the greatest complete pupil prefix in declared pupil order, so
+arbitrary explicit pupil origins cannot change scientific output or
+full-pupil accumulation order. Both the normalized reconstruction-pixel array
+and current mean-pupil-intensity scalar are conditional and publish together
+on the terminal block.
+
+Pyramid normalization remains stateful across completed frames. The first
+frame uses zero gain. A later frame uses the reciprocal mean committed by the
+preceding successful frame. Dropped frames and compatible mid-frame plan
+updates abandon private partial work but preserve that committed gain; the
+next complete output is discontinuous. An explicit algorithm reset returns
+the gain to its zero-startup state.
+
+This front end can feed a separate frame-rate controller graph. That split
+keeps one row-block activation per immutable input block while avoiding
+retention of frame-rate feedback inputs across the intervening block cycles.
+An end-to-end graph that crosses that rate and feedback boundary requires an
+explicit delay/holding operation with defined reset, loss, and rollback
+semantics; conditional publication alone does not invent those semantics.
 
 ## Observer isolation
 

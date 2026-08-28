@@ -907,7 +907,10 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 		    info->name[0] == '\0' ||
 		    strlen(info->name) > SPA_FGN_LOCAL_NAME_MAX ||
 		    (info->flags & ~(SPA_FGN_PORT_FLAG_OPTIONAL |
-				SPA_FGN_PORT_FLAG_PARAMETER)) != 0 ||
+				SPA_FGN_PORT_FLAG_PARAMETER |
+				SPA_FGN_PORT_FLAG_CONDITIONAL)) != 0 ||
+		    ((info->flags & SPA_FGN_PORT_FLAG_CONDITIONAL) &&
+		     info->direction != SPA_DIRECTION_OUTPUT) ||
 		    ((info->flags & SPA_FGN_PORT_FLAG_PARAMETER) &&
 		     (info->direction != SPA_DIRECTION_INPUT ||
 		      !(info->flags & SPA_FGN_PORT_FLAG_OPTIONAL) ||
@@ -1175,32 +1178,61 @@ static int sort_graph(struct spa_fgn_graph *graph)
 	return done == graph->n_nodes ? 0 : -ELOOP;
 }
 
+static bool format_has_rate(const struct spa_fgn_format *format)
+{
+	return format->rate_num != 0;
+}
+
+static bool format_rate_equal(const struct spa_fgn_format *first,
+		const struct spa_fgn_format *second)
+{
+	return first->rate_num == second->rate_num &&
+		first->rate_denom == second->rate_denom;
+}
+
 static int validate_graph(const struct spa_fgn_graph *graph)
 {
-	uint32_t rate_num = 0, rate_denom = 0, i, j;
+	const struct spa_fgn_format *activation_rate = NULL;
+	uint32_t i, j;
 
 	if (graph->n_inputs == 0 && graph->n_outputs == 0)
 		return -EINVAL;
+	for (i = 0; i < graph->n_inputs; i++) {
+		const struct fgn_port *port = graph->inputs[i];
+
+		if (port->info->flags & SPA_FGN_PORT_FLAG_PARAMETER ||
+		    !format_has_rate(port->format))
+			continue;
+		if (activation_rate == NULL)
+			activation_rate = port->format;
+		else if (!format_rate_equal(activation_rate, port->format))
+			return -EINVAL;
+	}
 	for (i = 0; i < graph->n_nodes; i++) {
 		const struct fgn_node *node = graph->nodes[i];
-		for (j = 0; j < node->descriptor->n_ports; j++) {
-			const struct spa_fgn_format *format = node->ports[j].format;
+		const struct spa_fgn_format *input_rate = NULL;
 
-			if (format->rate_num == 0)
-				continue;
-			if (rate_num == 0) {
-				rate_num = format->rate_num;
-				rate_denom = format->rate_denom;
-			} else if (format->rate_num != rate_num ||
-				   format->rate_denom != rate_denom) {
-				return -EINVAL;
-			}
-		}
 		for (j = 0; j < node->n_inputs; j++) {
 			const struct fgn_port *port = node->inputs[j];
 			if (port->source == NULL && port->external == SPA_ID_INVALID &&
 			    !(port->info->flags & SPA_FGN_PORT_FLAG_OPTIONAL))
 				return -ENOTCONN;
+			if (port->info->flags & SPA_FGN_PORT_FLAG_PARAMETER ||
+			    !format_has_rate(port->format))
+				continue;
+			if (input_rate == NULL)
+				input_rate = port->format;
+			else if (!format_rate_equal(input_rate, port->format))
+				return -EINVAL;
+		}
+		for (j = 0; j < node->n_outputs; j++) {
+			const struct fgn_port *port = node->outputs[j];
+
+			if (input_rate == NULL || !format_has_rate(port->format) ||
+			    format_rate_equal(input_rate, port->format))
+				continue;
+			if (!(port->info->flags & SPA_FGN_PORT_FLAG_CONDITIONAL))
+				return -EINVAL;
 		}
 	}
 	return 0;
@@ -2273,7 +2305,8 @@ static void clear_external_output_sizes(struct spa_buffer *const outputs[],
 }
 
 static int validate_completed_output(struct spa_buffer *buffer,
-		const struct spa_fgn_format *format, uint32_t expected_offset)
+		const struct spa_fgn_format *format, uint32_t expected_offset,
+		bool conditional)
 {
 	struct spa_data *data = &buffer->datas[0];
 	size_t size;
@@ -2281,6 +2314,8 @@ static int validate_completed_output(struct spa_buffer *buffer,
 
 	if ((res = format_size(format, &size)) < 0)
 		return res;
+	if (conditional && data->chunk->size == 0)
+		return data->chunk->offset == expected_offset ? 0 : -EMSGSIZE;
 	if (data->chunk->offset != expected_offset || data->chunk->size != size ||
 	    data->chunk->offset >= data->maxsize ||
 	    data->maxsize - data->chunk->offset < size)
@@ -2355,13 +2390,17 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		struct fgn_node *node = graph->order[i];
 		uint64_t property_revision = node->descriptor->get_prop_revision != NULL
 			? node->descriptor->get_prop_revision(node->instance) : 0;
+		bool ready = true;
 
 		for (j = 0; j < node->n_inputs; j++) {
 			struct fgn_port *port = node->inputs[j];
 			struct spa_buffer *buffer = port->source != NULL
 				? port->source->cycle_buffer : port->cycle_buffer;
+			if (port->source != NULL && buffer != NULL &&
+			    buffer->datas[0].chunk->size == 0)
+				buffer = NULL;
 			if (buffer == NULL && !(port->info->flags & SPA_FGN_PORT_FLAG_OPTIONAL))
-				return -ENOBUFS;
+				ready = false;
 			node->process_inputs[j] = (struct spa_fgn_buffer) {
 				.buffer = buffer,
 				.format = port->format,
@@ -2374,6 +2413,8 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 				.format = port->format,
 			};
 		}
+		if (!ready)
+			continue;
 		if ((res = node->descriptor->process(node->instance,
 				node->process_inputs, node->n_inputs,
 				node->process_outputs, node->n_outputs)) < 0)
@@ -2381,7 +2422,9 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		for (j = 0; j < node->n_outputs; j++) {
 			struct fgn_port *port = node->outputs[j];
 			if ((res = validate_completed_output(port->cycle_buffer,
-					port->format, port->cycle_offset)) < 0)
+					port->format, port->cycle_offset,
+					port->info->flags &
+						SPA_FGN_PORT_FLAG_CONDITIONAL)) < 0)
 				goto process_error;
 		}
 		if (node->descriptor->get_prop_revision != NULL) {

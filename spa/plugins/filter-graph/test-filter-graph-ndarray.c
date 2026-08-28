@@ -729,6 +729,80 @@ static void test_calculon_plugin(const char *plugin)
 	spa_fgn_graph_free(graph);
 }
 
+static void test_conditional_outputs(const char *plugin)
+{
+	struct spa_fgn_graph *graph = NULL;
+	const struct spa_fgn_format *format;
+	struct test_buffer input, output;
+	struct spa_buffer *inputs[2], *outputs[1];
+	char config[4096];
+	uint32_t i;
+	int res;
+
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = defer plugin = \"%s\" label = defer-f32 }"
+		" { type = ndarray name = scale plugin = \"%s\" label = scale-f32"
+		"   config = { shape = [ 4 ] schema = test.deferred/1 } }"
+		"] links = [ { output = \"defer:out\" input = \"scale:in\" } ]"
+		" inputs = [ \"defer:in\" \"scale:coefficients\" ]"
+		" outputs = [ \"scale:out\" ] }",
+		plugin, plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == 0);
+	init_buffer(&input);
+	init_buffer(&output);
+	for (i = 0; i < 4; i++) {
+		input.values[i] = (float)i + 1.0f;
+		output.values[i] = -1.0f;
+	}
+	inputs[0] = &input.buffer;
+	inputs[1] = NULL;
+	outputs[0] = &output.buffer;
+	assert(spa_fgn_graph_activate(graph) == 0);
+
+	/* The conditional producer succeeds without publishing. Its required
+	 * downstream consumer is not called, and absence reaches the graph output. */
+	input.header.flags = 0;
+	assert(spa_fgn_graph_process(graph, inputs, 2, outputs, 1) == 0);
+	assert(output.chunk.size == 0);
+	for (i = 0; i < 4; i++)
+		assert(output.values[i] == -1.0f);
+
+	input.header.flags = SPA_META_HEADER_FLAG_MARKER;
+	assert(spa_fgn_graph_process(graph, inputs, 2, outputs, 1) == 0);
+	assert(output.chunk.size == 4 * sizeof(float));
+	for (i = 0; i < 4; i++)
+		assert(output.values[i] == input.values[i]);
+	assert(output.header.flags & SPA_META_HEADER_FLAG_MARKER);
+	assert(spa_fgn_graph_deactivate(graph) == 0);
+	spa_fgn_graph_free(graph);
+
+	/* An aggregating node may declare a block-rate input and frame-rate
+	 * conditional output. Exact rates are still enforced on every link. */
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = aggregate plugin = \"%s\""
+		"   label = aggregate-f32 }"
+		"] inputs = [ \"aggregate:in\" ] outputs = [ \"aggregate:out\" ] }",
+		plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == 0);
+	assert(spa_fgn_graph_get_port_format(graph, SPA_DIRECTION_INPUT,
+			0, &format) == 0);
+	assert(format->rate_num == 2 && format->rate_denom == 1);
+	assert(spa_fgn_graph_get_port_format(graph, SPA_DIRECTION_OUTPUT,
+			0, &format) == 0);
+	assert(format->rate_num == 1 && format->rate_denom == 1);
+	inputs[0] = &input.buffer;
+	outputs[0] = &output.buffer;
+	assert(spa_fgn_graph_activate(graph) == 0);
+	assert(spa_fgn_graph_process(graph, inputs, 1, outputs, 1) == 0);
+	assert(output.chunk.size == 4 * sizeof(float));
+	assert(spa_fgn_graph_deactivate(graph) == 0);
+	spa_fgn_graph_free(graph);
+}
+
 int main(int argc, char *argv[])
 {
 	struct spa_fgn_graph *graph = NULL;
@@ -754,6 +828,8 @@ int main(int argc, char *argv[])
 	assert(argc >= 2 && argc <= 4);
 	if (argc >= 3)
 		check_failed_property_snapshot(argv[2]);
+	if (argc == 4 && spa_streq(argv[3], "conditional"))
+		test_conditional_outputs(argv[1]);
 	res = snprintf(config, sizeof(config),
 		"{ nodes = ["
 		" { type = ndarray name = duplicate plugin = \"%s\""
@@ -986,7 +1062,7 @@ int main(int argc, char *argv[])
 	parameter_updates[0].input_port = 1;
 	parameter_updates[1] = parameter_updates[0];
 	assert(spa_fgn_graph_set_parameters(graph, parameter_updates, 2) == -EEXIST);
-	/* ABI-v5 batch publication is optional for legacy-shaped descriptors. */
+	/* ABI-v6 batch publication is optional for legacy-shaped descriptors. */
 	assert(spa_fgn_graph_set_parameters(graph, parameter_updates, 1) == -ENOTSUP);
 	assert(spa_fgn_graph_update_parameter(graph, 0, &parameter.buffer) == -EINVAL);
 	parameter.chunk.offset = sizeof(float);
@@ -1079,7 +1155,7 @@ int main(int argc, char *argv[])
 	assert(spa_fgn_graph_process(graph, inputs, 1, NULL, 0) == 0);
 	assert(spa_fgn_graph_deactivate(graph) == 0);
 	spa_fgn_graph_free(graph);
-	if (argc == 4)
+	if (argc == 4 && !spa_streq(argv[3], "conditional"))
 		test_calculon_plugin(argv[3]);
 	return EXIT_SUCCESS;
 }
