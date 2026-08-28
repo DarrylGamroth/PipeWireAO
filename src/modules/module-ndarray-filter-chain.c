@@ -475,6 +475,16 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 	recycle_cycle_inputs(impl);
 }
 
+static int prepare_process_thread(struct spa_loop *loop SPA_UNUSED,
+		bool async SPA_UNUSED, uint32_t seq SPA_UNUSED,
+		const void *data SPA_UNUSED, size_t size SPA_UNUSED,
+		void *user_data)
+{
+	struct impl *impl = user_data;
+
+	return spa_fgn_graph_prepare_process_thread(impl->graph);
+}
+
 static void filter_state_changed(void *data, enum pw_filter_state old SPA_UNUSED,
 		enum pw_filter_state state, const char *error)
 {
@@ -482,10 +492,21 @@ static void filter_state_changed(void *data, enum pw_filter_state old SPA_UNUSED
 	int res = 0;
 
 	pthread_mutex_lock(&impl->control_lock);
-	if (state == PW_FILTER_STATE_STREAMING)
+	if (state == PW_FILTER_STATE_STREAMING) {
+		struct pw_loop *data_loop;
+
 		res = spa_fgn_graph_activate(impl->graph);
-	else if (state == PW_FILTER_STATE_PAUSED)
+		data_loop = pw_filter_get_data_loop(impl->filter);
+		if (res >= 0 && data_loop == NULL)
+			res = -EIO;
+		if (res >= 0)
+			res = pw_loop_invoke(data_loop, prepare_process_thread,
+					0, NULL, 0, true, impl);
+		if (res < 0)
+			spa_fgn_graph_deactivate(impl->graph);
+	} else if (state == PW_FILTER_STATE_PAUSED) {
 		res = spa_fgn_graph_deactivate(impl->graph);
+	}
 	pthread_mutex_unlock(&impl->control_lock);
 	if (res < 0)
 		pw_filter_set_error(impl->filter, res,

@@ -367,11 +367,14 @@ static void report(const char *name, uint64_t *samples, size_t count)
 	for (i = 0; i < count; i++)
 		sum += samples[i];
 	printf("%s: n=%zu mean=%.1Lf ns p50=%" PRIu64
-			" ns p90=%" PRIu64 " ns p99=%" PRIu64
-			" ns max=%" PRIu64 " ns\n",
+			" ns p90=%" PRIu64 " ns p99=%" PRIu64,
 			name, count, sum / count, samples[count / 2u],
 			samples[percentile(count, 90, 100)],
-			samples[percentile(count, 99, 100)], samples[count - 1u]);
+			samples[percentile(count, 99, 100)]);
+	if (count >= 1000u)
+		printf(" ns p99.9=%" PRIu64,
+				samples[percentile(count, 999, 1000)]);
+	printf(" ns max=%" PRIu64 " ns\n", samples[count - 1u]);
 }
 
 static void write_csv(const char *path, const uint64_t *samples, size_t count)

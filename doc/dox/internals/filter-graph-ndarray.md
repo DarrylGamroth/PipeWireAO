@@ -4,7 +4,7 @@
 
 Status: active proof-of-concept contract
 
-Review date: 2026-08-25
+Review date: 2026-08-28
 
 ## Scope
 
@@ -66,6 +66,13 @@ process lifetime MUST set `SPA_FGN_PLUGIN_FLAG_RETAIN_LIBRARY`. The host MUST
 then keep that library mapped until process termination. Such a plugin MUST
 bound retained registry state per mapped library, not per graph or instance.
 
+ABI-v7 descriptor growth MUST be append-only and gated by `struct_size`. The
+host MUST accept the original descriptor prefix ending after `process()` and
+MUST NOT read an appended callback from a shorter descriptor. A descriptor
+that contains the appended process-thread preparation field remains ABI v7;
+the field is optional and a null value has the same behavior as the original
+prefix.
+
 ### FGN-FORMAT-001 — Exact per-port ndarray meaning
 
 Each port format MUST identify its element type, packed layout, positive exact
@@ -106,7 +113,7 @@ The host and plugin MUST follow this callback matrix:
 
 | Callback family | Calling context | May overlap `process()` | Borrowed data lifetime |
 |---|---|---:|---|
-| instantiate, cleanup | serial lifecycle owner | no | config only for instantiate call |
+| instantiate, cleanup | serial lifecycle owner | no | config only for instantiate; executor interface through cleanup |
 | port and property enumeration | serial admission owner | no | returned descriptor storage lives with instance |
 | get property | serial control owner | yes | returned string through callback return and immediate POD copy |
 | prepare properties | serial control owner | yes | assignments and strings only for prepare call |
@@ -116,6 +123,7 @@ The host and plugin MUST follow this callback matrix:
 | commit parameter | serial parameter owner, or data-loop owner for a graph transaction | legacy serial commit may overlap | prepared object transfers to plugin |
 | adopt parameter set | data-loop owner at graph-cycle start | no node processing has begun | none |
 | activate, deactivate, reset | serial lifecycle owner | no | no retained host data |
+| prepare process thread | exact data-loop owner after activation | no | no retained host data |
 | property revision | control and data-loop observers | yes | none |
 | process | data-loop owner | one data-loop caller | buffers only for process call |
 
@@ -123,6 +131,17 @@ A plugin copies any string, buffer content, or other borrowed input retained
 after its callback returns. The host serializes control callbacks with one
 another but does not lock the data loop; every control/data publication
 therefore uses an explicit release/acquire or stronger protocol.
+
+After activating the executor and plugin instances, the host MUST invoke every
+present `prepare_process_thread()` callback on the exact coordinator that will
+subsequently call `process()`. This lifecycle callback MAY allocate, compile,
+take locks, touch pages, adopt a language-runtime thread, and synchronously
+enter persistent helper lanes. The graph MUST reject processing with
+`-EAGAIN` until all requested callbacks succeed. The PipeWire adapter MUST
+schedule the callback on the filter data loop rather than assuming its state
+listener is the process owner. A plugin that requires thread identity MUST
+reject `process()` from a different thread. Deactivation invalidates the
+preparation and the next active interval MUST prepare again.
 
 ### FGN-BUF-001 — Buffer admission and completion
 
@@ -299,6 +318,81 @@ that adapter MAY issue one coalesced event-source wake-up after construction,
 but MUST NOT use a dynamically growing generic invoke queue from its data-loop
 callback.
 
+### FGN-WORKER-001 — Host-owned fixed execution
+
+The graph MAY configure zero through 63 persistent helper lanes in addition to
+its data-loop coordinator. Worker storage MUST be fixed before instance
+construction. The host MUST pass every instance one immutable versioned
+executor interface that remains valid through cleanup, start helper threads
+before plugin activation, and stop and join them only after plugin
+deactivation. With zero helpers, the same interface MUST execute synchronously
+on the coordinator as the serial fallback.
+
+The polling policy implemented by ABI v7 MUST use no wake system call in
+repeated dispatch. Each helper's command generation and completion generation
+MUST use distinct cache lines and C11 lock-free atomics. The coordinator MUST
+publish a completely initialized immutable task with release ordering; a helper
+MUST observe it with acquire ordering, publish status and completion with
+release ordering, and the coordinator MUST observe completion with acquire
+ordering before returning borrowed storage. A startup acknowledgement MUST
+precede the first command. Each slot's single coordinator-owned generation
+MUST advance for every command to that slot, including shutdown, so a helper
+cannot confuse a new command with its initial observation. Before publishing a
+command, the coordinator MUST rearm that slot's completion token to a value
+different from the command generation; this rule also applies when the
+generation counter wraps.
+
+The ABI-v7 dense-F32 primitive MUST evaluate a row-major matrix over one
+declared half-open column range and either replace or accumulate the output. It
+MUST validate dimensions, address arithmetic, element alignment, flags, and
+mutable-output overlap before dispatch. Each lane MUST own a disjoint output
+row range. Every internal range boundary MUST align to a cache-line boundary in
+the actual output address, including when the output base itself is not
+cache-line aligned. ABI v7 MUST use the pinned Calculon dense-F32 reduction
+profile: a four-accumulator fused scalar fallback, an AVX2/FMA 32-element
+four-accumulator kernel on capable x86-64 hosts, and a 16-element
+four-accumulator NEON kernel on AArch64, with 2,048-element blocks at 8,192
+columns and above. This makes one task bitwise invariant across helper counts
+and matches the corresponding native `PreparedGemv<f32>` profile on the same
+target. Architectures can differ, and splitting one range across ordered
+ACCUMULATE calls can group floating-point additions differently from one
+whole-range call. Such progressive equivalence requires its own declared
+numerical contract. The call MUST remain synchronous so matrix, input, output,
+and task storage are no longer borrowed when it returns.
+
+The executor MAY also expose a synchronous fixed-lane task primitive for
+generated language adapters and MUST report the cache-line size used by its
+worker implementation. Its task MUST contain a struct size, zero flags, an
+opaque borrowed context, one lane function, and a requested lane count.
+The host MUST reject an unknown flag, a missing function, a zero lane count,
+or a lane count greater than the executor capacity before dispatch. It MUST
+invoke the function exactly once for every lane in `[0, n_lanes)`, with lane
+zero on the data-loop coordinator, and MUST wait for every invoked lane before
+returning. If more than one lane reports failure, the coordinator result and
+then the lowest-numbered helper result MUST take precedence. The primitive
+MUST NOT retain the task, context, or data reachable through that context.
+
+A language adapter MAY use the process-thread lifecycle callback to enter all
+fixed lanes once before streaming. First-use adoption, compilation, and page
+touching belong there and MUST NOT be deferred to the first repeated task.
+
+The fixed-lane primitive is an adapter facility, not a scientific authoring
+API. An adapter that uses it MUST establish disjoint mutable ownership or a
+separately specified deterministic reduction before dispatch, contain every
+language-runtime failure inside each lane function, and satisfy FGN-RT-001 for
+the lane body. Opaque context prevents the C executor from validating those
+algorithm-specific arrays. A declaration without the matching adapter support
+MUST continue through its ordinary serial process method.
+
+One plugin instance MUST NOT enter its executor concurrently or recursively.
+The fixed rendezvous performs algorithmically bounded polling but depends on
+every admitted helper being runnable. A deployment that enables helpers
+without reserving adequate scheduling capacity is not qualified for the
+bounded-latency claim. ABI v7 does not provide affinity, NUMA placement,
+parking, an asynchronous queue, buffer-retention tokens, or multi-batch
+pipelining. Those are separate capabilities and MUST NOT be inferred from the
+dense task's column-range fields.
+
 ### FGN-PORT-001 — Ndarray role separation
 
 The ABI MUST represent per-frame values as ordinary data ports, sparse large
@@ -337,6 +431,7 @@ filter chain:
 
 ```text
 {
+    workers = { helpers = 3 }
     nodes = [
         {
             type = ndarray
@@ -368,6 +463,11 @@ filter chain:
     outputs = [ "slopes:slopes" "slopes:flux" ]
 }
 ```
+
+`workers.helpers` is an optional graph-operational value in the inclusive
+range zero through 63. It is not scientific algorithm configuration. Omitting
+`workers` selects the one-lane serial fallback. Unknown or duplicate worker
+fields are rejected.
 
 `plugin` is passed to `dlopen()` and `label` selects a descriptor exported by
 that library. Every port supplies one exact element type, shape, layout,
@@ -684,14 +784,17 @@ containment, and retired-plan reclamation. Property-free declarations use a
 fixed plan owner; property and parameter declarations select the matching
 bounded plan owner at compile time.
 
-The proof library's 36-entry type list covers every current production Rust
+The proof library's 41-entry type list covers every current production Rust
 declaration, including mixed U16/F32 pixel calibration, image views,
-reconstruction, control, calibration, optical-gain, and deformable-mirror
-operations. The generic checked-buffer surface admits packed Bool8, signed and
-unsigned integer widths, F32, and F64 arrays. Rust integration tests cover
-warmed process allocation/deallocation, state, sparse parameter adoption, and
-REVOLT dimensions. This does not replace process-wide allocator, lock, or
-system-call interposition.
+whole-frame and progressive SHWFS/PWFS reconstruction, control, calibration,
+optical-gain, and deformable-mirror operations. Progressive operation markers
+retain exact typed plan and workspace projections; the adapter delegates only
+cache-line-isolated reconstructed-output ranges to the fixed-lane primitive.
+The generic checked-buffer surface admits packed Bool8, signed and unsigned
+integer widths, F32, and F64 arrays. Rust integration tests cover warmed
+process allocation/deallocation, state, sparse parameter adoption, worker
+failure, conditional terminal publication, and REVOLT dimensions. This does
+not replace process-wide allocator, lock, or system-call interposition.
 
 The current Calculon adapter uses `config` for construction-only and
 graph-rebuild values. Its shared `PropertyRuntime` and
@@ -805,6 +908,15 @@ samples, process order, load, pressure, revisions, and artifact hashes. Exact
 method and limitations are in `scripts/qualify_fgn_revolt_classic.py` and
 `docs/fgn-revolt-classic-qualification.md` in the Calculon repository.
 
+`benchmark-filter-graph-ndarray-executor` isolates one synchronous dense-F32
+executor call. It verifies the configured helper count bit-for-bit against the
+one-lane executor before and after timing, separates warmup, records every raw
+service-time and paired-clock observation, and reports p50, p90, p99, p99.9,
+and maximum when the sample count supports them. This is a closed-loop service
+time benchmark: it does not model camera arrivals, queueing, deadlines, or
+overload. Run each helper count in a process cpuset with enough distinct
+physical cores and record that mapping; ABI v7 does not assign affinity itself.
+
 ## Adapter boundaries and remaining work
 
 `libpipewire-module-ndarray-filter-chain` negotiates exact ndarray formats and
@@ -835,7 +947,8 @@ scientific contract.
 
 ## Julia and additional language bindings
 
-Status: non-normative future admission work.
+Status: shared-executor binding proved; production plugin admission remains
+future work.
 
 The portable declaration is a source-level scientist API, while the FGN C ABI
 is already the language-neutral deployment boundary. A second Calculon plugin
@@ -847,6 +960,17 @@ Julia now has a native declaration macro with stateful processing, sources,
 properties, sparse parameters, and explicit column-major formats. It can be
 used by a Julia or AdaptiveOpticsSim graph without PipeWire. This does not by
 itself admit Julia on a PipeWire data-loop thread.
+
+The deployment-only `CalculonFGN` Julia package now validates and calls the
+same ABI-v1 executor table used by C and Rust. A qualification invokes four
+independent declared leaky-integrator instances on one coordinator and three
+persistent C helper pthreads, separates first adoption from 10,000 warmed
+rendezvous, observes the helpers in Julia's `:foreign` thread pool, reports
+zero warmed Julia heap bytes in every lane, and exercises the shared dense-F32
+primitive. The append-only ABI-v7 lifecycle extension gives a future Julia
+plugin an explicit data-loop preparation point. This is boundary evidence,
+not a generated Julia descriptor, buffer projection, AOT artifact, or
+hard-real-time admission.
 
 A Julia FGN implementation must choose and qualify one runtime ownership
 model, normally one preinitialized runtime and registry rather than one runtime

@@ -38,9 +38,11 @@ static const struct spa_fgn_property_info properties[] = {
 };
 
 static int instantiate(const struct spa_fgn_descriptor *descriptor,
-		const char *config, void **result)
+		const char *config, const struct spa_fgn_executor *executor,
+		void **result)
 {
-	if (descriptor == NULL || config == NULL || result == NULL)
+	if (descriptor == NULL || config == NULL || executor == NULL ||
+	    executor->version != SPA_FGN_EXECUTOR_VERSION || result == NULL)
 		return -EINVAL;
 	*result = (void *)descriptor;
 	return 0;

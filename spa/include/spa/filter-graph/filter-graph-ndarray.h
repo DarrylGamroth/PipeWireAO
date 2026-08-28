@@ -27,7 +27,9 @@ struct spa_fgn_graph;
  * instance construction, and an initial runtime-only scalar `props` object.
  * The graph is acyclic. Linked ports have exactly matching formats, including
  * rates. Different external rates are admitted when a node explicitly
- * aggregates or otherwise conditionally publishes output.
+ * aggregates or otherwise conditionally publishes output. An optional
+ * top-level `workers = { helpers = N }` object selects zero through 63
+ * persistent polling helpers; omission selects the serial executor.
  */
 int spa_fgn_graph_new(const char *config, struct spa_fgn_graph **graph);
 void spa_fgn_graph_free(struct spa_fgn_graph *graph);
@@ -97,6 +99,17 @@ int spa_fgn_graph_set_parameters(struct spa_fgn_graph *graph,
 		uint32_t n_updates);
 
 int spa_fgn_graph_activate(struct spa_fgn_graph *graph);
+
+/**
+ * Prepare the current thread as the graph's process coordinator.
+ *
+ * Call this on the exact thread that will subsequently call process(), after
+ * activate() and before the first graph cycle. The call is a serialized
+ * lifecycle operation and may allocate, block, compile, and touch pages.
+ * Graphs whose plugins do not request preparation accept the call as a no-op.
+ */
+int spa_fgn_graph_prepare_process_thread(struct spa_fgn_graph *graph);
+
 int spa_fgn_graph_deactivate(struct spa_fgn_graph *graph);
 int spa_fgn_graph_reset(struct spa_fgn_graph *graph);
 
