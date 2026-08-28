@@ -24,7 +24,7 @@ extern "C" {
  */
 
 /** Version of the C ABI exported by ndarray plugin libraries. */
-#define SPA_FGN_PLUGIN_ABI_VERSION 5u
+#define SPA_FGN_PLUGIN_ABI_VERSION 6u
 #define SPA_FGN_MAX_METAS 16u
 #define SPA_FGN_MAX_META_BYTES 4096u
 #define SPA_FGN_MAX_PARAMETER_TRANSACTION_ASSIGNMENTS 4096u
@@ -54,6 +54,15 @@ enum spa_fgn_port_flag {
 	SPA_FGN_PORT_FLAG_OPTIONAL = (1u << 0),
 	/** Sparse, retained plugin state supplied outside the data-loop process. */
 	SPA_FGN_PORT_FLAG_PARAMETER = (1u << 1),
+	/**
+	 * An output may intentionally produce no artifact in one process call.
+	 *
+	 * The plugin leaves the output chunk size zero for that call. The graph
+	 * skips consumers whose required input is absent and propagates absence to
+	 * their outputs without invoking them. A later call may complete the
+	 * output using the same unpublished caller-owned buffer.
+	 */
+	SPA_FGN_PORT_FLAG_CONDITIONAL = (1u << 2),
 };
 
 /**
@@ -333,7 +342,7 @@ struct spa_fgn_descriptor {
 	int (*reset)(void *instance);
 
 	/**
-	 * Process exactly one complete buffer on every connected port.
+	 * Process one complete buffer on every connected input port.
 	 *
 	 * This callback runs on the graph data loop. It must not allocate, block,
 	 * unwind across the ABI, or retain a buffer after returning. Input buffers
@@ -344,7 +353,9 @@ struct spa_fgn_descriptor {
 	 * SPA_FGN_MAX_META_BYTES in total. A plugin instance writes at the supplied
 	 * output chunk offset, preserves that offset, and sets the completed size
 	 * only after successful processing. It leaves the completed size zero on
-	 * failure.
+	 * failure. An output declared with SPA_FGN_PORT_FLAG_CONDITIONAL may also
+	 * leave its completed size zero on success to defer publication. A
+	 * non-conditional output must be complete whenever this callback runs.
 	 * Parameter-port entries are present in the input
 	 * array with a NULL buffer; process() uses the plugin-owned active state
 	 * previously published by commit_parameter().
