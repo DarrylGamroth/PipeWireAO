@@ -13,7 +13,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
-const ABI_VERSION: u32 = 6;
+const ABI_VERSION: u32 = 7;
+const EXECUTOR_VERSION: u32 = 1;
 const DIRECTION_INPUT: u32 = 0;
 const DIRECTION_OUTPUT: u32 = 1;
 const PORT_OPTIONAL: u32 = 1;
@@ -174,7 +175,53 @@ struct Parameter {
     buffer: FgnBuffer,
 }
 
-type Instantiate = unsafe extern "C" fn(*const Descriptor, *const c_char, *mut *mut c_void) -> i32;
+#[repr(C)]
+struct DenseF32Task {
+    struct_size: u32,
+    flags: u32,
+    matrix: *const f32,
+    input: *const f32,
+    output: *mut f32,
+    n_rows: u32,
+    matrix_row_stride: u32,
+    first_column: u32,
+    n_columns: u32,
+}
+
+type RunDenseF32 = unsafe extern "C" fn(*mut c_void, *const DenseF32Task) -> i32;
+type RunLane = unsafe extern "C" fn(*mut c_void, u32, u32) -> i32;
+
+#[repr(C)]
+struct LanesTask {
+    struct_size: u32,
+    flags: u32,
+    data: *mut c_void,
+    run: Option<RunLane>,
+    n_lanes: u32,
+    reserved: u32,
+}
+
+type RunLanes = unsafe extern "C" fn(*mut c_void, *const LanesTask) -> i32;
+
+#[repr(C)]
+struct Executor {
+    struct_size: u32,
+    version: u32,
+    flags: u32,
+    n_lanes: u32,
+    data: *mut c_void,
+    run_dense_f32: Option<RunDenseF32>,
+    run_lanes: Option<RunLanes>,
+    cache_line_size: u32,
+    reserved: u32,
+}
+
+type Instantiate = unsafe extern "C" fn(
+    *const Descriptor,
+    *const c_char,
+    *const Executor,
+    *mut *mut c_void,
+) -> i32;
 type Cleanup = unsafe extern "C" fn(*mut c_void);
 type GetPortFormat = unsafe extern "C" fn(*mut c_void, u32, *mut *const Format) -> i32;
 type EnumPropInfo = unsafe extern "C" fn(*mut c_void, u32, *mut PropertyInfo) -> i32;
@@ -216,6 +263,7 @@ struct Descriptor {
     deactivate: Option<Lifecycle>,
     reset: Option<Lifecycle>,
     process: Option<Process>,
+    prepare_process_thread: Option<Lifecycle>,
 }
 
 unsafe impl Sync for Descriptor {}
@@ -386,10 +434,21 @@ static MODE_CHOICES: [PropertyChoice; 2] = [
 unsafe extern "C" fn instantiate(
     _descriptor: *const Descriptor,
     config: *const c_char,
+    executor: *const Executor,
     result: *mut *mut c_void,
 ) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
-        if result.is_null() || config.is_null() {
+        if result.is_null() || config.is_null() || executor.is_null() {
+            return -EINVAL;
+        }
+        // SAFETY: FGN lends an executor with instance lifetime.
+        let executor = unsafe { &*executor };
+        if executor.struct_size < size_of::<Executor>() as u32
+            || executor.version != EXECUTOR_VERSION
+            || executor.n_lanes == 0
+            || executor.run_dense_f32.is_none()
+            || executor.reserved != 0
+        {
             return -EINVAL;
         }
         // The host supplies canonical JSON. The ndarray contract retires this key even for
@@ -1021,6 +1080,7 @@ static DESCRIPTOR: Descriptor = Descriptor {
     deactivate: None,
     reset: None,
     process: Some(process),
+    prepare_process_thread: None,
 };
 
 static PLUGIN: Plugin = Plugin {

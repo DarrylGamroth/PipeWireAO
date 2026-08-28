@@ -6,10 +6,12 @@
 #define SPA_FILTER_GRAPH_NDARRAY_PLUGIN_H
 
 #include <errno.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #include <spa/buffer/buffer.h>
+#include <spa/filter-graph/ndarray-executor.h>
 #include <spa/param/format.h>
 #include <spa/param/ndarray.h>
 #include <spa/utils/defs.h>
@@ -24,7 +26,7 @@ extern "C" {
  */
 
 /** Version of the C ABI exported by ndarray plugin libraries. */
-#define SPA_FGN_PLUGIN_ABI_VERSION 6u
+#define SPA_FGN_PLUGIN_ABI_VERSION 7u
 #define SPA_FGN_MAX_METAS 16u
 #define SPA_FGN_MAX_META_BYTES 4096u
 #define SPA_FGN_MAX_PARAMETER_TRANSACTION_ASSIGNMENTS 4096u
@@ -262,10 +264,14 @@ struct spa_fgn_descriptor {
 	 * Construct an instance from one standard JSON object.
 	 *
 	 * The graph host canonicalizes PipeWire's relaxed SPA syntax before this
-	 * callback. The string is borrowed for this call only.
+	 * callback. The string is borrowed for this call only. The immutable
+	 * executor interface and its data remain valid through cleanup; an instance
+	 * may retain that pointer but invokes it only from process() or
+	 * prepare_process_thread().
 	 */
 	int (*instantiate)(const struct spa_fgn_descriptor *descriptor,
-			const char *config, void **instance);
+			const char *config,
+			const struct spa_fgn_executor *executor, void **instance);
 	void (*cleanup)(void *instance);
 
 	int (*get_port_format)(void *instance, uint32_t port,
@@ -344,8 +350,10 @@ struct spa_fgn_descriptor {
 	/**
 	 * Process one complete buffer on every connected input port.
 	 *
-	 * This callback runs on the graph data loop. It must not allocate, block,
-	 * unwind across the ABI, or retain a buffer after returning. Input buffers
+	 * This callback runs on the graph data loop. It must not allocate, call a
+	 * blocking primitive, unwind across the ABI, or retain a buffer after
+	 * returning. It may synchronously poll only through the supplied bounded
+	 * host executor. Input buffers
 	 * and their metadata are read-only, including when one output fans out to
 	 * multiple consumers. Input and output buffer descriptors, chunks,
 	 * metadata, and data regions do not overlap. Each buffer has exactly one
@@ -370,7 +378,35 @@ struct spa_fgn_descriptor {
 	int (*process)(void *instance,
 			const struct spa_fgn_buffer *inputs, uint32_t n_inputs,
 			struct spa_fgn_buffer *outputs, uint32_t n_outputs);
+
+	/**
+	 * Prepare the exact coordinator thread that will call process().
+	 *
+	 * This optional callback runs once after activate() in each active interval,
+	 * before any process() callback. It may allocate, compile, take locks, touch
+	 * pages, and synchronously enter every lane through the supplied executor.
+	 * It is therefore a lifecycle callback, not a real-time callback. A plugin
+	 * that uses a language runtime may adopt and warm the coordinator and helper
+	 * threads here, then reject process() from a different thread.
+	 *
+	 * The callback is an append-only ABI-v7 extension. Descriptors whose
+	 * struct_size ends before this field are equivalent to a NULL callback.
+	 */
+	int (*prepare_process_thread)(void *instance);
 };
+
+/** Size of the original ABI-v7 descriptor prefix. */
+#define SPA_FGN_DESCRIPTOR_ABI_V7_SIZE \
+	offsetof(struct spa_fgn_descriptor, prepare_process_thread)
+
+/** Whether an ABI-v7 descriptor contains the optional thread-preparation field. */
+static inline bool spa_fgn_descriptor_has_prepare_process_thread(
+		const struct spa_fgn_descriptor *descriptor)
+{
+	return descriptor != NULL && descriptor->struct_size >=
+		offsetof(struct spa_fgn_descriptor, prepare_process_thread) +
+		sizeof(descriptor->prepare_process_thread);
+}
 
 /** Interface returned by one shared library. */
 struct spa_fgn_plugin {
