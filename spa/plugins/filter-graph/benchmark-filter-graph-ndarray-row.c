@@ -3,7 +3,7 @@
 
 /*
  * Callback service-time comparison for a complete-frame and a row-block
- * Calculon SHWFS front end. This excludes detector readout, PipeWire
+ * Calculon wavefront-sensor front end. This excludes detector readout, PipeWire
  * scheduling, input publication, and graph construction. In addition to
  * aggregate service, the CSV records every row-block callback so an external
  * harness can replay the trace against an independent camera-arrival schedule.
@@ -21,13 +21,33 @@
 
 #include <spa/filter-graph/filter-graph-ndarray.h>
 
+#ifdef BENCHMARK_PWFS
+#define IMAGE_ROWS 64u
+#define IMAGE_COLUMNS 64u
+#define PUPIL_ROWS 30u
+#define PUPIL_COLUMNS 30u
+#define SELECTED_PER_PUPIL (PUPIL_ROWS * PUPIL_COLUMNS)
+#define RECONSTRUCTION_INPUTS (4u * SELECTED_PER_PUPIL)
+#define RECONSTRUCTED 253u
+#define GRAPH_INPUTS 6u
+#define GRAPH_OUTPUTS 3u
+#define RECONSTRUCTOR_INPUT 5u
+#define SENSOR_NAME "PWFS"
+#else
 #define IMAGE_ROWS 352u
 #define IMAGE_COLUMNS 352u
 #define SUBAPERTURE_ROWS 22u
 #define SUBAPERTURE_COLUMNS 22u
 #define SUBAPERTURES 256u
-#define SLOPES (SUBAPERTURES * 2u)
-#define ACTUATORS 277u
+#define RECONSTRUCTION_INPUTS (SUBAPERTURES * 2u)
+#define RECONSTRUCTED 277u
+#define GRAPH_INPUTS 9u
+#define GRAPH_OUTPUTS 1u
+#define RECONSTRUCTOR_INPUT 8u
+#define SENSOR_NAME "SHWFS"
+#endif
+#define SLOPES RECONSTRUCTION_INPUTS
+#define ACTUATORS RECONSTRUCTED
 #define DEFAULT_SAMPLES 5000u
 #define DEFAULT_WARMUP 1000u
 #define DEFAULT_BLOCK_ROWS 8u
@@ -61,6 +81,18 @@ static uint32_t parse_u32(const char *text)
 	return (uint32_t)value;
 }
 
+static uint32_t parse_helpers(const char *text)
+{
+	char *end = NULL;
+	unsigned long value;
+
+	errno = 0;
+	value = strtoul(text, &end, 10);
+	spa_assert_se(errno == 0 && end != text && *end == '\0' &&
+			value <= SPA_FGN_EXECUTOR_MAX_HELPERS);
+	return (uint32_t)value;
+}
+
 static void init_buffer(struct test_buffer *storage, void *data,
 		uint32_t bytes, int32_t stride, bool input)
 {
@@ -84,6 +116,14 @@ static void init_buffer(struct test_buffer *storage, void *data,
 
 static char *make_origins(void)
 {
+#ifdef BENCHMARK_PWFS
+	static const char value[] = "[[33,34],[0,0],[34,1],[0,34]]";
+	char *origins = malloc(sizeof(value));
+
+	spa_assert_se(origins != NULL);
+	memcpy(origins, value, sizeof(value));
+	return origins;
+#else
 	size_t capacity = SUBAPERTURES * 24u + 3u;
 	char *origins = malloc(capacity);
 	size_t offset = 0;
@@ -106,19 +146,107 @@ static char *make_origins(void)
 	origins[offset++] = ']';
 	origins[offset] = '\0';
 	return origins;
+#endif
 }
 
-static char *make_config(const char *plugin, const char *origins,
-		uint32_t block_rows, bool row)
+#ifdef BENCHMARK_PWFS
+static char *make_mask(void)
 {
-	size_t capacity = strlen(plugin) * 3u + strlen(origins) + 8192u;
+	size_t capacity = SELECTED_PER_PUPIL * 6u + 3u;
+	char *mask = malloc(capacity);
+	size_t offset = 0;
+
+	spa_assert_se(mask != NULL);
+	mask[offset++] = '[';
+	for (uint32_t pixel = 0; pixel < SELECTED_PER_PUPIL; pixel++) {
+		int written = snprintf(mask + offset, capacity - offset,
+				"%strue", pixel == 0 ? "" : ",");
+
+		spa_assert_se(written > 0 && (size_t)written < capacity - offset);
+		offset += (size_t)written;
+	}
+	mask[offset++] = ']';
+	mask[offset] = '\0';
+	return mask;
+}
+#endif
+
+static char *make_config(const char *plugin, const char *origins,
+		const char *mask, uint32_t block_rows, uint32_t worker_helpers,
+		bool row)
+{
+	size_t capacity = strlen(plugin) * 3u + strlen(origins) +
+		(mask == NULL ? 0u : strlen(mask)) + 8192u;
 	char *config = malloc(capacity);
 	int written;
 
 	spa_assert_se(config != NULL && strchr(plugin, '"') == NULL);
+#ifdef BENCHMARK_PWFS
+	spa_assert_se(mask != NULL);
 	if (row) {
 		written = snprintf(config, capacity,
-			"{\"nodes\":["
+			"{\"workers\":{\"helpers\":%u},\"nodes\":["
+			"{\"type\":\"ndarray\",\"name\":\"calibrate\","
+			"\"plugin\":\"%s\",\"label\":\"pixel-calibration-row-u16-f32\","
+			"\"config\":{\"image_rows\":%u,\"image_columns\":%u,"
+			"\"row_block_rows\":%u,\"rate\":[1000,1]}},"
+			"{\"type\":\"ndarray\",\"name\":\"reconstruct\","
+			"\"plugin\":\"%s\",\"label\":\"pwfs-row-reconstructor-f32\","
+			"\"config\":{\"image_rows\":%u,\"image_columns\":%u,"
+			"\"row_block_rows\":%u,\"pupil_rows\":%u,"
+			"\"pupil_columns\":%u,\"pupil_origins\":%s,"
+			"\"pupil_mask\":%s,\"reconstructed_count\":%u,"
+			"\"reconstructed_schema\":\"org.calculon.benchmark.pwfs/1\","
+			"\"rate\":[1000,1]}}],"
+			"\"links\":[{\"output\":\"calibrate:calibrated\","
+			"\"input\":\"reconstruct:row-block\"}],"
+			"\"inputs\":[\"calibrate:raw\",\"calibrate:flat\","
+			"\"calibrate:background\",\"reconstruct:pupil-origins\","
+			"\"reconstruct:pupil-mask\",\"reconstruct:reconstructor\"],"
+			"\"outputs\":[\"reconstruct:reconstruction-pixels\","
+			"\"reconstruct:mean-pupil-intensity\","
+			"\"reconstruct:reconstructed\"]}",
+			worker_helpers, plugin, IMAGE_ROWS, IMAGE_COLUMNS, block_rows,
+			plugin, IMAGE_ROWS, IMAGE_COLUMNS, block_rows, PUPIL_ROWS,
+			PUPIL_COLUMNS, origins, mask, RECONSTRUCTED);
+	} else {
+		written = snprintf(config, capacity,
+			"{\"workers\":{\"helpers\":%u},\"nodes\":["
+			"{\"type\":\"ndarray\",\"name\":\"calibrate\","
+			"\"plugin\":\"%s\",\"label\":\"pixel-calibration-u16-f32\","
+			"\"config\":{\"image_rows\":%u,\"image_columns\":%u,"
+			"\"rate\":[1000,1]}},"
+			"{\"type\":\"ndarray\",\"name\":\"normalize\","
+			"\"plugin\":\"%s\",\"label\":\"pyramid-pixel-image-f32\","
+			"\"config\":{\"image_rows\":%u,\"image_columns\":%u,"
+			"\"pupil_rows\":%u,\"pupil_columns\":%u,"
+			"\"pupil_origins\":%s,\"pupil_mask\":%s,"
+			"\"rate\":[1000,1]}},"
+			"{\"type\":\"ndarray\",\"name\":\"reconstruct\","
+			"\"plugin\":\"%s\",\"label\":\"pwfs-reconstructor-f32\","
+			"\"config\":{\"reconstructed_count\":%u,"
+			"\"selected_pixel_count\":%u,"
+			"\"reconstructed_schema\":\"org.calculon.benchmark.pwfs/1\","
+			"\"rate\":[1000,1]}}],"
+			"\"links\":[{\"output\":\"calibrate:calibrated\","
+			"\"input\":\"normalize:image\"},"
+			"{\"output\":\"normalize:reconstruction-pixels\","
+			"\"input\":\"reconstruct:reconstruction-pixels\"}],"
+			"\"inputs\":[\"calibrate:raw\",\"calibrate:flat\","
+			"\"calibrate:background\",\"normalize:pupil-origins\","
+			"\"normalize:pupil-mask\",\"reconstruct:reconstructor\"],"
+			"\"outputs\":[\"normalize:reconstruction-pixels\","
+			"\"normalize:mean-pupil-intensity\","
+			"\"reconstruct:reconstructed\"]}",
+			worker_helpers, plugin, IMAGE_ROWS, IMAGE_COLUMNS,
+			plugin, IMAGE_ROWS, IMAGE_COLUMNS, PUPIL_ROWS, PUPIL_COLUMNS,
+			origins, mask, plugin, RECONSTRUCTED, SELECTED_PER_PUPIL);
+	}
+#else
+	(void)mask;
+	if (row) {
+		written = snprintf(config, capacity,
+			"{\"workers\":{\"helpers\":%u},\"nodes\":["
 			"{\"type\":\"ndarray\",\"name\":\"calibrate\","
 			"\"plugin\":\"%s\",\"label\":\"pixel-calibration-row-u16-f32\","
 			"\"config\":{\"image_rows\":%u,\"image_columns\":%u,"
@@ -142,13 +270,13 @@ static char *make_config(const char *plugin, const char *origins,
 			"\"reconstruct:thresholds\",\"reconstruct:active\","
 			"\"reconstruct:reconstructor\"],"
 			"\"outputs\":[\"reconstruct:reconstructed\"]}",
-			plugin, IMAGE_ROWS, IMAGE_COLUMNS, block_rows,
+			worker_helpers, plugin, IMAGE_ROWS, IMAGE_COLUMNS, block_rows,
 			plugin, IMAGE_ROWS, IMAGE_COLUMNS, block_rows,
 			SUBAPERTURE_ROWS, SUBAPERTURE_COLUMNS, SUBAPERTURES,
 			ACTUATORS, origins);
 	} else {
 		written = snprintf(config, capacity,
-			"{\"nodes\":["
+			"{\"workers\":{\"helpers\":%u},\"nodes\":["
 			"{\"type\":\"ndarray\",\"name\":\"calibrate\","
 			"\"plugin\":\"%s\",\"label\":\"pixel-calibration-u16-f32\","
 			"\"config\":{\"image_rows\":%u,\"image_columns\":%u,"
@@ -176,11 +304,12 @@ static char *make_config(const char *plugin, const char *origins,
 			"\"measure:thresholds\",\"measure:active\","
 			"\"reconstruct:reconstructor\"],"
 			"\"outputs\":[\"reconstruct:reconstructed\"]}",
-			plugin, IMAGE_ROWS, IMAGE_COLUMNS,
+			worker_helpers, plugin, IMAGE_ROWS, IMAGE_COLUMNS,
 			plugin, IMAGE_ROWS, IMAGE_COLUMNS, SUBAPERTURE_ROWS,
 			SUBAPERTURE_COLUMNS, SUBAPERTURES, origins,
 			plugin, ACTUATORS, SUBAPERTURES);
 	}
+#endif
 	spa_assert_se(written > 0 && (size_t)written < capacity);
 	return config;
 }
@@ -189,11 +318,16 @@ static void fill_inputs(uint16_t *image, float *matrix)
 {
 	for (uint32_t row = 0; row < IMAGE_ROWS; row++) {
 		for (uint32_t column = 0; column < IMAGE_COLUMNS; column++) {
+#ifdef BENCHMARK_PWFS
+			image[(size_t)row * IMAGE_COLUMNS + column] =
+				(uint16_t)(100u + 3u * row + 2u * column);
+#else
 			uint32_t local_row = row % SUBAPERTURE_ROWS;
 			uint32_t local_column = column % SUBAPERTURE_COLUMNS;
 
 			image[(size_t)row * IMAGE_COLUMNS + column] =
 				(uint16_t)(100u + 2u * local_row + local_column);
+#endif
 		}
 	}
 	for (uint32_t actuator = 0; actuator < ACTUATORS; actuator++) {
@@ -207,6 +341,20 @@ static void fill_inputs(uint16_t *image, float *matrix)
 	}
 }
 
+static void load_matrix_if_requested(float *matrix, size_t elements)
+{
+	const char *path = getenv("PW_FGN_ROW_BENCHMARK_MATRIX_F32");
+	FILE *file;
+
+	if (path == NULL)
+		return;
+	file = fopen(path, "re");
+	spa_assert_se(file != NULL);
+	spa_assert_se(fread(matrix, sizeof(*matrix), elements, file) == elements);
+	spa_assert_se(fgetc(file) == EOF);
+	spa_assert_se(fclose(file) == 0);
+}
+
 static int process_full(struct spa_fgn_graph *graph,
 		struct test_buffer *input, struct test_buffer *output,
 		struct spa_buffer **inputs, struct spa_buffer **outputs, uint64_t seq)
@@ -215,7 +363,8 @@ static int process_full(struct spa_fgn_graph *graph,
 	input->header.offset = 0;
 	input->header.pts = SPA_TIME_INVALID;
 	input->header.flags = SPA_META_HEADER_FLAG_MARKER;
-	return spa_fgn_graph_process(graph, inputs, 9, outputs, 1);
+	return spa_fgn_graph_process(graph, inputs, GRAPH_INPUTS,
+			outputs, GRAPH_OUTPUTS);
 }
 
 static void prepare_row(struct test_buffer *input, uint16_t *image,
@@ -247,7 +396,8 @@ static uint64_t process_rows(struct spa_fgn_graph *graph,
 
 		prepare_row(input, image, block_rows, first_row, seq);
 		start = monotonic_ns();
-		res = spa_fgn_graph_process(graph, inputs, 9, outputs, 1);
+		res = spa_fgn_graph_process(graph, inputs, GRAPH_INPUTS,
+				outputs, GRAPH_OUTPUTS);
 		elapsed = monotonic_ns() - start;
 		spa_assert_se(res >= 0);
 		if (block_times != NULL)
@@ -333,8 +483,17 @@ int main(int argc, char *argv[])
 	struct spa_fgn_graph *full_graph = NULL, *row_graph = NULL;
 	struct test_buffer full_input, row_input, full_output, row_output;
 	struct test_buffer full_parameter, row_parameter;
-	struct spa_buffer *full_inputs[9] = { NULL }, *row_inputs[9] = { NULL };
-	struct spa_buffer *full_outputs[1], *row_outputs[1];
+	struct spa_buffer *full_inputs[GRAPH_INPUTS] = { NULL };
+	struct spa_buffer *row_inputs[GRAPH_INPUTS] = { NULL };
+	struct spa_buffer *full_outputs[GRAPH_OUTPUTS];
+	struct spa_buffer *row_outputs[GRAPH_OUTPUTS];
+#ifdef BENCHMARK_PWFS
+	struct test_buffer full_pixels_output, row_pixels_output;
+	struct test_buffer full_mean_output, row_mean_output;
+	float *full_pixels, *row_pixels;
+	float full_mean = -1.0f, row_mean = -1.0f;
+	char *mask;
+#endif
 	uint16_t *image;
 	float *matrix, *full_values, *row_values;
 	uint64_t *full_times, *row_total_times, *row_terminal_times, *row_max_times;
@@ -343,19 +502,25 @@ int main(int argc, char *argv[])
 	char *origins, *full_config, *row_config;
 	uint32_t samples = DEFAULT_SAMPLES, warmup = DEFAULT_WARMUP;
 	uint32_t block_rows = DEFAULT_BLOCK_ROWS;
+	uint32_t worker_helpers = 0;
 	uint32_t blocks_per_frame;
+	bool row_first = getenv("PW_FGN_ROW_BENCHMARK_ROW_FIRST") != NULL;
 	size_t image_elements = (size_t)IMAGE_ROWS * IMAGE_COLUMNS;
 	size_t matrix_elements = (size_t)ACTUATORS * SLOPES;
 	size_t block_trace_elements;
 	uint64_t sequence = 1;
 
-	spa_assert_se(argc >= 2 && argc <= 5);
+	spa_assert_se(argc >= 2 && argc <= 6);
 	if (argc >= 3)
 		samples = parse_u32(argv[2]);
 	if (argc >= 4)
 		warmup = parse_u32(argv[3]);
 	if (argc == 5)
 		block_rows = parse_u32(argv[4]);
+	if (argc == 6) {
+		block_rows = parse_u32(argv[4]);
+		worker_helpers = parse_helpers(argv[5]);
+	}
 	spa_assert_se(block_rows < IMAGE_ROWS && IMAGE_ROWS % block_rows == 0);
 	blocks_per_frame = IMAGE_ROWS / block_rows;
 	spa_assert_se((size_t)blocks_per_frame <= SIZE_MAX / (size_t)samples);
@@ -367,15 +532,23 @@ int main(int argc, char *argv[])
 	spa_assert_se(image != NULL && matrix != NULL && full_values != NULL &&
 			row_values != NULL);
 	fill_inputs(image, matrix);
+	load_matrix_if_requested(matrix, matrix_elements);
 	origins = make_origins();
-	full_config = make_config(argv[1], origins, block_rows, false);
-	row_config = make_config(argv[1], origins, block_rows, true);
+#ifdef BENCHMARK_PWFS
+	mask = make_mask();
+#else
+	const char *mask = NULL;
+#endif
+	full_config = make_config(argv[1], origins, mask, block_rows,
+			worker_helpers, false);
+	row_config = make_config(argv[1], origins, mask, block_rows,
+			worker_helpers, true);
 	spa_assert_se(spa_fgn_graph_new(full_config, &full_graph) == 0);
 	spa_assert_se(spa_fgn_graph_new(row_config, &row_graph) == 0);
-	spa_assert_se(spa_fgn_graph_get_n_inputs(full_graph) == 9 &&
-			spa_fgn_graph_get_n_inputs(row_graph) == 9);
-	spa_assert_se(spa_fgn_graph_get_n_outputs(full_graph) == 1 &&
-			spa_fgn_graph_get_n_outputs(row_graph) == 1);
+	spa_assert_se(spa_fgn_graph_get_n_inputs(full_graph) == GRAPH_INPUTS &&
+			spa_fgn_graph_get_n_inputs(row_graph) == GRAPH_INPUTS);
+	spa_assert_se(spa_fgn_graph_get_n_outputs(full_graph) == GRAPH_OUTPUTS &&
+			spa_fgn_graph_get_n_outputs(row_graph) == GRAPH_OUTPUTS);
 
 	init_buffer(&full_input, image, (uint32_t)(image_elements * sizeof(*image)),
 			(int32_t)(IMAGE_COLUMNS * sizeof(*image)), true);
@@ -386,6 +559,21 @@ int main(int argc, char *argv[])
 			sizeof(float), false);
 	init_buffer(&row_output, row_values, sizeof(float) * ACTUATORS,
 			sizeof(float), false);
+#ifdef BENCHMARK_PWFS
+	full_pixels = calloc(RECONSTRUCTION_INPUTS, sizeof(*full_pixels));
+	row_pixels = calloc(RECONSTRUCTION_INPUTS, sizeof(*row_pixels));
+	spa_assert_se(full_pixels != NULL && row_pixels != NULL);
+	init_buffer(&full_pixels_output, full_pixels,
+			RECONSTRUCTION_INPUTS * (uint32_t)sizeof(*full_pixels),
+			(int32_t)(SELECTED_PER_PUPIL * sizeof(*full_pixels)), false);
+	init_buffer(&row_pixels_output, row_pixels,
+			RECONSTRUCTION_INPUTS * (uint32_t)sizeof(*row_pixels),
+			(int32_t)(SELECTED_PER_PUPIL * sizeof(*row_pixels)), false);
+	init_buffer(&full_mean_output, &full_mean, sizeof(full_mean),
+			sizeof(full_mean), false);
+	init_buffer(&row_mean_output, &row_mean, sizeof(row_mean),
+			sizeof(row_mean), false);
+#endif
 	init_buffer(&full_parameter, matrix,
 			(uint32_t)(matrix_elements * sizeof(*matrix)),
 			(int32_t)(SLOPES * sizeof(*matrix)), true);
@@ -396,24 +584,52 @@ int main(int argc, char *argv[])
 	row_parameter.header.seq = 1;
 	full_inputs[0] = &full_input.buffer;
 	row_inputs[0] = &row_input.buffer;
+#ifdef BENCHMARK_PWFS
+	full_outputs[0] = &full_pixels_output.buffer;
+	full_outputs[1] = &full_mean_output.buffer;
+	full_outputs[2] = &full_output.buffer;
+	row_outputs[0] = &row_pixels_output.buffer;
+	row_outputs[1] = &row_mean_output.buffer;
+	row_outputs[2] = &row_output.buffer;
+#else
 	full_outputs[0] = &full_output.buffer;
 	row_outputs[0] = &row_output.buffer;
+#endif
 	spa_assert_se(spa_fgn_graph_activate(full_graph) == 0);
-	spa_assert_se(spa_fgn_graph_activate(row_graph) == 0);
-	spa_assert_se(spa_fgn_graph_update_parameter(full_graph, 8,
+	spa_assert_se(spa_fgn_graph_update_parameter(full_graph, RECONSTRUCTOR_INPUT,
 			&full_parameter.buffer) == 0);
-	spa_assert_se(spa_fgn_graph_update_parameter(row_graph, 8,
-			&row_parameter.buffer) == 0);
-
+#ifdef BENCHMARK_PWFS
+	for (sequence = 1; sequence <= 2; sequence++)
+		spa_assert_se(process_full(full_graph, &full_input, &full_output,
+				full_inputs, full_outputs, sequence) >= 0);
+#else
 	spa_assert_se(process_full(full_graph, &full_input, &full_output,
 			full_inputs, full_outputs, sequence) >= 0);
+#endif
+	spa_assert_se(spa_fgn_graph_deactivate(full_graph) == 0);
+	spa_assert_se(spa_fgn_graph_activate(row_graph) == 0);
+	spa_assert_se(spa_fgn_graph_update_parameter(row_graph, RECONSTRUCTOR_INPUT,
+			&row_parameter.buffer) == 0);
 	{
 		uint64_t terminal, maximum;
 
+#ifdef BENCHMARK_PWFS
+		for (sequence = 1; sequence <= 2; sequence++)
+			(void)process_rows(row_graph, &row_input, &row_output, row_inputs,
+					row_outputs, image, block_rows, sequence, &terminal,
+					&maximum, NULL);
+#else
 		(void)process_rows(row_graph, &row_input, &row_output, row_inputs,
 				row_outputs, image, block_rows, sequence, &terminal, &maximum,
 				NULL);
+#endif
 	}
+	spa_assert_se(spa_fgn_graph_deactivate(row_graph) == 0);
+#ifdef BENCHMARK_PWFS
+	spa_assert_se(full_mean == row_mean);
+	for (uint32_t pixel = 0; pixel < RECONSTRUCTION_INPUTS; pixel++)
+		spa_assert_se(full_pixels[pixel] == row_pixels[pixel]);
+#endif
 	for (uint32_t actuator = 0; actuator < ACTUATORS; actuator++) {
 		float absolute = fabsf(full_values[actuator] - row_values[actuator]);
 		float scale = fmaxf(fabsf(full_values[actuator]),
@@ -423,24 +639,25 @@ int main(int argc, char *argv[])
 	}
 	printf("numerical-equivalence: %u/%u reconstructed values within "
 			"2e-6 absolute/scaled-relative tolerance\n", ACTUATORS, ACTUATORS);
-	printf("workload: detector=%ux%u subapertures=%u subaperture=%ux%u "
-			"slopes=%u actuators=%u block-rows=%u blocks=%u warmup=%u samples=%u\n",
-			IMAGE_ROWS, IMAGE_COLUMNS, SUBAPERTURES, SUBAPERTURE_ROWS,
+	#ifdef BENCHMARK_PWFS
+	printf("workload: sensor=%s detector=%ux%u pupils=4 pupil=%ux%u "
+			"pixels=%u reconstructed=%u block-rows=%u blocks=%u helpers=%u "
+			"warmup=%u samples=%u\n",
+			SENSOR_NAME, IMAGE_ROWS, IMAGE_COLUMNS, PUPIL_ROWS, PUPIL_COLUMNS,
+			RECONSTRUCTION_INPUTS, RECONSTRUCTED, block_rows,
+			IMAGE_ROWS / block_rows, worker_helpers, warmup, samples);
+	#else
+	printf("workload: sensor=%s detector=%ux%u subapertures=%u subaperture=%ux%u "
+			"slopes=%u actuators=%u block-rows=%u blocks=%u helpers=%u "
+			"warmup=%u samples=%u\n",
+			SENSOR_NAME, IMAGE_ROWS, IMAGE_COLUMNS, SUBAPERTURES, SUBAPERTURE_ROWS,
 			SUBAPERTURE_COLUMNS, SLOPES, ACTUATORS, block_rows,
-			IMAGE_ROWS / block_rows, warmup, samples);
+			IMAGE_ROWS / block_rows, worker_helpers, warmup, samples);
+	#endif
 	printf("boundary: warmed closed-loop graph callbacks; detector readout, "
 			"PipeWire scheduling, publication, graph setup, and parameter setup excluded\n");
-
-	for (uint32_t i = 0; i < warmup; i++) {
-		uint64_t terminal, maximum;
-
-		sequence++;
-		spa_assert_se(process_full(full_graph, &full_input, &full_output,
-				full_inputs, full_outputs, sequence) >= 0);
-		(void)process_rows(row_graph, &row_input, &row_output, row_inputs,
-				row_outputs, image, block_rows, sequence, &terminal, &maximum,
-				NULL);
-	}
+	printf("execution-order: %s first; only one polling worker group active at a time\n",
+			row_first ? "row" : "complete-frame");
 	full_times = calloc(samples, sizeof(*full_times));
 	row_total_times = calloc(samples, sizeof(*row_total_times));
 	row_terminal_times = calloc(samples, sizeof(*row_terminal_times));
@@ -449,31 +666,43 @@ int main(int argc, char *argv[])
 	spa_assert_se(full_times != NULL && row_total_times != NULL &&
 			row_terminal_times != NULL && row_max_times != NULL &&
 			row_block_times != NULL);
-	for (uint32_t i = 0; i < samples; i++) {
-		uint64_t start;
+	for (uint32_t phase = 0; phase < 2; phase++) {
+		bool row_phase = (phase == 0) == row_first;
+		struct spa_fgn_graph *graph = row_phase ? row_graph : full_graph;
 
-		sequence++;
-		if ((i & 1u) == 0) {
-			start = monotonic_ns();
-			spa_assert_se(process_full(full_graph, &full_input, &full_output,
-					full_inputs, full_outputs, sequence) >= 0);
-			full_times[i] = monotonic_ns() - start;
-			row_total_times[i] = process_rows(row_graph, &row_input,
-					&row_output, row_inputs, row_outputs, image,
-					block_rows, sequence, &row_terminal_times[i],
-					&row_max_times[i],
-					&row_block_times[(size_t)i * blocks_per_frame]);
-		} else {
-			row_total_times[i] = process_rows(row_graph, &row_input,
-					&row_output, row_inputs, row_outputs, image,
-					block_rows, sequence, &row_terminal_times[i],
-					&row_max_times[i],
-					&row_block_times[(size_t)i * blocks_per_frame]);
-			start = monotonic_ns();
-			spa_assert_se(process_full(full_graph, &full_input, &full_output,
-					full_inputs, full_outputs, sequence) >= 0);
-			full_times[i] = monotonic_ns() - start;
+		spa_assert_se(spa_fgn_graph_activate(graph) == 0);
+		for (uint32_t i = 0; i < warmup; i++) {
+			sequence++;
+			if (row_phase) {
+				uint64_t terminal, maximum;
+
+				(void)process_rows(row_graph, &row_input, &row_output,
+						row_inputs, row_outputs, image, block_rows,
+						sequence, &terminal, &maximum, NULL);
+			} else {
+				spa_assert_se(process_full(full_graph, &full_input,
+						&full_output, full_inputs, full_outputs,
+						sequence) >= 0);
+			}
 		}
+		for (uint32_t i = 0; i < samples; i++) {
+			sequence++;
+			if (row_phase) {
+				row_total_times[i] = process_rows(row_graph, &row_input,
+						&row_output, row_inputs, row_outputs, image,
+						block_rows, sequence, &row_terminal_times[i],
+						&row_max_times[i],
+						&row_block_times[(size_t)i * blocks_per_frame]);
+			} else {
+				uint64_t start = monotonic_ns();
+
+				spa_assert_se(process_full(full_graph, &full_input,
+						&full_output, full_inputs, full_outputs,
+						sequence) >= 0);
+				full_times[i] = monotonic_ns() - start;
+			}
+		}
+		spa_assert_se(spa_fgn_graph_deactivate(graph) == 0);
 	}
 	write_csv(getenv("PW_FGN_ROW_BENCHMARK_CSV"), full_times,
 			row_total_times, row_terminal_times, row_max_times,
@@ -490,8 +719,6 @@ int main(int argc, char *argv[])
 			(double)row_terminal_median / (double)full_median,
 			100.0 * ((double)row_terminal_median / (double)full_median - 1.0));
 
-	spa_assert_se(spa_fgn_graph_deactivate(row_graph) == 0);
-	spa_assert_se(spa_fgn_graph_deactivate(full_graph) == 0);
 	spa_fgn_graph_free(row_graph);
 	spa_fgn_graph_free(full_graph);
 	free(row_block_times);
@@ -502,6 +729,11 @@ int main(int argc, char *argv[])
 	free(row_config);
 	free(full_config);
 	free(origins);
+#ifdef BENCHMARK_PWFS
+	free(mask);
+	free(row_pixels);
+	free(full_pixels);
+#endif
 	free(row_values);
 	free(full_values);
 	free(matrix);
