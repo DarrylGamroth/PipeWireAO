@@ -135,7 +135,10 @@ output pointer arrays and from every graph-owned plugin-facing buffer array.
 The admitted limits permit at most 16 metadata entries and 4096 total
 metadata bytes per buffer. A plugin MUST preserve the supplied output offset,
 leave output size zero until processing succeeds, publish the exact completed
-size only after success, and leave size zero on failure.
+size only after success, and leave size zero on failure. An output marked
+`SPA_FGN_PORT_FLAG_CONDITIONAL` MAY also leave size zero on success. The host
+MUST treat that result as an absent artifact rather than an empty ndarray and
+MUST retain an unpublished external output buffer for a later graph cycle.
 
 Verification intent: exercise nonzero output offsets, shared descriptors with
 shifted chunks, misaligned data, excessive and duplicate metadata, metadata
@@ -232,13 +235,31 @@ Verification intent: update parameters on two linked nodes, verify that the
 next output uses both replacements, observe deterministic backpressure, and
 verify that a failed multi-node preparation preserves both active plans.
 
-### FGN-EXEC-001 — Synchronous single-rate acyclic execution
+### FGN-EXEC-001 — Synchronous acyclic artifact execution
 
-One graph process call MUST execute one complete quantum on every node in
-topological order. The host MUST reject a directed cycle. Every specified
-port rate in one graph MUST use the same exact numerator and denominator; the
-host MUST reject mixed specified rates, and MUST NOT imply resampling,
-decimation, interpolation, or a multi-rate schedule.
+One graph process call MUST execute ready nodes in topological order. The host
+MUST reject a directed cycle. A connected output and input MUST have the same
+exact specified rate. All external per-call data inputs MUST share one
+activation rate, and all specified data inputs on one node MUST match. An
+output MAY differ from its node's input rate only when that output is declared
+conditional. This explicit rate transition describes artifact cadence; the
+host MUST NOT imply resampling, interpolation, or a hidden time-domain
+conversion.
+
+A plugin with a conditional output MAY successfully defer that artifact by
+leaving its completed size zero. The host MUST skip a downstream node whose
+required input is absent and MUST leave that node's outputs absent. An optional
+downstream input MUST receive a null buffer for the absent artifact. The host
+MUST still invoke independent ready branches in the same graph cycle. A
+non-conditional output MUST be complete whenever its node succeeds.
+
+The outer PipeWire adapter MUST publish only completed external outputs. It
+MUST retain, without publishing or recycling, the caller-owned buffer assigned
+to a deferred output until that output completes or processing fails. A graph
+failure MUST publish no external output for that call. Because returning an
+output buffer through the PipeWire output queue is itself publication, the
+adapter MUST retain dequeued outputs until filter error teardown returns their
+ownership.
 
 A feedback decomposition therefore requires an explicit unit-delay operation
 with specified initial value, state, metadata, reset, and failure behavior.
@@ -246,8 +267,11 @@ No such operation is admitted in this proof of concept. A scientific
 operation that requires feedback MUST remain atomic until that operation and
 its equivalence evidence exist.
 
-Verification intent: reject a two-node cycle and a graph containing two
-different specified rates, while admitting and executing an equal-rate DAG.
+Verification intent: reject a two-node cycle and a link with unequal specified
+rates; admit a node whose input and output rates differ; defer its conditional
+output over several calls; prove that required consumers are skipped and are
+invoked exactly once when the artifact completes; and prove external-buffer
+retention and cleanup in the PipeWire adapter.
 
 ### FGN-FAIL-001 — Processing failure and rollback boundary
 
@@ -348,8 +372,9 @@ filter chain:
 `plugin` is passed to `dlopen()` and `label` selects a descriptor exported by
 that library. Every port supplies one exact element type, shape, layout,
 optional rate, and schema after instance construction. Graph creation
-rejects incompatible links, directed cycles, and mixed specified port rates
-before activation.
+rejects incompatible links and directed cycles before activation. A link's
+two rates must match exactly. External data inputs have one activation rate;
+an explicit aggregating node may expose a different conditional-output rate.
 
 The graph host converts each relaxed `config` object to standard JSON before
 calling the plugin. Plugin authors can therefore use ordinary typed JSON
@@ -437,7 +462,7 @@ property transactions, parameter updates, and processing then use only the
 FGN ABI. The host neither knows nor needs to know that the implementation was
 generated from a Calculon algorithm.
 
-The declaration proof library selects all 36 current production Rust
+The declaration proof library selects all 39 current production Rust
 declarations. Selection is a deployment type list; descriptor facts remain
 owned by the declarations beside the scientific implementations. A smaller
 REVOLT fixture selects only the eight declarations used by its SHWFS and
@@ -740,7 +765,7 @@ and full limitations are `scripts/benchmark_fgn_shwfs.py` and
 ## Complete REVOLT Classic direct-call qualification
 
 `benchmark-filter-graph-ndarray-revolt-classic` reads the resolved filter-chain
-template used by the live module, loads its ordinary 36-declaration Calculon
+template used by the live module, loaded its then-current 38-declaration Calculon
 production DSO, and constructs the complete Classic graph at the pinned 352 by
 352 detector, 188-subaperture, 376-slope, 221-controlled-coordinate, and
 277-actuator dimensions. It prepares all 13 sparse calibration inputs as one
@@ -800,11 +825,13 @@ adapter participates in the PipeWire graph.
 The direct graph API has atomic preparation and same-cycle adoption across
 parameter ports on several nodes. The PipeWire module does not yet assemble
 asynchronous parameter buffers into that API. The graph has no graph-wide
-rollback after a downstream failure, no explicit feedback-delay primitive,
-and no multi-rate scheduler; mixed specified rates and directed cycles are
-rejected. Related projection matrices therefore need coherent initialization,
-and the fused deformable-mirror and closed-loop operations remain authoritative
-where delay or rollback semantics are part of their scientific contract.
+rollback after a downstream failure or explicit feedback-delay primitive. It
+admits explicit rate-changing nodes and conditional artifacts, but it does not
+invent a general multi-rate schedule or resampler; connected rates still must
+match exactly. Related projection matrices therefore need coherent
+initialization, and the fused deformable-mirror and closed-loop operations
+remain authoritative where delay or rollback semantics are part of their
+scientific contract.
 
 ## Julia and additional language bindings
 

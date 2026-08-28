@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <spa/buffer/meta.h>
 #include <spa/filter-graph/ndarray-plugin.h>
 #include <spa/pod/pod.h>
 #include <spa/utils/json.h>
@@ -651,9 +652,127 @@ static const struct spa_fgn_descriptor descriptor = {
 	.process = process,
 };
 
+struct conditional_instance {
+	uint32_t shape[1];
+	struct spa_fgn_format formats[2];
+};
+
+static const struct spa_fgn_port_info conditional_ports[] = {
+	{
+		.struct_size = sizeof(struct spa_fgn_port_info),
+		.index = 0,
+		.direction = SPA_DIRECTION_INPUT,
+		.name = "in",
+	},
+	{
+		.struct_size = sizeof(struct spa_fgn_port_info),
+		.index = 1,
+		.direction = SPA_DIRECTION_OUTPUT,
+		.flags = SPA_FGN_PORT_FLAG_CONDITIONAL,
+		.name = "out",
+	},
+};
+
+static int conditional_instantiate(const struct spa_fgn_descriptor *descriptor,
+		const char *config, void **result)
+{
+	struct conditional_instance *instance;
+	bool aggregate;
+
+	if (descriptor == NULL || config == NULL || result == NULL ||
+	    !spa_streq(config, "{}"))
+		return -EINVAL;
+	aggregate = spa_streq(descriptor->name, "aggregate-f32");
+	if ((instance = calloc(1, sizeof(*instance))) == NULL)
+		return -ENOMEM;
+	instance->shape[0] = 4;
+	instance->formats[0] = (struct spa_fgn_format) {
+		.element_type = SPA_ELEMENT_TYPE_F32_LE,
+		.layout = SPA_NDARRAY_LAYOUT_ROW_MAJOR,
+		.rate_num = aggregate ? 2 : 0,
+		.rate_denom = aggregate ? 1 : 0,
+		.n_dimensions = 1,
+		.shape = instance->shape,
+		.schema = "test.deferred/1",
+	};
+	instance->formats[1] = instance->formats[0];
+	if (aggregate) {
+		instance->formats[1].rate_num = 1;
+		instance->formats[1].rate_denom = 1;
+	}
+	*result = instance;
+	return 0;
+}
+
+static int conditional_get_port_format(void *data, uint32_t port,
+		const struct spa_fgn_format **format)
+{
+	struct conditional_instance *instance = data;
+
+	if (instance == NULL || format == NULL || port >= 2)
+		return -EINVAL;
+	*format = &instance->formats[port];
+	return 0;
+}
+
+static int conditional_process(void *data,
+		const struct spa_fgn_buffer *inputs, uint32_t n_inputs,
+		struct spa_fgn_buffer *outputs, uint32_t n_outputs)
+{
+	struct conditional_instance *instance = data;
+	const struct spa_meta_header *header;
+	const struct spa_data *input_data;
+	struct spa_data *output_data;
+
+	if (instance == NULL || inputs == NULL || outputs == NULL ||
+	    n_inputs != 1 || n_outputs != 1 || inputs[0].buffer == NULL ||
+	    outputs[0].buffer == NULL)
+		return -EINVAL;
+	header = spa_buffer_find_meta_data(inputs[0].buffer, SPA_META_Header,
+			sizeof(*header));
+	if (header == NULL ||
+	    !(header->flags & SPA_META_HEADER_FLAG_MARKER))
+		return 0;
+	input_data = &inputs[0].buffer->datas[0];
+	output_data = &outputs[0].buffer->datas[0];
+	memcpy(SPA_PTROFF(output_data->data, output_data->chunk->offset, void),
+		SPA_PTROFF(input_data->data, input_data->chunk->offset, const void),
+		4 * sizeof(float));
+	output_data->chunk->size = 4 * sizeof(float);
+	copy_metadata(outputs[0].buffer, inputs[0].buffer);
+	return 0;
+}
+
+#define CONDITIONAL_DESCRIPTOR(label_) \
+	{ \
+		.struct_size = sizeof(struct spa_fgn_descriptor), \
+		.version = SPA_FGN_PLUGIN_ABI_VERSION, \
+		.name = label_, \
+		.n_ports = SPA_N_ELEMENTS(conditional_ports), \
+		.ports = conditional_ports, \
+		.instantiate = conditional_instantiate, \
+		.cleanup = free, \
+		.get_port_format = conditional_get_port_format, \
+		.process = conditional_process, \
+	}
+
+static const struct spa_fgn_descriptor conditional_descriptors[] = {
+	CONDITIONAL_DESCRIPTOR("defer-f32"),
+	CONDITIONAL_DESCRIPTOR("aggregate-f32"),
+};
+
 static const struct spa_fgn_descriptor *find_descriptor(const char *name)
 {
-	return name != NULL && spa_streq(name, descriptor.name) ? &descriptor : NULL;
+	uint32_t i;
+
+	if (name == NULL)
+		return NULL;
+	if (spa_streq(name, descriptor.name))
+		return &descriptor;
+	for (i = 0; i < SPA_N_ELEMENTS(conditional_descriptors); i++)
+		if (spa_streq(name, conditional_descriptors[i].name))
+			return &conditional_descriptors[i];
+	return NULL;
 }
 
 static const struct spa_fgn_plugin plugin = {
