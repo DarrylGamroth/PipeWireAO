@@ -1,7 +1,8 @@
 ndarray_filter_graph = static_library('spa-filter-graph-ndarray',
-  [ 'filter-graph-ndarray.c' ],
+  [ 'filter-graph-ndarray.c',
+    'ndarray-executor.c' ],
   include_directories : [configinc],
-  dependencies : [ spa_dep, dl_lib ],
+  dependencies : [ spa_dep, dl_lib, mathlib, pthread_lib ],
   install : false,
 )
 
@@ -9,7 +10,7 @@ if get_option('tests').allowed()
   spa_filter_graph_plugin_ndarray_example = shared_library('spa-filter-graph-ndarray-example',
     [ 'plugin_ndarray_example.c' ],
     include_directories : [configinc],
-    dependencies : [ spa_dep, mathlib ],
+    dependencies : [ spa_dep, mathlib, pthread_lib ],
     install : false,
   )
 
@@ -45,8 +46,25 @@ if get_option('tests').allowed()
     install : false,
   )
 
+  executable('benchmark-filter-graph-ndarray-executor',
+    [ 'benchmark-filter-graph-ndarray-executor.c' ],
+    include_directories : [configinc],
+    dependencies : [ spa_dep, mathlib ],
+    link_with : ndarray_filter_graph,
+    install : false,
+  )
+
   executable('benchmark-filter-graph-ndarray-row',
     [ 'benchmark-filter-graph-ndarray-row.c' ],
+    include_directories : [configinc],
+    dependencies : [ spa_dep, dl_lib, mathlib ],
+    link_with : ndarray_filter_graph,
+    install : false,
+  )
+
+  executable('benchmark-filter-graph-ndarray-pwfs-row',
+    [ 'benchmark-filter-graph-ndarray-row.c' ],
+    c_args : [ '-DBENCHMARK_PWFS' ],
     include_directories : [configinc],
     dependencies : [ spa_dep, dl_lib, mathlib ],
     link_with : ndarray_filter_graph,
