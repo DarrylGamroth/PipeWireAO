@@ -6,6 +6,7 @@
 
 #include <errno.h>
 #include <math.h>
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdatomic.h>
 #include <stdint.h>
@@ -144,7 +145,8 @@ static int parse_shape(struct spa_json *parent, const char *token, int len,
 }
 
 static int instantiate(const struct spa_fgn_descriptor *descriptor SPA_UNUSED,
-		const char *config, void **result)
+		const char *config, const struct spa_fgn_executor *executor,
+		void **result)
 {
 	struct instance *instance;
 	struct spa_json object;
@@ -154,7 +156,10 @@ static int instantiate(const struct spa_fgn_descriptor *descriptor SPA_UNUSED,
 	uint32_t i, slot;
 	int len, res;
 
-	if (result == NULL || config == NULL)
+	if (result == NULL || config == NULL || executor == NULL ||
+	    executor->struct_size < sizeof(*executor) ||
+	    executor->version != SPA_FGN_EXECUTOR_VERSION ||
+	    executor->n_lanes == 0 || executor->run_dense_f32 == NULL)
 		return -EINVAL;
 	if ((instance = calloc(1, sizeof(*instance))) == NULL)
 		return -ENOMEM;
@@ -674,12 +679,17 @@ static const struct spa_fgn_port_info conditional_ports[] = {
 };
 
 static int conditional_instantiate(const struct spa_fgn_descriptor *descriptor,
-		const char *config, void **result)
+		const char *config, const struct spa_fgn_executor *executor,
+		void **result)
 {
 	struct conditional_instance *instance;
 	bool aggregate;
 
-	if (descriptor == NULL || config == NULL || result == NULL ||
+	if (descriptor == NULL || config == NULL || executor == NULL ||
+	    executor->struct_size < sizeof(*executor) ||
+	    executor->version != SPA_FGN_EXECUTOR_VERSION ||
+	    executor->n_lanes == 0 || executor->run_dense_f32 == NULL ||
+	    result == NULL ||
 	    !spa_streq(config, "{}"))
 		return -EINVAL;
 	aggregate = spa_streq(descriptor->name, "aggregate-f32");
@@ -745,7 +755,7 @@ static int conditional_process(void *data,
 
 #define CONDITIONAL_DESCRIPTOR(label_) \
 	{ \
-		.struct_size = sizeof(struct spa_fgn_descriptor), \
+		.struct_size = SPA_FGN_DESCRIPTOR_ABI_V7_SIZE, \
 		.version = SPA_FGN_PLUGIN_ABI_VERSION, \
 		.name = label_, \
 		.n_ports = SPA_N_ELEMENTS(conditional_ports), \
@@ -761,6 +771,285 @@ static const struct spa_fgn_descriptor conditional_descriptors[] = {
 	CONDITIONAL_DESCRIPTOR("aggregate-f32"),
 };
 
+struct thread_preparation_instance {
+	uint32_t shape[1];
+	struct spa_fgn_format formats[2];
+	pthread_t process_thread;
+	bool prepared;
+};
+
+static const struct spa_fgn_port_info thread_preparation_ports[] = {
+	{
+		.struct_size = sizeof(struct spa_fgn_port_info),
+		.index = 0,
+		.direction = SPA_DIRECTION_INPUT,
+		.name = "in",
+	},
+	{
+		.struct_size = sizeof(struct spa_fgn_port_info),
+		.index = 1,
+		.direction = SPA_DIRECTION_OUTPUT,
+		.name = "out",
+	},
+};
+
+static int thread_preparation_instantiate(
+		const struct spa_fgn_descriptor *descriptor SPA_UNUSED,
+		const char *config, const struct spa_fgn_executor *executor SPA_UNUSED,
+		void **result)
+{
+	struct thread_preparation_instance *instance;
+
+	if (config == NULL || result == NULL || !spa_streq(config, "{}"))
+		return -EINVAL;
+	if ((instance = calloc(1, sizeof(*instance))) == NULL)
+		return -ENOMEM;
+	instance->shape[0] = 4;
+	instance->formats[0] = (struct spa_fgn_format) {
+		.element_type = SPA_ELEMENT_TYPE_F32_LE,
+		.layout = SPA_NDARRAY_LAYOUT_ROW_MAJOR,
+		.n_dimensions = 1,
+		.shape = instance->shape,
+		.schema = "test.thread-preparation-input/1",
+	};
+	instance->formats[1] = instance->formats[0];
+	instance->formats[1].schema = "test.thread-preparation-output/1";
+	*result = instance;
+	return 0;
+}
+
+static int thread_preparation_get_port_format(void *data, uint32_t port,
+		const struct spa_fgn_format **format)
+{
+	struct thread_preparation_instance *instance = data;
+
+	if (instance == NULL || format == NULL || port >= 2)
+		return -EINVAL;
+	*format = &instance->formats[port];
+	return 0;
+}
+
+static int thread_preparation_activate(void *data)
+{
+	struct thread_preparation_instance *instance = data;
+
+	if (instance == NULL)
+		return -EINVAL;
+	instance->prepared = false;
+	return 0;
+}
+
+static int thread_preparation_prepare(void *data)
+{
+	struct thread_preparation_instance *instance = data;
+
+	if (instance == NULL)
+		return -EINVAL;
+	instance->process_thread = pthread_self();
+	instance->prepared = true;
+	return 0;
+}
+
+static int thread_preparation_process(void *data,
+		const struct spa_fgn_buffer *inputs, uint32_t n_inputs,
+		struct spa_fgn_buffer *outputs, uint32_t n_outputs)
+{
+	struct thread_preparation_instance *instance = data;
+	const struct spa_data *input_data;
+	struct spa_data *output_data;
+
+	if (instance == NULL || inputs == NULL || outputs == NULL ||
+	    n_inputs != 1 || n_outputs != 1 || inputs[0].buffer == NULL ||
+	    outputs[0].buffer == NULL)
+		return -EINVAL;
+	if (!instance->prepared ||
+	    !pthread_equal(instance->process_thread, pthread_self()))
+		return -EPERM;
+	input_data = &inputs[0].buffer->datas[0];
+	output_data = &outputs[0].buffer->datas[0];
+	memcpy(SPA_PTROFF(output_data->data, output_data->chunk->offset, void),
+		SPA_PTROFF(input_data->data, input_data->chunk->offset, const void),
+		4 * sizeof(float));
+	output_data->chunk->size = 4 * sizeof(float);
+	copy_metadata(outputs[0].buffer, inputs[0].buffer);
+	return 0;
+}
+
+static const struct spa_fgn_descriptor thread_preparation_descriptor = {
+	.struct_size = sizeof(struct spa_fgn_descriptor),
+	.version = SPA_FGN_PLUGIN_ABI_VERSION,
+	.name = "thread-preparation-f32",
+	.n_ports = SPA_N_ELEMENTS(thread_preparation_ports),
+	.ports = thread_preparation_ports,
+	.instantiate = thread_preparation_instantiate,
+	.cleanup = free,
+	.get_port_format = thread_preparation_get_port_format,
+	.activate = thread_preparation_activate,
+	.process = thread_preparation_process,
+	.prepare_process_thread = thread_preparation_prepare,
+};
+
+struct dense_instance {
+	const struct spa_fgn_executor *executor;
+	uint32_t shapes[2];
+	struct spa_fgn_format formats[2];
+	float *matrix;
+};
+
+static const struct spa_fgn_port_info dense_ports[] = {
+	{
+		.struct_size = sizeof(struct spa_fgn_port_info),
+		.index = 0,
+		.direction = SPA_DIRECTION_INPUT,
+		.name = "in",
+	},
+	{
+		.struct_size = sizeof(struct spa_fgn_port_info),
+		.index = 1,
+		.direction = SPA_DIRECTION_OUTPUT,
+		.name = "out",
+	},
+};
+
+static int dense_instantiate(const struct spa_fgn_descriptor *descriptor SPA_UNUSED,
+		const char *config, const struct spa_fgn_executor *executor,
+		void **result)
+{
+	struct dense_instance *instance;
+	struct spa_json object;
+	char key[256];
+	const char *token;
+	uint32_t rows = 4, columns = 4, row, column;
+	bool have_rows = false, have_columns = false;
+	size_t elements;
+	int len, value, res;
+
+	if (config == NULL || executor == NULL || result == NULL ||
+	    executor->struct_size < sizeof(*executor) ||
+	    executor->version != SPA_FGN_EXECUTOR_VERSION ||
+	    executor->n_lanes == 0 || executor->run_dense_f32 == NULL)
+		return -EINVAL;
+	if (spa_json_begin_object(&object, config, strlen(config)) <= 0)
+		return -EINVAL;
+	while ((len = spa_json_object_next(&object, key, sizeof(key), &token)) > 0) {
+		if (spa_json_parse_int(token, len, &value) <= 0 || value <= 0)
+			return -EINVAL;
+		if (spa_streq(key, "rows") && !have_rows) {
+			rows = (uint32_t)value;
+			have_rows = true;
+		} else if (spa_streq(key, "columns") && !have_columns) {
+			columns = (uint32_t)value;
+			have_columns = true;
+		} else {
+			return -EINVAL;
+		}
+	}
+	if (rows > UINT32_MAX / columns ||
+	    (elements = (size_t)rows * columns) > UINT32_MAX / sizeof(float))
+		return -EOVERFLOW;
+	if ((instance = calloc(1, sizeof(*instance))) == NULL)
+		return -ENOMEM;
+	if ((instance->matrix = calloc(elements, sizeof(float))) == NULL) {
+		res = -ENOMEM;
+		goto error;
+	}
+	for (row = 0; row < rows; row++)
+		for (column = 0; column < columns; column++)
+			instance->matrix[(size_t)row * columns + column] =
+				row == column ? 1.0f : 0.0f;
+	instance->executor = executor;
+	instance->shapes[0] = columns;
+	instance->shapes[1] = rows;
+	instance->formats[0] = (struct spa_fgn_format) {
+		.element_type = SPA_ELEMENT_TYPE_F32_LE,
+		.layout = SPA_NDARRAY_LAYOUT_ROW_MAJOR,
+		.n_dimensions = 1,
+		.shape = &instance->shapes[0],
+		.schema = "test.dense-input/1",
+	};
+	instance->formats[1] = (struct spa_fgn_format) {
+		.element_type = SPA_ELEMENT_TYPE_F32_LE,
+		.layout = SPA_NDARRAY_LAYOUT_ROW_MAJOR,
+		.n_dimensions = 1,
+		.shape = &instance->shapes[1],
+		.schema = "test.dense-output/1",
+	};
+	*result = instance;
+	return 0;
+
+error:
+	free(instance);
+	return res;
+}
+
+static void dense_cleanup(void *data)
+{
+	struct dense_instance *instance = data;
+
+	if (instance == NULL)
+		return;
+	free(instance->matrix);
+	free(instance);
+}
+
+static int dense_get_port_format(void *data, uint32_t port,
+		const struct spa_fgn_format **format)
+{
+	struct dense_instance *instance = data;
+
+	if (instance == NULL || format == NULL || port >= 2)
+		return -EINVAL;
+	*format = &instance->formats[port];
+	return 0;
+}
+
+static int dense_process(void *data, const struct spa_fgn_buffer *inputs,
+		uint32_t n_inputs, struct spa_fgn_buffer *outputs,
+		uint32_t n_outputs)
+{
+	struct dense_instance *instance = data;
+	const struct spa_data *input_data;
+	struct spa_data *output_data;
+	struct spa_fgn_dense_f32_task task;
+	int res;
+
+	if (instance == NULL || inputs == NULL || outputs == NULL ||
+	    n_inputs != 1 || n_outputs != 1 || inputs[0].buffer == NULL ||
+	    outputs[0].buffer == NULL)
+		return -EINVAL;
+	input_data = &inputs[0].buffer->datas[0];
+	output_data = &outputs[0].buffer->datas[0];
+	task = (struct spa_fgn_dense_f32_task) {
+		.struct_size = sizeof(task),
+		.matrix = instance->matrix,
+		.input = SPA_PTROFF(input_data->data, input_data->chunk->offset,
+				const float),
+		.output = SPA_PTROFF(output_data->data, output_data->chunk->offset,
+				float),
+		.n_rows = instance->shapes[1],
+		.matrix_row_stride = instance->shapes[0],
+		.n_columns = instance->shapes[0],
+	};
+	if ((res = instance->executor->run_dense_f32(
+			instance->executor->data, &task)) < 0)
+		return res;
+	output_data->chunk->size = instance->shapes[1] * sizeof(float);
+	copy_metadata(outputs[0].buffer, inputs[0].buffer);
+	return 0;
+}
+
+static const struct spa_fgn_descriptor dense_descriptor = {
+	.struct_size = sizeof(struct spa_fgn_descriptor),
+	.version = SPA_FGN_PLUGIN_ABI_VERSION,
+	.name = "dense-example-f32",
+	.n_ports = SPA_N_ELEMENTS(dense_ports),
+	.ports = dense_ports,
+	.instantiate = dense_instantiate,
+	.cleanup = dense_cleanup,
+	.get_port_format = dense_get_port_format,
+	.process = dense_process,
+};
+
 static const struct spa_fgn_descriptor *find_descriptor(const char *name)
 {
 	uint32_t i;
@@ -769,6 +1058,10 @@ static const struct spa_fgn_descriptor *find_descriptor(const char *name)
 		return NULL;
 	if (spa_streq(name, descriptor.name))
 		return &descriptor;
+	if (spa_streq(name, dense_descriptor.name))
+		return &dense_descriptor;
+	if (spa_streq(name, thread_preparation_descriptor.name))
+		return &thread_preparation_descriptor;
 	for (i = 0; i < SPA_N_ELEMENTS(conditional_descriptors); i++)
 		if (spa_streq(name, conditional_descriptors[i].name))
 			return &conditional_descriptors[i];

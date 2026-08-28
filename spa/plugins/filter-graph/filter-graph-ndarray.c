@@ -88,6 +88,7 @@ struct fgn_node {
 	struct spa_fgn_property_info *properties;
 	uint32_t n_properties;
 	void *initial_prepared;
+	bool process_thread_prepared;
 	uint32_t indegree;
 };
 
@@ -106,7 +107,9 @@ struct spa_fgn_graph {
 	uint32_t n_inputs;
 	struct fgn_port **outputs;
 	uint32_t n_outputs;
+	struct spa_fgn_worker_group *workers;
 	bool active;
+	bool process_thread_prepared;
 	struct fgn_transaction *property_transactions;
 	uint32_t n_property_transactions;
 	_Atomic uint32_t property_transaction_state;
@@ -220,7 +223,7 @@ static int storage_init(struct fgn_storage *storage,
 	contiguous = (size_t)format->shape[contiguous_axis] * element_size;
 	if (contiguous > INT32_MAX)
 		return -EOVERFLOW;
-	if ((res = posix_memalign(&storage->memory, 64, size)) != 0)
+	if ((res = posix_memalign(&storage->memory, SPA_CACHE_LINE_SIZE, size)) != 0)
 		return -res;
 	memset(storage->memory, 0, size);
 
@@ -856,7 +859,7 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 	node->retain_library =
 		(node->plugin->flags & SPA_FGN_PLUGIN_FLAG_RETAIN_LIBRARY) != 0;
 	if ((node->descriptor = node->plugin->find_descriptor(label)) == NULL ||
-	    node->descriptor->struct_size < sizeof(*node->descriptor) ||
+	    node->descriptor->struct_size < SPA_FGN_DESCRIPTOR_ABI_V7_SIZE ||
 	    node->descriptor->version != SPA_FGN_PLUGIN_ABI_VERSION ||
 	    node->descriptor->name == NULL ||
 	    !spa_streq(node->descriptor->name, label) ||
@@ -890,7 +893,9 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 		goto error;
 	}
 	if ((res = node->descriptor->instantiate(node->descriptor,
-			config ?: "{}", &node->instance)) < 0 || node->instance == NULL)
+			config ?: "{}",
+			spa_fgn_worker_group_get_executor(graph->workers),
+			&node->instance)) < 0 || node->instance == NULL)
 		goto error;
 
 	if ((node->ports = calloc(node->descriptor->n_ports,
@@ -1269,13 +1274,38 @@ static int queue_initial_property_transaction(struct spa_fgn_graph *graph)
 	return 0;
 }
 
+static int parse_workers(struct spa_json *parent, const char *token, int len,
+		uint32_t *n_helpers)
+{
+	struct spa_json object;
+	bool have_helpers = false;
+	char key[256];
+	int value, item_len;
+	const char *item;
+
+	if (n_helpers == NULL || !spa_json_is_object(token, len))
+		return -EINVAL;
+	spa_json_enter(parent, &object);
+	while ((item_len = spa_json_object_next(&object, key, sizeof(key),
+			&item)) > 0) {
+		if (!spa_streq(key, "helpers") || have_helpers ||
+		    spa_json_parse_int(item, item_len, &value) <= 0 || value < 0 ||
+		    value > (int)SPA_FGN_EXECUTOR_MAX_HELPERS)
+			return -EINVAL;
+		*n_helpers = (uint32_t)value;
+		have_helpers = true;
+	}
+	return have_helpers ? 0 : -EINVAL;
+}
+
 int spa_fgn_graph_new(const char *config, struct spa_fgn_graph **result)
 {
 	struct spa_fgn_graph *graph;
 	struct spa_json top, child, nodes = { 0 }, links = { 0 };
 	struct spa_json inputs = { 0 }, outputs = { 0 };
 	bool have_nodes = false, have_links = false;
-	bool have_inputs = false, have_outputs = false;
+	bool have_inputs = false, have_outputs = false, have_workers = false;
+	uint32_t n_helpers = 0;
 	char key[256];
 	const char *token;
 	int len, res;
@@ -1294,7 +1324,13 @@ int spa_fgn_graph_new(const char *config, struct spa_fgn_graph **result)
 		bool *present;
 		char expected;
 
-		if (spa_streq(key, "nodes")) {
+		if (spa_streq(key, "workers")) {
+			if (have_workers ||
+			    (res = parse_workers(&top, token, len, &n_helpers)) < 0)
+				goto error;
+			have_workers = true;
+			continue;
+		} else if (spa_streq(key, "nodes")) {
 			target = &nodes; present = &have_nodes; expected = '[';
 		} else if (spa_streq(key, "links")) {
 			target = &links; present = &have_links; expected = '[';
@@ -1317,6 +1353,8 @@ int spa_fgn_graph_new(const char *config, struct spa_fgn_graph **result)
 		res = -EINVAL;
 		goto error;
 	}
+	if ((res = spa_fgn_worker_group_new(n_helpers, &graph->workers)) < 0)
+		goto error;
 	while (spa_json_enter_object(&nodes, &child) > 0)
 		if ((res = load_node(graph, &child)) < 0)
 			goto error;
@@ -1357,6 +1395,7 @@ void spa_fgn_graph_free(struct spa_fgn_graph *graph)
 	clear_graph_parameter_transaction(graph);
 	for (i = graph->n_nodes; i > 0; i--)
 		node_free(graph->nodes[i - 1]);
+	spa_fgn_worker_group_free(graph->workers);
 	free(graph->outputs);
 	free(graph->inputs);
 	free(graph->order);
@@ -1940,8 +1979,14 @@ int spa_fgn_graph_activate(struct spa_fgn_graph *graph)
 		return -EINVAL;
 	if (graph->active)
 		return 0;
+	if ((res = spa_fgn_worker_group_activate(graph->workers)) < 0)
+		return res;
+	graph->process_thread_prepared = false;
 	for (i = 0; i < graph->n_nodes; i++) {
 		struct fgn_node *node = graph->order[i];
+		node->process_thread_prepared =
+			!spa_fgn_descriptor_has_prepare_process_thread(node->descriptor) ||
+			node->descriptor->prepare_process_thread == NULL;
 		if (node->descriptor->activate != NULL &&
 		    (res = node->descriptor->activate(node->instance)) < 0) {
 			while (i > 0) {
@@ -1949,10 +1994,43 @@ int spa_fgn_graph_activate(struct spa_fgn_graph *graph)
 				if (node->descriptor->deactivate != NULL)
 					node->descriptor->deactivate(node->instance);
 			}
+			spa_fgn_worker_group_deactivate(graph->workers);
 			return res;
 		}
 	}
+	graph->process_thread_prepared = true;
+	for (i = 0; i < graph->n_nodes; i++)
+		if (!graph->nodes[i]->process_thread_prepared) {
+			graph->process_thread_prepared = false;
+			break;
+		}
 	graph->active = true;
+	return 0;
+}
+
+int spa_fgn_graph_prepare_process_thread(struct spa_fgn_graph *graph)
+{
+	uint32_t i;
+
+	if (graph == NULL || !graph->active)
+		return -EINVAL;
+	if (graph->process_thread_prepared)
+		return 0;
+	for (i = 0; i < graph->n_nodes; i++) {
+		struct fgn_node *node = graph->order[i];
+		int res;
+
+		if (node->process_thread_prepared)
+			continue;
+		if (!spa_fgn_descriptor_has_prepare_process_thread(node->descriptor) ||
+		    node->descriptor->prepare_process_thread == NULL)
+			return -EFAULT;
+		if ((res = node->descriptor->prepare_process_thread(
+				node->instance)) < 0)
+			return res;
+		node->process_thread_prepared = true;
+	}
+	graph->process_thread_prepared = true;
 	return 0;
 }
 
@@ -1974,6 +2052,14 @@ int spa_fgn_graph_deactivate(struct spa_fgn_graph *graph)
 		}
 	}
 	graph->active = false;
+	graph->process_thread_prepared = false;
+	for (i = 0; i < graph->n_nodes; i++)
+		graph->nodes[i]->process_thread_prepared = false;
+	{
+		int r = spa_fgn_worker_group_deactivate(graph->workers);
+		if (res == 0 && r < 0)
+			res = r;
+	}
 	return res;
 }
 
@@ -2335,6 +2421,8 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 	    (n_inputs != 0 && inputs == NULL) ||
 	    (n_outputs != 0 && outputs == NULL))
 		return -EINVAL;
+	if (!graph->process_thread_prepared)
+		return -EAGAIN;
 	for (i = 0; i < graph->n_nodes; i++) {
 		struct fgn_node *node = graph->nodes[i];
 		for (j = 0; j < node->n_inputs; j++)

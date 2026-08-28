@@ -95,7 +95,7 @@ pipewire_module_ndarray_filter_chain = shared_library('pipewire-module-ndarray-f
   install : true,
   install_dir : modules_install_dir,
   install_rpath: modules_install_dir,
-  dependencies : [spa_dep, dl_lib, pipewire_dep, pthread_lib],
+  dependencies : [spa_dep, dl_lib, mathlib, pipewire_dep, pthread_lib],
   link_with : ndarray_filter_graph,
 )
 
