@@ -25,8 +25,9 @@ struct spa_fgn_graph;
  * descriptor within that library. Nodes may contain a plugin-specific relaxed
  * SPA `config` object, which the host canonicalizes to standard JSON before
  * instance construction, and an initial runtime-only scalar `props` object.
- * The graph is acyclic and single-rate: every specified port rate must use the
- * same exact numerator and denominator.
+ * The graph is acyclic. Linked ports have exactly matching formats, including
+ * rates. Different external rates are admitted when a node explicitly
+ * aggregates or otherwise conditionally publishes output.
  */
 int spa_fgn_graph_new(const char *config, struct spa_fgn_graph **graph);
 void spa_fgn_graph_free(struct spa_fgn_graph *graph);
@@ -107,12 +108,16 @@ enum spa_fgn_process_result {
 };
 
 /**
- * Process one complete synchronous graph cycle.
+ * Process one synchronous graph cycle.
  *
  * Returns a negative errno-style error or a mask of enum
  * spa_fgn_process_result. An inputs or outputs array may be NULL exactly when
- * its corresponding count is zero. A processing error clears external output
- * sizes but does not roll back state already changed by an earlier node.
+ * its corresponding count is zero. A successful external output has its exact
+ * completed size; an output downstream of a deferred conditional output has
+ * size zero and must not be published by the caller. The caller may retain
+ * that unpublished output buffer for a later graph cycle. A processing error
+ * clears external output sizes but does not roll back state already changed by
+ * an earlier node.
  */
 int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		struct spa_buffer *const inputs[], uint32_t n_inputs,

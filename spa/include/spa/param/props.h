@@ -30,7 +30,10 @@ enum spa_prop_info {
 	SPA_PROP_INFO_container,	/**< (Id) type of container if any */
 	SPA_PROP_INFO_params,		/**< (Bool) is part of params property */
 	SPA_PROP_INFO_description,	/**< (String) User readable description */
-	SPA_PROP_INFO_group,		/**< (String) the property group name */
+	SPA_PROP_INFO_group,		/**< (String) the property group path; '/' separates
+					  *  nested UI groups */
+	SPA_PROP_INFO_visibility,	/**< (String) UI visibility level, for example
+					  *  "Beginner", "Expert", "Guru", or "Invisible" */
 };
 
 /** predefined properties for SPA_TYPE_OBJECT_Props */

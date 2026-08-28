@@ -13,7 +13,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
-const ABI_VERSION: u32 = 5;
+const ABI_VERSION: u32 = 6;
 const DIRECTION_INPUT: u32 = 0;
 const DIRECTION_OUTPUT: u32 = 1;
 const PORT_OPTIONAL: u32 = 1;
