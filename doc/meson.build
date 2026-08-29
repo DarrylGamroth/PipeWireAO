@@ -76,6 +76,7 @@ extra_docs = [
   'dox/internals/row-block-ndarrays.md',
   'dox/internals/progressive-wavefront-processing.md',
   'dox/internals/filter-graph-ndarray.md',
+  'dox/internals/pipewireao-rtc-integration.md',
   'dox/internals/acquisition-metadata.md',
   'dox/internals/driver.dox',
   'dox/internals/protocol.dox',
