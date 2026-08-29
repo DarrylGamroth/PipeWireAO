@@ -166,8 +166,8 @@ complete-frame mode remains the zero-copy and DMA-BUF option.
 
 Pixel calibration accepts either:
 
-- a complete `GRAY16_LE` frame, which it may process in fixed internal row
-  ranges while holding the input lease; or
+- a complete `GRAY8`, `GRAY16_LE`, or `GRAY16_BE` frame, which it may process
+  in fixed internal row ranges while holding the input lease; or
 - one complete raw row-block ndarray per graph cycle.
 
 A node with frame-scoped calibration selection snapshots its selected
@@ -180,21 +180,34 @@ frame and publish nothing until a complete frame uses one plan. In row-block
 mode calibration consumes the raw block after producing the corresponding
 calibrated block; no camera lease crosses the node.
 
-Frame assembly is a structural ndarray transform. One prepared instance owns a
-preallocated byte workspace for the exact negotiated element type, layout,
-block shape, complete-frame shape, and every present rate, profile, and schema
-field. It accepts clocked or unclocked standard fixed-width rank-two ndarrays
-in row-major or column-major layout without interpreting or converting element
-values. It accepts only the next expected offset for the active sequence. A
-gap, overlap,
-changed sequence, out-of-range block, or invalid marker abandons the partial
-frame. It publishes nothing until the final valid block arrives. Non-marker
-Header flags accumulate across accepted blocks, and the next completed frame
-after an abandonment carries `DISCONT`.
+Frame assembly is a structural ndarray transform. Its input port advertises
+the exact row-block format and the exact complete-frame format; negotiation
+selects one for the stream. One prepared instance owns a preallocated byte
+workspace for the negotiated element type, layout, block shape,
+complete-frame shape, and every present rate, profile, and schema field. It
+accepts clocked or unclocked standard fixed-width rank-two ndarrays in
+row-major or column-major layout without interpreting or converting element
+values. For row blocks it accepts only the next expected offset for the active
+sequence. A gap, overlap, changed sequence, out-of-range block, or invalid
+marker abandons the partial frame. It publishes nothing until the final valid
+block arrives. Non-marker Header flags accumulate across accepted blocks, and
+the next completed frame after an abandonment carries `DISCONT`.
+
+A complete-frame input is already a complete artifact. Its exact output format
+and Header are preserved; `offset` and `MARKER` are not interpreted. When SPA
+buffer allocation negotiation supplies shared input/output storage, the
+payload is forwarded without a copy. Otherwise it is copied directly once
+without using the assembly workspace.
 
 Consumers that understand row blocks can branch before assembly. Full-frame
 algorithms, telemetry, GUI, recording, and standard video conversion normally
 branch after assembly.
+
+A capacity-one observer queue after assembly bounds backlog but does not lower
+the assembly rate. A lower-rate observer path requires explicit frame-aware
+rate selection before payload assembly. Selection retains or discards every
+block with the same Header `seq` as a group; dropping individual blocks is not
+a rate conversion.
 
 ## Conditional scientific aggregation
 
