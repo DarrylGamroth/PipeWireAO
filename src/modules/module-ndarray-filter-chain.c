@@ -163,6 +163,9 @@ static struct spa_pod *build_format(struct spa_pod_builder *builder,
 	if (format->schema != NULL)
 		spa_pod_builder_add(builder, SPA_FORMAT_NDARRAY_schema,
 				SPA_POD_String(format->schema), 0);
+	if (format->profile != NULL)
+		spa_pod_builder_add(builder, SPA_FORMAT_NDARRAY_profile,
+				SPA_POD_String(format->profile), 0);
 	return spa_pod_builder_pop(builder, &object);
 }
 
@@ -189,7 +192,7 @@ static int validate_port_format(struct port *port, const struct spa_pod *param)
 {
 	const struct spa_fgn_format *expected;
 	struct spa_ndarray_info actual;
-	const char *schema;
+	const char *schema, *profile;
 	uint32_t i;
 	int res;
 
@@ -197,14 +200,17 @@ static int validate_port_format(struct port *port, const struct spa_pod *param)
 			port->direction, port->index, &expected)) < 0 ||
 	    (res = spa_format_ndarray_parse(param, &actual)) < 0 ||
 	    (res = get_optional_format_string(param,
-			SPA_FORMAT_NDARRAY_schema, &schema)) < 0)
+			SPA_FORMAT_NDARRAY_schema, &schema)) < 0 ||
+	    (res = get_optional_format_string(param,
+			SPA_FORMAT_NDARRAY_profile, &profile)) < 0)
 		return res;
 	if ((uint32_t)actual.element_type != expected->element_type ||
 	    (uint32_t)actual.layout != expected->layout ||
 	    actual.rate.num != expected->rate_num ||
 	    actual.rate.denom != expected->rate_denom ||
 	    actual.n_dimensions != expected->n_dimensions ||
-	    !strings_equal(schema, expected->schema))
+	    !strings_equal(schema, expected->schema) ||
+	    !strings_equal(profile, expected->profile))
 		return -EINVAL;
 	for (i = 0; i < actual.n_dimensions; i++)
 		if (actual.shape[i] != expected->shape[i])
