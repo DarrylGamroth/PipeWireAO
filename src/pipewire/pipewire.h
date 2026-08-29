@@ -32,6 +32,7 @@
 #include <pipewire/port.h>
 #include <pipewire/stream.h>
 #include <pipewire/filter.h>
+#include <pipewire/ndarray-filter.h>
 #include <pipewire/thread-loop.h>
 #include <pipewire/data-loop.h>
 #include <pipewire/timer-queue.h>
