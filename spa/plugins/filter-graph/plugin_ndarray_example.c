@@ -50,6 +50,7 @@ struct prepared_parameter {
 struct instance {
 	uint32_t shape[SPA_NDARRAY_MAX_DIMENSIONS];
 	char schema[256];
+	char profile[256];
 	struct spa_fgn_format format;
 	uint32_t n_values;
 	_Atomic uint64_t requested_state;
@@ -183,6 +184,13 @@ static int instantiate(const struct spa_fgn_descriptor *descriptor SPA_UNUSED,
 				res = -EINVAL;
 				goto error;
 			}
+		} else if (spa_streq(key, "port_profile")) {
+			if (spa_json_parse_stringn(token, len, instance->profile,
+					sizeof(instance->profile)) <= 0 ||
+			    instance->profile[0] == '\0') {
+				res = -EINVAL;
+				goto error;
+			}
 		} else {
 			res = -EINVAL;
 			goto error;
@@ -222,6 +230,8 @@ static int instantiate(const struct spa_fgn_descriptor *descriptor SPA_UNUSED,
 	atomic_init(&instance->prepared_parameter_busy, false);
 	instance->format.schema = instance->schema[0] != '\0'
 		? instance->schema : NULL;
+	instance->format.profile = instance->profile[0] != '\0'
+		? instance->profile : NULL;
 	*result = instance;
 	return 0;
 error:
