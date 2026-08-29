@@ -832,17 +832,19 @@ transactionally, verifies bounded coefficient update back pressure and
 frame-boundary adoption, processes a two-dimensional F32 ndarray, and verifies
 standard Header propagation.
 
-## SHWFS direct-call benchmark
+## Historical SHWFS native-SPA comparison
 
-`benchmark-filter-graph-ndarray-calculon` compares the existing fused Calculon
-SPA controller with either the generated four-node image-view graph or an
-eight-node graph with the deformable-mirror projections exposed. Both are
+The retired `benchmark-filter-graph-ndarray-calculon` compared the former fused
+Calculon SPA controller with either the generated four-node image-view graph or
+an eight-node graph with the deformable-mirror projections exposed. Both were
 selected by the type-only `calculon-fgn-revolt-fixture` deployment. The harness
-constructs the same input and reconstruction matrix, requires bit-exact
-demanded-command output before timing, alternates measurement order, reports
-mean and tail percentiles, and writes raw paired CSV observations. The fused
-baseline still materializes detector regions, so the comparison establishes
+constructed the same input and reconstruction matrix, required bit-exact
+demanded-command output before timing, alternated measurement order, reported
+mean and tail percentiles, and wrote raw paired CSV observations. The fused
+baseline still materialized detector regions, so the comparison established
 viability of the intended graph rather than isolating dispatch from fusion.
+The native Calculon SPA controller and this transitional benchmark are no
+longer built; scientific operations now use Calculon FGN declarations.
 
 Across five CPU-pinned Ryzen 7 6800H development-host runs with a 352 by 352
 detector, 22 by 22-pixel subapertures, and 277 actuators, median p50 was 142.577
@@ -869,9 +871,9 @@ cycles and 7.3% more instructions for that path, with hardware events
 multiplexed to about 83%.
 
 This is preliminary direct callback service time, not PipeWire scheduling or
-device latency and not a normative percentile claim. The reproducible harness
-and full limitations are `scripts/benchmark_fgn_shwfs.py` and
-`docs/fgn-shwfs-performance.md` in the Calculon repository.
+device latency and not a normative percentile claim. The full limitations are
+retained in the historical `docs/fgn-shwfs-performance.md` record in the
+Calculon repository; its native-SPA comparison harness is retired.
 
 ## Complete REVOLT Classic direct-call qualification
 
