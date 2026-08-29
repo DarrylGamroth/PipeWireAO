@@ -1255,10 +1255,36 @@ int main(int argc, char *argv[])
 	res = snprintf(config, sizeof(config),
 		"{ nodes = ["
 		"  { type = ndarray name = first plugin = \"%s\" label = scale-f32"
-		"    config = { shape = [ 2 2 ] schema = test.matrix/1 }"
+		"    config = { shape = [ 2 2 ] schema = test.matrix/1"
+		"               port_profile = test.profile-a } }"
+		"  { type = ndarray name = second plugin = \"%s\" label = scale-f32"
+		"    config = { shape = [ 2 2 ] schema = test.matrix/1"
+		"               port_profile = test.profile-b } }"
+		"] links = [ { output = \"first:out\" input = \"second:in\" } ] }",
+		argv[1], argv[1]);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	res = spa_fgn_graph_new(config, &invalid_graph);
+	if (res == 0) {
+		/* A fixed-format plugin may ignore both profile configuration values. */
+		assert(spa_fgn_graph_get_port_format(invalid_graph,
+				SPA_DIRECTION_INPUT, 0, &format) == 0);
+		assert(format->profile == NULL);
+		spa_fgn_graph_free(invalid_graph);
+		invalid_graph = NULL;
+	} else {
+		assert(res == -EINVAL);
+		assert(invalid_graph == NULL);
+	}
+
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		"  { type = ndarray name = first plugin = \"%s\" label = scale-f32"
+		"    config = { shape = [ 2 2 ] schema = test.matrix/1"
+		"               port_profile = test.profile-a }"
 		"    props = { gain = 2.0 } }"
 		"  { type = ndarray name = second plugin = \"%s\" label = scale-f32"
-		"    config = { shape = [ 2 2 ] schema = test.matrix/1 }"
+		"    config = { shape = [ 2 2 ] schema = test.matrix/1"
+		"               port_profile = test.profile-a }"
 		"    props = { gain = 3.0 } }"
 		"] links = [ { output = \"first:out\" input = \"second:in\" } ]"
 		" inputs = [ \"first:in\" \"first:coefficients\" ]"
@@ -1284,6 +1310,8 @@ int main(int argc, char *argv[])
 	assert(format->n_dimensions == 2);
 	assert(format->shape[0] == 2 && format->shape[1] == 2);
 	assert(strcmp(format->schema, "test.matrix/1") == 0);
+	if (format->profile != NULL)
+		assert(strcmp(format->profile, "test.profile-a") == 0);
 	check_properties(graph);
 	assert(get_long_property(graph, "first:requested-generation") == 0);
 	assert(get_long_property(graph, "second:requested-generation") == 0);
