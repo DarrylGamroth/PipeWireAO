@@ -81,7 +81,7 @@ struct pw_ndarray_filter_buffer {
 /**
  * One exact packed ndarray format.
  *
- * `shape` and `schema` are borrowed during construction and copied by
+ * `shape`, `schema`, and `profile` are borrowed during construction and copied by
  * pw_ndarray_filter_new(). Integer fields keep the ABI straightforward for
  * generated and foreign-language bindings.
  */
@@ -93,6 +93,7 @@ struct pw_ndarray_filter_format {
 	uint32_t n_dimensions;
 	const uint32_t *shape;
 	const char *schema;          /**< optional semantic schema */
+	const char *profile;         /**< optional interpretation profile identity */
 };
 
 /** Static description of one external node port. */

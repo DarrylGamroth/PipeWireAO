@@ -26,7 +26,7 @@ extern "C" {
  */
 
 /** Version of the C ABI exported by ndarray plugin libraries. */
-#define SPA_FGN_PLUGIN_ABI_VERSION 7u
+#define SPA_FGN_PLUGIN_ABI_VERSION 8u
 #define SPA_FGN_MAX_METAS 16u
 #define SPA_FGN_MAX_META_BYTES 4096u
 #define SPA_FGN_MAX_PARAMETER_TRANSACTION_ASSIGNMENTS 4096u
@@ -82,6 +82,7 @@ struct spa_fgn_format {
 	uint32_t n_dimensions;
 	const uint32_t *shape;
 	const char *schema;          /**< optional semantic schema */
+	const char *profile;         /**< optional interpretation profile identity */
 };
 
 /** Static description of one plugin port. */
