@@ -11,10 +11,10 @@ latest-buffer transport.
 In eGrabber row-block mode, the camera DMA fills a private host buffer. The
 source polls the camera's filled-size observation and copies each newly
 complete group of `N` rows into a normal output buffer. That output is a
-complete immutable U16 ndarray with shape `[N, width]`. Pixel calibration can
-consume those blocks immediately and emits complete F32 row-block ndarrays. A
-frame-assembly node restores `[height, width]` frames for full-frame
-algorithms and observers.
+complete immutable U16 ndarray with shape `[N, width]`. A Calculon FGN pixel
+calibration operator can consume those blocks immediately and emit complete
+F32 row-block ndarrays. The generic `api.ndarray.frame-assembly` node restores
+`[height, width]` frames for full-frame algorithms and observers.
 
 The copy at the camera boundary gives each public artifact ordinary PipeWire
 ownership. It removes the need to lease a buffer that the camera is still
@@ -28,10 +28,11 @@ Complete-frame mode preserves the camera's zero-copy path:
 flowchart LR
     Camera["Camera DMA"]
     Video["Complete raw-video buffer"]
+    View["Raw-video ndarray view"]
     Calibration["Pixel calibration"]
     Frame["Complete calibrated ndarray"]
     RTC["Full-frame algorithm"]
-    Camera --> Video --> Calibration --> Frame --> RTC
+    Camera --> Video --> View --> Calibration --> Frame --> RTC
 ```
 
 Row-block mode changes artifact granularity:
@@ -66,12 +67,20 @@ complete-frame alternative. Format negotiation selects one exact shape for the
 port. A single negotiated stream never mixes `[N, width]` and
 `[height, width]` artifacts.
 
+Packed complete-frame `GRAY8` or `GRAY16_LE` camera video crosses into the FGN
+ndarray graph through `api.ndarray.video-view`. The adapter projects the exact
+shape, rate, schema, and optional interpretation profile and preserves bytes
+and Header metadata. Compatible SPA allocation shares storage; the fallback is
+one packed-row copy. Row-block sources already publish ndarrays and bypass it.
+
 ## Row quantum
 
 `api.egrabber.row-block-rows = N` selects the public raw block height.
-`api.calculon.row-block-rows = N` selects the calibrated block height and
+The Calculon FGN pixel-calibration port declarations and
+`api.ndarray.row-block-rows = N` select the same calibrated block height and
 assembly input. `N` must be positive, smaller than the detector height, and
-divide the height.
+divide the height. Exact shape, schema, profile, layout, element type, and rate
+negotiation rejects an inconsistent graph before processing starts.
 
 For frame rate `F`, detector height `H`, and block height `N`:
 
@@ -164,10 +173,10 @@ complete-frame mode remains the zero-copy and DMA-BUF option.
 
 ## Calibration and assembly
 
-Pixel calibration accepts either:
+The Calculon FGN pixel-calibration operator accepts either:
 
-- a complete `GRAY8`, `GRAY16_LE`, or `GRAY16_BE` frame, which it may process
-  in fixed internal row ranges while holding the input lease; or
+- a complete U16 raw-detector ndarray, projected from packed `GRAY16_LE` by
+  `api.ndarray.video-view`; or
 - one complete raw row-block ndarray per graph cycle.
 
 A node with frame-scoped calibration selection snapshots its selected
@@ -180,12 +189,12 @@ frame and publish nothing until a complete frame uses one plan. In row-block
 mode calibration consumes the raw block after producing the corresponding
 calibrated block; no camera lease crosses the node.
 
-Frame assembly is a structural ndarray transform. Its input port advertises
-the exact row-block format and the exact complete-frame format; negotiation
-selects one for the stream. One prepared instance owns a preallocated byte
-workspace for the negotiated element type, layout, block shape,
-complete-frame shape, and every present rate, profile, and schema field. It
-accepts clocked or unclocked standard fixed-width rank-two ndarrays in
+`api.ndarray.frame-assembly` is a structural ndarray transform. Its input port
+advertises the exact row-block format and the exact complete-frame format;
+negotiation selects one for the stream. One prepared instance owns a
+preallocated byte workspace for the negotiated element type, layout, block
+shape, complete-frame shape, and every present rate, profile, and schema field.
+It accepts clocked or unclocked standard fixed-width rank-two ndarrays in
 row-major or column-major layout without interpreting or converting element
 values. For row blocks it accepts only the next expected offset for the active
 sequence. A gap, overlap, changed sequence, out-of-range block, or invalid
