@@ -13,7 +13,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
-const ABI_VERSION: u32 = 7;
+const ABI_VERSION: u32 = 8;
 const EXECUTOR_VERSION: u32 = 1;
 const DIRECTION_INPUT: u32 = 0;
 const DIRECTION_OUTPUT: u32 = 1;
@@ -92,6 +92,7 @@ struct Format {
     n_dimensions: u32,
     shape: *const u32,
     schema: *const c_char,
+    profile: *const c_char,
 }
 
 unsafe impl Sync for Format {}
@@ -341,8 +342,7 @@ fn property_write_end(instance: &Instance) {
 
 fn property_revision(instance: &Instance) -> u64 {
     let publication = instance.property_publication.load(Ordering::SeqCst);
-    (publication >> PROPERTY_WRITER_BITS) * 2
-        + u64::from(publication & PROPERTY_WRITER_MASK != 0)
+    (publication >> PROPERTY_WRITER_BITS) * 2 + u64::from(publication & PROPERTY_WRITER_MASK != 0)
 }
 
 static SHAPE: [u32; 2] = [2, 2];
@@ -354,6 +354,7 @@ static FORMAT: Format = Format {
     n_dimensions: 2,
     shape: SHAPE.as_ptr(),
     schema: c"test.matrix/1".as_ptr(),
+    profile: ptr::null(),
 };
 
 static PORTS: [PortInfo; 3] = [
@@ -689,11 +690,7 @@ unsafe extern "C" fn get_prop(data: *mut c_void, id: u32, value: *mut Value) -> 
                     .requested_parameter_sequence
                     .load(Ordering::Acquire) as i64,
             ),
-            5 => long_value(
-                instance
-                    .active_parameter_sequence
-                    .load(Ordering::Acquire) as i64,
-            ),
+            5 => long_value(instance.active_parameter_sequence.load(Ordering::Acquire) as i64),
             6 => id_value(0),
             7 => long_value(4),
             _ => return -ENOENT,
@@ -891,9 +888,8 @@ unsafe extern "C" fn commit_parameter(data: *mut c_void, prepared: *mut c_void) 
         }
         let instance = unsafe { &*data.cast::<Instance>() };
         let prepared = unsafe { &*prepared.cast::<PreparedParameter>() };
-        let sequence = unsafe {
-            (*instance.parameter_slots.get())[prepared.slot as usize].sequence
-        };
+        let sequence =
+            unsafe { (*instance.parameter_slots.get())[prepared.slot as usize].sequence };
         property_write_begin(instance);
         instance
             .requested_parameter_sequence
