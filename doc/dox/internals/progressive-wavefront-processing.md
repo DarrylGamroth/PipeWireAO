@@ -32,11 +32,13 @@ evidence that each camera already exposes early pixels. The observed Copper and 
 receive whole Aeron image or differential-image messages. PipeWireAO already
 has an `api.hnu240.decoder` plugin that transforms one complete HNü240 Camera
 Link frame from 1408 by 131 GRAY8 into a 240 by 242 GRAY16 image. The existing
-`api.calculon.pixel-calibration` SPA node then converts that exact complete-frame
-video format to the F32 detector ndarray used by the generated PWFS graph. Thus
-the current whole-frame topology is `camera -> api.hnu240.decoder ->
-api.calculon.pixel-calibration -> ndarray filter chain`. The decoder is the
-qualified whole-frame descrambling boundary, not a progressive source. The
+`api.ndarray.video-view` adapter exposes that exact packed image as a U16
+raw-detector ndarray, and the Calculon FGN pixel-calibration operator converts
+it to the F32 detector ndarray used by the generated PWFS graph. Thus the
+current whole-frame topology is `camera -> api.hnu240.decoder ->
+api.ndarray.video-view -> Calculon FGN pixel calibration -> ndarray filter
+chain`. The decoder is the qualified whole-frame descrambling boundary, not a
+progressive source. The
 older GPI 2.0 NuVu handler contains a progressive implementation but explicitly
 disables it because it is reported broken. All three systems can still use
 whole-frame parallel linear algebra before their early-readout paths are
