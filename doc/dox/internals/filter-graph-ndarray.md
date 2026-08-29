@@ -66,36 +66,44 @@ process lifetime MUST set `SPA_FGN_PLUGIN_FLAG_RETAIN_LIBRARY`. The host MUST
 then keep that library mapped until process termination. Such a plugin MUST
 bound retained registry state per mapped library, not per graph or instance.
 
-ABI-v7 descriptor growth MUST be append-only and gated by `struct_size`. The
+ABI-v8 retains the append-only descriptor extension introduced by ABI-v7.
+Descriptor growth MUST be append-only and gated by `struct_size`. The
 host MUST accept the original descriptor prefix ending after `process()` and
 MUST NOT read an appended callback from a shorter descriptor. A descriptor
-that contains the appended process-thread preparation field remains ABI v7;
+that contains the appended process-thread preparation field remains ABI v8;
 the field is optional and a null value has the same behavior as the original
-prefix.
+prefix. ABI-v8 deliberately breaks ABI-v7 format layout compatibility by
+adding the per-port `profile` field required by FGN-FORMAT-001; hosts MUST
+reject plugins from either incompatible ABI version.
 
 ### FGN-FORMAT-001 — Exact per-port ndarray meaning
 
 Each port format MUST identify its element type, packed layout, positive exact
-shape, optional rate, and optional versioned scientific schema. Graph creation
-MUST compare all present fields exactly and reject a link whose schemas differ.
+shape, optional rate, optional versioned scientific schema, and optional
+interpretation profile. A non-null schema or profile MUST be a nonempty string.
+All strings and shapes are immutable plugin-owned instance data that remain
+valid through instance cleanup. Graph creation MUST compare every field
+exactly, including the presence and value of schema and profile, and reject an
+otherwise compatible link whose schema or profile differs.
+
+The FGN host MUST project a port profile to the generic SPA ndarray
+`SPA_FORMAT_NDARRAY_profile` field. Module and standalone-client negotiation
+MUST reject an absent, duplicate, malformed, or different profile when the
+declared port format does not contain the same optional value. Profile changes
+therefore require graph reconstruction and SPA format renegotiation; they MUST
+NOT be accepted through a runtime property or parameter update.
+
 The ABI and graph configuration MUST NOT add a node-wide interpretation
-profile: a node can transform between different scientific meanings, and one
-free-form string cannot identify every port. The FGN ABI does not currently
-project the generic SPA per-port interpretation profile. Adding that capability
-requires a separately specified per-port field with defined lifecycle and
-parameter-update semantics.
+profile. A node can transform between different scientific meanings, so each
+port owns its own compatibility identity. A plugin may accept a construction
+property that selects or derives its per-port profiles, but it MUST expose the
+result only through each `spa_fgn_format.profile` field.
 
-This restriction is specific to the FGN descriptor and graph configuration.
-The generic SPA ndarray Format retains the optional per-port
-`SPA_FORMAT_NDARRAY_profile` compatibility identity used at device boundaries.
-It is fixed for a negotiated format and changes only through format
-renegotiation. FGN does not currently project that optional field; a
-device-boundary adapter that requires it remains outside the generated
-scientific graph and adds or validates it on its own SPA port.
-
-Verification intent: inspect the ABI layout, accept equal schemas, reject an
-otherwise identical link with different schemas, and reject the retired
-`profile` configuration key in C and generated Rust plugins.
+Verification intent: inspect the ABI-v8 layout; accept equal optional schemas
+and profiles; reject schema mismatch, profile mismatch, and presence mismatch;
+verify SPA projection and duplicate-key rejection; and retain rejection of an
+unsupported node-wide `profile` configuration key in the generic C and Rust
+example plugins.
 
 ### FGN-CONFIG-001 — Construction configuration boundary
 
