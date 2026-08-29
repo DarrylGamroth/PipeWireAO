@@ -20,6 +20,7 @@
 - \subpage page_row_block_ndarrays
 - \subpage page_progressive_wavefront_processing
 - \subpage page_filter_graph_ndarray
+- \subpage page_pipewireao_rtc_integration
 - \subpage page_acquisition_metadata
 - \subpage page_driver
 - \subpage page_latency
