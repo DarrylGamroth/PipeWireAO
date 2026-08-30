@@ -19,9 +19,18 @@
 
 #include <spa/filter-graph/filter-graph-ndarray.h>
 
-#define BLOCK_FLOATS 256u
+#define RECONSTRUCTION_FLOATS 256u
 #define COMMAND_FLOATS 277u
-#define BLOCKS_PER_FRAME 4u
+#define MAX_BLOCK_FLOATS 1024u
+#define MAX_BLOCKS_PER_FRAME 8u
+
+enum readout_profile {
+	PROFILE_COMPLETE_FRAME,
+	PROFILE_BLOCK_ROW,
+	PROFILE_TWO_REGION_REVERSED,
+	PROFILE_EIGHT_REGION,
+	PROFILE_COUNT,
+};
 
 struct test_buffer {
 	struct spa_buffer buffer;
@@ -40,14 +49,46 @@ struct options {
 
 struct fixture {
 	struct spa_fgn_graph *graph;
-	float blocks[BLOCKS_PER_FRAME][BLOCK_FLOATS];
+	float blocks[MAX_BLOCKS_PER_FRAME][MAX_BLOCK_FLOATS];
 	float command[COMMAND_FLOATS];
 	struct test_buffer input;
 	struct test_buffer output;
 	struct spa_buffer *inputs[1];
 	struct spa_buffer *outputs[1];
+	uint32_t block_floats;
+	uint32_t blocks_per_frame;
 	uint64_t sequence;
 };
+
+static const char *delivery_name(enum readout_profile profile)
+{
+	switch (profile) {
+	case PROFILE_COMPLETE_FRAME:
+		return "complete-frame";
+	case PROFILE_BLOCK_ROW:
+		return "block-row";
+	case PROFILE_TWO_REGION_REVERSED:
+	case PROFILE_EIGHT_REGION:
+		return "region-block";
+	default:
+		spa_assert_not_reached();
+	}
+}
+
+static const char *profile_name(enum readout_profile profile)
+{
+	switch (profile) {
+	case PROFILE_COMPLETE_FRAME:
+	case PROFILE_BLOCK_ROW:
+		return "canonical-raster";
+	case PROFILE_TWO_REGION_REVERSED:
+		return "two-region-reversed";
+	case PROFILE_EIGHT_REGION:
+		return "eight-region";
+	default:
+		spa_assert_not_reached();
+	}
+}
 
 static uint64_t monotonic_ns(void)
 {
@@ -116,9 +157,28 @@ static void init_buffer(struct test_buffer *storage, void *data,
 	storage->buffer.datas = &storage->data;
 }
 
-static const char *profile_config(bool eight)
+static const char *profile_config(enum readout_profile profile)
 {
-	if (eight)
+	switch (profile) {
+	case PROFILE_COMPLETE_FRAME:
+		return
+			"\"region_lines\":32,\"block_lines\":32,\"region_samples\":32,"
+			"\"detector_origins\":[[0,0]],"
+			"\"detector_line_steps\":[[1,0]],"
+			"\"detector_sample_steps\":[[0,1]]";
+	case PROFILE_BLOCK_ROW:
+		return
+			"\"region_lines\":32,\"block_lines\":4,\"region_samples\":32,"
+			"\"detector_origins\":[[0,0]],"
+			"\"detector_line_steps\":[[1,0]],"
+			"\"detector_sample_steps\":[[0,1]]";
+	case PROFILE_TWO_REGION_REVERSED:
+		return
+			"\"region_lines\":16,\"block_lines\":4,\"region_samples\":32,"
+			"\"detector_origins\":[[0,0],[31,0]],"
+			"\"detector_line_steps\":[[1,0],[-1,0]],"
+			"\"detector_sample_steps\":[[0,1],[0,1]]";
+	case PROFILE_EIGHT_REGION:
 		return
 			"\"region_lines\":16,\"block_lines\":4,\"region_samples\":8,"
 			"\"detector_origins\":[[0,0],[15,15],[0,16],[15,31],"
@@ -127,11 +187,9 @@ static const char *profile_config(bool eight)
 			"[-1,0],[1,0],[-1,0],[1,0]],"
 			"\"detector_sample_steps\":[[0,1],[0,-1],[0,1],[0,-1],"
 			"[0,1],[0,-1],[0,1],[0,-1]]";
-	return
-		"\"region_lines\":16,\"block_lines\":4,\"region_samples\":32,"
-		"\"detector_origins\":[[0,0],[31,0]],"
-		"\"detector_line_steps\":[[1,0],[-1,0]],"
-		"\"detector_sample_steps\":[[0,1],[0,1]]";
+	default:
+		spa_assert_not_reached();
+	}
 }
 
 static char *make_mask(void)
@@ -154,7 +212,7 @@ static char *make_mask(void)
 
 static char *make_reconstructor(void)
 {
-	const size_t elements = COMMAND_FLOATS * BLOCK_FLOATS;
+	const size_t elements = COMMAND_FLOATS * RECONSTRUCTION_FLOATS;
 	const size_t capacity = elements * 20u + 3u;
 	char *matrix = calloc(1, capacity);
 	size_t offset = 0;
@@ -162,10 +220,10 @@ static char *make_reconstructor(void)
 	spa_assert_se(matrix != NULL);
 	matrix[offset++] = '[';
 	for (uint32_t row = 0; row < COMMAND_FLOATS; row++) {
-		for (uint32_t column = 0; column < BLOCK_FLOATS; column++) {
+		for (uint32_t column = 0; column < RECONSTRUCTION_FLOATS; column++) {
 			int numerator = (int)((3u * (row + 1u) +
 					5u * (column + 1u)) % 29u) - 14;
-			float value = (float)numerator / (29.0f * BLOCK_FLOATS);
+			float value = (float)numerator / (29.0f * RECONSTRUCTION_FLOATS);
 			int written = snprintf(matrix + offset, capacity - offset,
 					"%s%.9g", row == 0 && column == 0 ? "" : ",",
 					value);
@@ -178,7 +236,7 @@ static char *make_reconstructor(void)
 	return matrix;
 }
 
-static char *make_config(const char *plugin, bool eight)
+static char *make_config(const char *plugin, enum readout_profile profile)
 {
 	char *mask = make_mask();
 	char *reconstructor = make_reconstructor();
@@ -209,14 +267,14 @@ static char *make_config(const char *plugin, bool eight)
 		"\"input\":\"integrate:input\"}],"
 		"\"inputs\":[\"reconstruct:readout-block\"],"
 		"\"outputs\":[\"integrate:output\"]}",
-		plugin, profile_config(eight), mask, reconstructor, plugin);
+		plugin, profile_config(profile), mask, reconstructor, plugin);
 	free(mask);
 	free(reconstructor);
 	spa_assert_se(written > 0 && (size_t)written < capacity);
 	return config;
 }
 
-static void init_blocks(struct fixture *fixture, bool eight)
+static void init_blocks(struct fixture *fixture, enum readout_profile profile)
 {
 	static const int32_t eight_origins[8][2] = {
 		{ 0, 0 }, { 15, 15 }, { 0, 16 }, { 15, 31 },
@@ -224,27 +282,34 @@ static void init_blocks(struct fixture *fixture, bool eight)
 	};
 	static const int32_t eight_line_steps[8] = { 1, -1, 1, -1, -1, 1, -1, 1 };
 	static const int32_t eight_sample_steps[8] = { 1, -1, 1, -1, 1, -1, 1, -1 };
-	const uint32_t regions = eight ? 8u : 2u;
+	const bool eight = profile == PROFILE_EIGHT_REGION;
+	const bool two = profile == PROFILE_TWO_REGION_REVERSED;
+	const uint32_t regions = eight ? 8u : two ? 2u : 1u;
+	const uint32_t region_lines = eight || two ? 16u : 32u;
+	const uint32_t block_lines = profile == PROFILE_COMPLETE_FRAME ? 32u : 4u;
 	const uint32_t samples = eight ? 8u : 32u;
 
-	for (uint32_t ordinal = 0; ordinal < BLOCKS_PER_FRAME; ordinal++) {
+	fixture->blocks_per_frame = region_lines / block_lines;
+	fixture->block_floats = regions * block_lines * samples;
+
+	for (uint32_t ordinal = 0; ordinal < fixture->blocks_per_frame; ordinal++) {
 		for (uint32_t region = 0; region < regions; region++) {
 			int32_t origin_row = eight ? eight_origins[region][0] :
-					(region == 0 ? 0 : 31);
+					two && region == 1 ? 31 : 0;
 			int32_t origin_column = eight ? eight_origins[region][1] : 0;
 			int32_t line_step = eight ? eight_line_steps[region] :
-					(region == 0 ? 1 : -1);
+					two && region == 1 ? -1 : 1;
 			int32_t sample_step = eight ? eight_sample_steps[region] : 1;
-			for (uint32_t line = 0; line < 4u; line++) {
+			for (uint32_t line = 0; line < block_lines; line++) {
 				for (uint32_t sample = 0; sample < samples; sample++) {
 					int32_t row = origin_row +
-						(int32_t)(ordinal * 4u + line) * line_step;
+						(int32_t)(ordinal * block_lines + line) * line_step;
 					int32_t column = origin_column +
 						(int32_t)sample * sample_step;
 					uint32_t detector_index = (uint32_t)row * 32u +
 						(uint32_t)column + 1u;
 					uint32_t block_index =
-						(region * 4u + line) * samples + sample;
+						(region * block_lines + line) * samples + sample;
 					fixture->blocks[ordinal][block_index] = 1.0f +
 						(float)((7u * detector_index) % 31u) / 31.0f;
 				}
@@ -253,14 +318,16 @@ static void init_blocks(struct fixture *fixture, bool eight)
 	}
 }
 
-static void fixture_init(struct fixture *fixture, const char *plugin, bool eight)
+static void fixture_init(struct fixture *fixture, const char *plugin,
+		enum readout_profile profile)
 {
-	char *config = make_config(plugin, eight);
+	char *config = make_config(plugin, profile);
 	int res;
 
 	memset(fixture, 0, sizeof(*fixture));
-	init_blocks(fixture, eight);
-	init_buffer(&fixture->input, fixture->blocks[0], BLOCK_FLOATS * sizeof(float), true);
+	init_blocks(fixture, profile);
+	init_buffer(&fixture->input, fixture->blocks[0],
+			fixture->block_floats * sizeof(float), true);
 	init_buffer(&fixture->output, fixture->command, sizeof(fixture->command), false);
 	fixture->inputs[0] = &fixture->input.buffer;
 	fixture->outputs[0] = &fixture->output.buffer;
@@ -280,6 +347,13 @@ static void fixture_clear(struct fixture *fixture)
 	spa_fgn_graph_free(fixture->graph);
 }
 
+static void fixture_reset(struct fixture *fixture)
+{
+	spa_assert_se(spa_fgn_graph_reset(fixture->graph) == 0);
+	memset(fixture->command, 0, sizeof(fixture->command));
+	fixture->sequence = 1;
+}
+
 static void execute_block(struct fixture *fixture, uint32_t ordinal)
 {
 	int res;
@@ -287,7 +361,7 @@ static void execute_block(struct fixture *fixture, uint32_t ordinal)
 	fixture->input.header.seq = fixture->sequence;
 	fixture->input.header.offset = ordinal;
 	fixture->input.data.data = fixture->blocks[ordinal];
-	fixture->input.header.flags = ordinal + 1 == BLOCKS_PER_FRAME ?
+	fixture->input.header.flags = ordinal + 1 == fixture->blocks_per_frame ?
 		SPA_META_HEADER_FLAG_MARKER : 0;
 	fixture->output.chunk.size = 0;
 	res = spa_fgn_graph_process(fixture->graph,
@@ -297,7 +371,7 @@ static void execute_block(struct fixture *fixture, uint32_t ordinal)
 				strerror(-res), res, ordinal);
 	spa_assert_se(res == SPA_FGN_PROCESS_RESULT_NONE ||
 			res == SPA_FGN_PROCESS_RESULT_PROPS_CHANGED);
-	if (ordinal + 1 == BLOCKS_PER_FRAME) {
+	if (ordinal + 1 == fixture->blocks_per_frame) {
 		spa_assert_se(fixture->output.chunk.size == sizeof(fixture->command));
 		spa_assert_se(fixture->output.header.seq == fixture->sequence);
 	} else {
@@ -307,7 +381,7 @@ static void execute_block(struct fixture *fixture, uint32_t ordinal)
 
 static void execute_frame(struct fixture *fixture)
 {
-	for (uint32_t ordinal = 0; ordinal < BLOCKS_PER_FRAME; ordinal++)
+	for (uint32_t ordinal = 0; ordinal < fixture->blocks_per_frame; ordinal++)
 		execute_block(fixture, ordinal);
 	fixture->sequence++;
 }
@@ -331,39 +405,42 @@ int main(int argc, char **argv)
 	struct options options = parse_options(argc, argv);
 	uint32_t run_id = 0;
 
-	printf("run_id,runtime,boundary,profile,detector_rows,detector_columns,"
+	printf("run_id,runtime,boundary,delivery,profile,detector_rows,detector_columns,"
 		"reconstruction_pixels,controller_coordinates,blocks_per_frame,samples,"
 		"warmup,batch_ns_per_frame,minimum_ns,p50_ns,p90_ns,p99_ns,p99_9_ns,"
 		"maximum_ns,checksum\n");
-	for (uint32_t profile = 0; profile < 2; profile++) {
+	for (enum readout_profile profile = 0; profile < PROFILE_COUNT; profile++) {
 		for (uint32_t repetition = 0; repetition < options.repetitions; repetition++) {
 			struct fixture fixture;
 			uint64_t *latencies = calloc(options.samples, sizeof(*latencies));
 			uint64_t start, elapsed;
 
 			spa_assert_se(latencies != NULL);
-			fixture_init(&fixture, options.plugin, profile != 0);
+			fixture_init(&fixture, options.plugin, profile);
 			for (uint32_t index = 0; index < options.warmup; index++)
 				execute_frame(&fixture);
+			fixture_reset(&fixture);
 			start = monotonic_ns();
 			for (uint32_t index = 0; index < options.samples; index++)
 				execute_frame(&fixture);
 			elapsed = monotonic_ns() - start;
 			fixture_clear(&fixture);
 
-			fixture_init(&fixture, options.plugin, profile != 0);
+			fixture_init(&fixture, options.plugin, profile);
 			for (uint32_t index = 0; index < options.warmup; index++)
 				execute_frame(&fixture);
+			fixture_reset(&fixture);
 			for (uint32_t index = 0; index < options.samples; index++) {
 				start = monotonic_ns();
 				execute_frame(&fixture);
 				latencies[index] = monotonic_ns() - start;
 			}
 			qsort(latencies, options.samples, sizeof(*latencies), compare_u64);
-			printf("%u,fgn-configured-graph,region-block-frame,%s,32,32,256,277,4,"
+			printf("%u,fgn-configured-graph,detector-frame-control,%s,%s,32,32,256,277,%u,"
 				"%u,%u,%.3f,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64
 				",%" PRIu64 ",%" PRIu64 ",%.9g\n",
-				++run_id, profile == 0 ? "opposed-two-region" : "eight-region",
+				++run_id, delivery_name(profile), profile_name(profile),
+				fixture.blocks_per_frame,
 				options.samples, options.warmup,
 				(double)elapsed / options.samples, latencies[0],
 				percentile(latencies, options.samples, 50, 100),
