@@ -53,6 +53,19 @@ enum pw_ndarray_filter_metadata {
 	PW_NDARRAY_FILTER_METADATA_ACQUISITION = (1u << 1),
 };
 
+/** Per-callback buffer state controlled by an output callback. */
+enum pw_ndarray_filter_buffer_flags {
+	PW_NDARRAY_FILTER_BUFFER_FLAG_NONE = 0,
+	/**
+	 * Keep this output buffer for a later callback without publishing it.
+	 *
+	 * The helper clears this flag before every callback. It is valid only on
+	 * output buffers. This permits progressive algorithms to consume several
+	 * input blocks before publishing one completed output.
+	 */
+	PW_NDARRAY_FILTER_BUFFER_FLAG_OUTPUT_UNAVAILABLE = (1u << 0),
+};
+
 /**
  * One borrowed packed ndarray supplied to a process callback.
  *
@@ -64,11 +77,13 @@ enum pw_ndarray_filter_metadata {
  * `metadata_available` reports which destination metadata records exist for
  * an output and which records were present and valid for an input. A callback
  * sets `metadata_valid` on outputs after filling the corresponding by-value
- * record. It must not change any other structural field.
+ * record. It may set `PW_NDARRAY_FILTER_BUFFER_FLAG_OUTPUT_UNAVAILABLE` on an
+ * output to retain that buffer without publishing it. It must not change any
+ * other structural field.
  */
 struct pw_ndarray_filter_buffer {
 	uint32_t struct_size;
-	uint32_t flags;                 /**< reserved; zero */
+	uint32_t flags;                 /**< mask of enum pw_ndarray_filter_buffer_flags */
 	void *data;
 	uint32_t size;
 	uint32_t capacity;
@@ -118,7 +133,9 @@ struct pw_ndarray_filter_port {
  * in direction-local declaration order. It returns zero on success or a
  * negative errno-style value. The optional lifecycle callbacks use the same
  * return convention. Callbacks must not retain borrowed pointers or let an
- * exception unwind across the callback boundary.
+ * exception unwind across the callback boundary. Outputs are published by
+ * default. A process callback may independently mark an output unavailable;
+ * the helper retains that buffer and presents it again on the next callback.
  */
 struct pw_ndarray_filter_events {
 	uint32_t version;
