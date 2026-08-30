@@ -570,7 +570,8 @@ static int validate_completed_output(const struct ndarray_port *port,
 	if (spa_buffer_find_meta(buffer, SPA_META_Acquisition) != NULL)
 		metadata_available |= PW_NDARRAY_FILTER_METADATA_ACQUISITION;
 
-	if (view->struct_size < sizeof(*view) || view->flags != 0 ||
+	if (view->struct_size < sizeof(*view) ||
+	    view->flags & ~PW_NDARRAY_FILTER_BUFFER_FLAG_OUTPUT_UNAVAILABLE ||
 	    view->data != expected || view->size != port->size ||
 	    view->capacity != data->maxsize - data->chunk->offset ||
 	    view->metadata_available != metadata_available ||
@@ -723,10 +724,12 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 				filter->output_buffers[i],
 				&filter->process_outputs[i])) < 0)
 			goto error;
-	for (i = 0; i < filter->n_outputs; i++)
+	for (i = 0; i < filter->n_outputs; i++) {
+		if (filter->process_outputs[i].flags &
+		    PW_NDARRAY_FILTER_BUFFER_FLAG_OUTPUT_UNAVAILABLE)
+			continue;
 		commit_output(filter->outputs[i], filter->output_buffers[i],
 				&filter->process_outputs[i]);
-	for (i = 0; i < filter->n_outputs; i++) {
 		pw_filter_queue_buffer(filter->outputs[i]->filter_port,
 				filter->output_buffers[i]);
 		filter->output_buffers[i] = NULL;

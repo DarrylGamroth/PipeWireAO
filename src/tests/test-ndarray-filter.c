@@ -85,6 +85,9 @@ static void test_valid_config(void)
 	uint32_t saved_flags = config.flags;
 	int res;
 
+	spa_assert_se(PW_NDARRAY_FILTER_BUFFER_FLAG_NONE == 0);
+	spa_assert_se(PW_NDARRAY_FILTER_BUFFER_FLAG_OUTPUT_UNAVAILABLE == (1u << 0));
+
 	res = pw_ndarray_filter_new(&config, &filter);
 	spa_assert_se(res == 0);
 	spa_assert_se(filter != NULL);
