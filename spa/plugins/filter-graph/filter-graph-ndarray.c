@@ -203,8 +203,7 @@ static bool format_equal(const struct spa_fgn_format *a,
 	    a->layout != b->layout || a->rate_num != b->rate_num ||
 	    a->rate_denom != b->rate_denom ||
 	    a->n_dimensions != b->n_dimensions ||
-	    !string_equal(a->schema, b->schema) ||
-	    !string_equal(a->profile, b->profile))
+	    !string_equal(a->schema, b->schema))
 		return false;
 	for (i = 0; i < a->n_dimensions; i++)
 		if (a->shape[i] != b->shape[i])

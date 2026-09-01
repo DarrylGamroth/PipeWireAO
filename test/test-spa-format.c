@@ -164,7 +164,6 @@ PWTEST(ndarray_format_abi)
 	pwtest_int_eq(SPA_FORMAT_NDARRAY_layout, 0x1000003);
 	pwtest_int_eq(SPA_FORMAT_NDARRAY_rate, 0x1000004);
 	pwtest_int_eq(SPA_FORMAT_NDARRAY_schema, 0x1000005);
-	pwtest_int_eq(SPA_FORMAT_NDARRAY_profile, 0x1000006);
 	pwtest_int_eq(SPA_NDARRAY_LAYOUT_ROW_MAJOR, 1);
 	pwtest_int_eq(SPA_NDARRAY_LAYOUT_COLUMN_MAJOR, 2);
 	pwtest_int_eq(SPA_ELEMENT_TYPE_BOOL8, 1);
@@ -185,7 +184,7 @@ PWTEST(ndarray_format_pods)
 	struct spa_pod_builder builder;
 	struct spa_pod *pod;
 	uint32_t media_type, media_subtype, element_type, layout;
-	const char *schema, *profile;
+	const char *schema;
 	uint32_t child_size, child_type, n_dimensions;
 	int32_t vector_shape[] = { 2048 };
 	int32_t matrix_shape[] = { 48, 64 };
@@ -202,8 +201,7 @@ PWTEST(ndarray_format_pods)
 			SPA_N_ELEMENTS(vector_shape), vector_shape),
 		SPA_FORMAT_NDARRAY_layout, SPA_POD_Id(SPA_NDARRAY_LAYOUT_ROW_MAJOR),
 		SPA_FORMAT_NDARRAY_rate, SPA_POD_Fraction(&SPA_FRACTION(1000, 1)),
-		SPA_FORMAT_NDARRAY_schema, SPA_POD_String("org.pipewireao.test.vector/1"),
-		SPA_FORMAT_NDARRAY_profile, SPA_POD_String("sha256:test-profile"));
+		SPA_FORMAT_NDARRAY_schema, SPA_POD_String("org.pipewireao.test.vector/1"));
 	pwtest_int_eq(spa_pod_parse_object(pod, SPA_TYPE_OBJECT_Format, NULL,
 		SPA_FORMAT_mediaType, SPA_POD_Id(&media_type),
 		SPA_FORMAT_mediaSubtype, SPA_POD_Id(&media_subtype),
@@ -212,8 +210,7 @@ PWTEST(ndarray_format_pods)
 			&n_dimensions, &shape),
 		SPA_FORMAT_NDARRAY_layout, SPA_POD_Id(&layout),
 		SPA_FORMAT_NDARRAY_rate, SPA_POD_Fraction(&rate),
-		SPA_FORMAT_NDARRAY_schema, SPA_POD_String(&schema),
-		SPA_FORMAT_NDARRAY_profile, SPA_POD_String(&profile)), 8);
+		SPA_FORMAT_NDARRAY_schema, SPA_POD_String(&schema)), 7);
 	pwtest_int_eq(media_type, (uint32_t) SPA_MEDIA_TYPE_application);
 	pwtest_int_eq(media_subtype, (uint32_t) SPA_MEDIA_SUBTYPE_ndarray);
 	pwtest_int_eq(element_type, (uint32_t) SPA_ELEMENT_TYPE_F32_LE);
@@ -225,7 +222,6 @@ PWTEST(ndarray_format_pods)
 	pwtest_int_eq(rate.num, 1000U);
 	pwtest_int_eq(rate.denom, 1U);
 	pwtest_str_eq(schema, "org.pipewireao.test.vector/1");
-	pwtest_str_eq(profile, "sha256:test-profile");
 
 	spa_pod_builder_init(&builder, buffer, sizeof(buffer));
 	pod = spa_pod_builder_add_object(&builder,

@@ -66,44 +66,36 @@ process lifetime MUST set `SPA_FGN_PLUGIN_FLAG_RETAIN_LIBRARY`. The host MUST
 then keep that library mapped until process termination. Such a plugin MUST
 bound retained registry state per mapped library, not per graph or instance.
 
-ABI-v8 retains the append-only descriptor extension introduced by ABI-v7.
-Descriptor growth MUST be append-only and gated by `struct_size`. The
+ABI-v7 includes an append-only descriptor extension. Descriptor growth MUST be
+append-only and gated by `struct_size`. The
 host MUST accept the original descriptor prefix ending after `process()` and
 MUST NOT read an appended callback from a shorter descriptor. A descriptor
-that contains the appended process-thread preparation field remains ABI v8;
+that contains the appended process-thread preparation field remains ABI v7;
 the field is optional and a null value has the same behavior as the original
-prefix. ABI-v8 deliberately breaks ABI-v7 format layout compatibility by
-adding the per-port `profile` field required by FGN-FORMAT-001; hosts MUST
-reject plugins from either incompatible ABI version.
+prefix.
 
 ### FGN-FORMAT-001 — Exact per-port ndarray meaning
 
 Each port format MUST identify its element type, packed layout, positive exact
-shape, optional rate, optional versioned scientific schema, and optional
-interpretation profile. A non-null schema or profile MUST be a nonempty string.
-All strings and shapes are immutable plugin-owned instance data that remain
-valid through instance cleanup. Graph creation MUST compare every field
-exactly, including the presence and value of schema and profile, and reject an
-otherwise compatible link whose schema or profile differs.
+shape, optional rate, and optional versioned scientific schema. A non-null
+schema MUST be a nonempty string and MUST identify the complete scientific
+meaning needed to interpret the payload, including its quantity, coordinate
+or axis meanings, and logical ordering. All strings and shapes are immutable
+plugin-owned instance data that remain valid through instance cleanup. Graph
+creation MUST compare every field exactly, including the presence and value of
+schema, and reject an otherwise structurally compatible link whose schema
+differs.
 
-The FGN host MUST project a port profile to the generic SPA ndarray
-`SPA_FORMAT_NDARRAY_profile` field. Module and standalone-client negotiation
-MUST reject an absent, duplicate, malformed, or different profile when the
-declared port format does not contain the same optional value. Profile changes
-therefore require graph reconstruction and SPA format renegotiation; they MUST
-NOT be accepted through a runtime property or parameter update.
+Different scientific interpretations of the same structural ndarray MUST use
+distinct versioned schema identifiers. Schema changes therefore require graph
+reconstruction and SPA format renegotiation; they MUST NOT be accepted through
+a runtime property or parameter update. Device identity, calibration
+generation, and other provenance that does not change payload interpretation
+belongs in construction configuration, parameters, or buffer metadata.
 
-The ABI and graph configuration MUST NOT add a node-wide interpretation
-profile. A node can transform between different scientific meanings, so each
-port owns its own compatibility identity. A plugin may accept a construction
-property that selects or derives its per-port profiles, but it MUST expose the
-result only through each `spa_fgn_format.profile` field.
-
-Verification intent: inspect the ABI-v8 layout; accept equal optional schemas
-and profiles; reject schema mismatch, profile mismatch, and presence mismatch;
-verify SPA projection and duplicate-key rejection; and retain rejection of an
-unsupported node-wide `profile` configuration key in the generic C and Rust
-example plugins.
+Verification intent: inspect the ABI-v7 C and Rust layouts; accept equal
+optional schemas; reject schema mismatch and presence mismatch; and verify SPA
+schema projection, validation, and duplicate-key rejection.
 
 ### FGN-CONFIG-001 — Construction configuration boundary
 
