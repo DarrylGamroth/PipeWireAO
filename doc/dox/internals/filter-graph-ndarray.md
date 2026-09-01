@@ -704,6 +704,12 @@ outer node boundary, but they do not supply a buffer on every frame cycle.
 Their schema distinguishes their semantic role from frame data with
 the same element type and shape.
 
+An upstream node that participates in the frame schedule queues a zero-length
+chunk when it has no replacement. The outer adapter recycles that buffer
+without invoking parameter preparation. A full-size chunk carries one sparse
+replacement. This keeps one frame driver and makes absence explicit instead of
+adding a competing Parameter driver or relying on scheduler timing.
+
 The adapter hands an arrived parameter buffer to
 `spa_fgn_graph_update_parameter()` on a serial control or worker context. The
 instance's `prepare_parameter()` callback must copy the array, build plans, or

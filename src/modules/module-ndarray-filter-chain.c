@@ -346,6 +346,21 @@ static void schedule_parameter(struct port *port, struct pw_buffer *buffer)
 	}
 }
 
+static bool parameter_buffer_absent(const struct pw_buffer *buffer)
+{
+	const struct spa_buffer *spa_buffer;
+	const struct spa_data *data;
+
+	if (buffer == NULL || (spa_buffer = buffer->buffer) == NULL ||
+	    spa_buffer->n_datas != 1 || spa_buffer->datas == NULL ||
+	    (uintptr_t)spa_buffer->datas % _Alignof(struct spa_data) != 0)
+		return false;
+	data = &spa_buffer->datas[0];
+	return data->data != NULL && data->chunk != NULL &&
+		(uintptr_t)data->chunk % _Alignof(struct spa_chunk) == 0 &&
+		data->chunk->offset <= data->maxsize && data->chunk->size == 0;
+}
+
 static void dequeue_parameter(struct port *port)
 {
 	struct pw_buffer *buffer = NULL, *next;
@@ -360,6 +375,10 @@ static void dequeue_parameter(struct port *port)
 	}
 
 	while ((next = pw_filter_dequeue_buffer(port)) != NULL) {
+		if (parameter_buffer_absent(next)) {
+			pw_filter_queue_buffer(port, next);
+			continue;
+		}
 		if (buffer != NULL)
 			pw_filter_queue_buffer(port, buffer);
 		buffer = next;
