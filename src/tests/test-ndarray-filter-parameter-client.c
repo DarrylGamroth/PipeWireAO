@@ -81,16 +81,23 @@ static void source_process(void *userdata)
 	}
 	sequence = atomic_fetch_add_explicit(&data->produced, 1,
 			memory_order_relaxed) + 1;
-	if (sequence > 2) {
+	if (sequence > 3) {
 		(void)pw_stream_queue_buffer(data->source, buffer);
 		quit_with_error(data, "source produced too many buffers");
 		return;
 	}
-	value = sequence == 1 ? 5.0f : 9.0f;
-	memcpy(block->data, &value, sizeof(value));
 	block->chunk->offset = 0;
-	block->chunk->size = sizeof(value);
 	block->chunk->stride = sizeof(value);
+	if (sequence == 1) {
+		block->chunk->size = 0;
+		(void)pw_stream_queue_buffer(data->source, buffer);
+		printf("SOURCE 1 absent=1\n");
+		fflush(stdout);
+		return;
+	}
+	value = sequence == 2 ? 5.0f : 9.0f;
+	memcpy(block->data, &value, sizeof(value));
+	block->chunk->size = sizeof(value);
 	header = spa_buffer_find_meta_data(buffer->buffer, SPA_META_Header,
 			sizeof(*header));
 	if (header == NULL) {
@@ -98,7 +105,7 @@ static void source_process(void *userdata)
 		quit_with_error(data, "source Header metadata is unavailable");
 		return;
 	}
-	*header = (struct spa_meta_header) { .seq = sequence };
+	*header = (struct spa_meta_header) { .seq = sequence - 1u };
 	(void)pw_stream_queue_buffer(data->source, buffer);
 	printf("SOURCE %u value=%g\n", sequence, (double)value);
 	fflush(stdout);
@@ -122,8 +129,8 @@ static void trigger_source(void *userdata, int fd, uint32_t mask)
 	}
 	if (command == 'q') {
 		if (atomic_load_explicit(&data->produced,
-			    memory_order_acquire) != 2)
-			quit_with_error(data, "Parameter source stopped before two cycles");
+			    memory_order_acquire) != 3)
+			quit_with_error(data, "Parameter source stopped before three cycles");
 		else
 			pw_main_loop_quit(data->loop);
 		return;
@@ -139,7 +146,7 @@ static void stop(void *userdata, int signal_number)
 	struct test_data *data = userdata;
 
 	(void)signal_number;
-	if (atomic_load_explicit(&data->produced, memory_order_acquire) != 2)
+	if (atomic_load_explicit(&data->produced, memory_order_acquire) != 3)
 		quit_with_error(data, "Parameter Port test interrupted");
 	else
 		pw_main_loop_quit(data->loop);
@@ -263,14 +270,14 @@ int main(int argc, char *argv[])
 	fflush(stdout);
 	pw_main_loop_run(data.loop);
 	if (data.result == 0 &&
-	    atomic_load_explicit(&data.produced, memory_order_relaxed) != 2) {
+	    atomic_load_explicit(&data.produced, memory_order_relaxed) != 3) {
 		fprintf(stderr, "incomplete Parameter transfer: produced=%u\n",
 				atomic_load_explicit(&data.produced,
 					memory_order_relaxed));
 		data.result = 1;
 	}
 	if (data.result == 0) {
-		printf("RESULT produced=2\n");
+		printf("RESULT produced=3 absent=1\n");
 		fflush(stdout);
 	}
 
