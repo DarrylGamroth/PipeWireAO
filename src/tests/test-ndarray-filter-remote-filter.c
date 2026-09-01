@@ -123,6 +123,7 @@ int main(int argc, char *argv[])
 				.rate_denom = 1,
 				.n_dimensions = 1,
 				.shape = shape,
+				.schema = "org.pipewire.test.ndarray-retention/1",
 			},
 		},
 		{
@@ -136,6 +137,7 @@ int main(int argc, char *argv[])
 				.rate_denom = 1,
 				.n_dimensions = 1,
 				.shape = shape,
+				.schema = "org.pipewire.test.ndarray-retention/1",
 			},
 		},
 	};
