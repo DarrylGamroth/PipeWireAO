@@ -58,12 +58,42 @@ test(
   args: [
     files('test-polling-remote.py'),
     pipewire_exec.full_path(),
-    meson.project_build_root() / 'src/tools/pwao-link',
+    pwao_link.full_path(),
     polling_remote_client.full_path(),
   ],
-  depends: [pipewire_exec, polling_remote_client],
+  depends: [pipewire_exec, pwao_link, polling_remote_client],
   env: polling_remote_env,
   timeout: 45,
+)
+
+ndarray_filter_remote_filter = executable(
+  'pw-test-ndarray-filter-remote-filter',
+  'test-ndarray-filter-remote-filter.c',
+  dependencies: [pipewire_dep, pthread_lib],
+)
+ndarray_filter_remote_client = executable(
+  'pw-test-ndarray-filter-remote-client',
+  'test-ndarray-filter-remote-client.c',
+  dependencies: [pipewire_dep],
+)
+test(
+  'pw-test-ndarray-filter-remote',
+  find_program('python3'),
+  args: [
+    files('test-ndarray-filter-remote.py'),
+    pipewire_exec.full_path(),
+    pwao_link.full_path(),
+    ndarray_filter_remote_filter.full_path(),
+    ndarray_filter_remote_client.full_path(),
+  ],
+  depends: [
+    pipewire_exec,
+    pwao_link,
+    ndarray_filter_remote_filter,
+    ndarray_filter_remote_client,
+  ],
+  env: polling_remote_env,
+  timeout: 30,
 )
 
 if have_cpp
