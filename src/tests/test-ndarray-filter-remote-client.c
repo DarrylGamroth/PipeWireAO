@@ -235,14 +235,26 @@ static void timeout(void *userdata, uint64_t expirations)
 
 static struct spa_pod *build_format(struct spa_pod_builder *builder)
 {
-	const struct spa_ndarray_info info = SPA_NDARRAY_INFO_INIT(
-		.element_type = SPA_ELEMENT_TYPE_F32_LE,
-		.layout = SPA_NDARRAY_LAYOUT_COLUMN_MAJOR,
-		.rate = SPA_FRACTION(1, 1),
-		.n_dimensions = 1,
-		.shape = { 1 });
+	static const uint32_t shape[] = { 1 };
+	struct spa_pod_frame object;
 
-	return spa_format_ndarray_build(builder, SPA_PARAM_EnumFormat, &info);
+	spa_pod_builder_push_object(builder, &object,
+			SPA_TYPE_OBJECT_Format, SPA_PARAM_EnumFormat);
+	spa_pod_builder_add(builder,
+			SPA_FORMAT_mediaType, SPA_POD_Id(SPA_MEDIA_TYPE_application),
+			SPA_FORMAT_mediaSubtype, SPA_POD_Id(SPA_MEDIA_SUBTYPE_ndarray),
+			SPA_FORMAT_NDARRAY_elementType,
+			SPA_POD_Id(SPA_ELEMENT_TYPE_F32_LE),
+			SPA_FORMAT_NDARRAY_shape,
+			SPA_POD_Array(sizeof(uint32_t), SPA_TYPE_Int,
+				SPA_N_ELEMENTS(shape), shape),
+			SPA_FORMAT_NDARRAY_layout,
+			SPA_POD_Id(SPA_NDARRAY_LAYOUT_COLUMN_MAJOR),
+			SPA_FORMAT_NDARRAY_rate,
+			SPA_POD_Fraction(&SPA_FRACTION(1, 1)),
+			SPA_FORMAT_NDARRAY_schema,
+			SPA_POD_String("org.pipewire.test.ndarray-retention/1"), 0);
+	return spa_pod_builder_pop(builder, &object);
 }
 
 static struct spa_pod *build_header_meta(struct spa_pod_builder *builder)
