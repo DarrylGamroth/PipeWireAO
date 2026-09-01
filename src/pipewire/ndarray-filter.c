@@ -200,7 +200,8 @@ static int copy_config(struct pw_ndarray_filter *filter,
 
 	if (config == NULL || config->struct_size < sizeof(*config) ||
 	    config->version != PW_VERSION_NDARRAY_FILTER_CONFIG ||
-	    (config->flags & ~PW_NDARRAY_FILTER_FLAG_RT_PROCESS) != 0 ||
+	    (config->flags & ~(PW_NDARRAY_FILTER_FLAG_RT_PROCESS |
+		    PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS)) != 0 ||
 	    config->n_ports == 0 ||
 	    config->n_ports > PW_NDARRAY_FILTER_MAX_PORTS ||
 	    config->ports == NULL || config->events == NULL ||
@@ -573,6 +574,13 @@ static int project_buffer(struct pw_buffer *pw_buffer,
 	return 0;
 }
 
+static void project_unavailable_input(struct pw_ndarray_filter_buffer *view)
+{
+	memset(view, 0, sizeof(*view));
+	view->struct_size = sizeof(*view);
+	view->flags = PW_NDARRAY_FILTER_BUFFER_FLAG_INPUT_UNAVAILABLE;
+}
+
 static int validate_completed_output(const struct ndarray_port *port,
 		struct pw_buffer *pw_buffer,
 		const struct pw_ndarray_filter_buffer *view)
@@ -837,7 +845,7 @@ static void dequeue_parameter(struct ndarray_port *port)
 static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 {
 	struct pw_ndarray_filter *filter = data;
-	bool ready = true;
+	bool ready = true, any_input = false;
 	uint32_t i, region = 0;
 	int res;
 
@@ -860,7 +868,10 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 			buffer = next;
 		}
 		filter->input_buffers[port->data_index] = buffer;
-		if (buffer == NULL)
+		if (buffer != NULL)
+			any_input = true;
+		else if (!(filter->flags &
+			    PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS))
 			ready = false;
 	}
 	for (i = 0; i < filter->n_outputs; i++) {
@@ -872,10 +883,18 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 		if (buffer == NULL)
 			ready = false;
 	}
+	if ((filter->flags & PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS) &&
+	    filter->n_data_inputs > 0 && !any_input)
+		ready = false;
 	if (!ready)
 		goto done;
 
 	for (i = 0; i < filter->n_data_inputs; i++, region++) {
+		if (filter->input_buffers[i] == NULL) {
+			filter->n_buffer_regions[region] = 0;
+			project_unavailable_input(&filter->process_inputs[i]);
+			continue;
+		}
 		if ((res = collect_buffer_regions(filter->input_buffers[i],
 				filter->data_inputs[i], false,
 				&filter->buffer_regions[region * MAX_BUFFER_REGIONS],
