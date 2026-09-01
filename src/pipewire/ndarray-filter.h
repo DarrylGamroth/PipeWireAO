@@ -26,7 +26,7 @@ extern "C" {
 
 /** \{ */
 
-#define PW_VERSION_NDARRAY_FILTER_EVENTS 0u
+#define PW_VERSION_NDARRAY_FILTER_EVENTS 1u
 #define PW_VERSION_NDARRAY_FILTER_CONFIG 0u
 #define PW_NDARRAY_FILTER_MAX_PORTS 1024u
 #define PW_NDARRAY_FILTER_NAME_MAX 255u
@@ -44,6 +44,19 @@ enum pw_ndarray_filter_flags {
 	 * boundary.
 	 */
 	PW_NDARRAY_FILTER_FLAG_RT_PROCESS = (1u << 0),
+};
+
+/** Static ndarray-filter Port roles. */
+enum pw_ndarray_filter_port_flags {
+	PW_NDARRAY_FILTER_PORT_FLAG_NONE = 0,
+	/**
+	 * Sparse input Parameter Port prepared away from repeated processing.
+	 *
+	 * Parameter Ports must be inputs and must not declare a repeated rate.
+	 * Their buffers are delivered to update_parameter() on a bounded worker
+	 * rather than to the frame process callback.
+	 */
+	PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER = (1u << 0),
 };
 
 /** Metadata stored by value in one callback buffer. */
@@ -113,7 +126,7 @@ struct pw_ndarray_filter_format {
 /** Static description of one external node port. */
 struct pw_ndarray_filter_port {
 	uint32_t struct_size;
-	uint32_t flags;                 /**< reserved; zero */
+	uint32_t flags;                 /**< mask of enum pw_ndarray_filter_port_flags */
 	uint32_t direction;             /**< one of enum spa_direction */
 	uint32_t reserved;              /**< zero */
 	const char *name;               /**< non-empty local name */
@@ -129,13 +142,21 @@ struct pw_ndarray_filter_port {
  * and touch pages. `deactivate` runs after the data loop has stopped and is
  * also called after a failed preparation attempt.
  *
- * `process` runs on the PipeWire data loop. It receives every input and output
- * in direction-local declaration order. It returns zero on success or a
- * negative errno-style value. The optional lifecycle callbacks use the same
- * return convention. Callbacks must not retain borrowed pointers or let an
- * exception unwind across the callback boundary. Outputs are published by
- * default. A process callback may independently mark an output unavailable;
- * the helper retains that buffer and presents it again on the next callback.
+ * `process` runs on the PipeWire data loop. It receives every frame-data input
+ * and output in direction-local declaration order, excluding Parameter Ports.
+ * `update_parameter` runs on one owned serial worker and receives the original
+ * direction-local input-port index. It may allocate and block while copying or
+ * preparing a replacement, but it must not retain the borrowed buffer. A
+ * return of -EBUSY retains the Parameter buffer and retries it after a later
+ * data-loop cycle; any other negative result terminates the filter. At most
+ * one buffer is retained per Parameter Port. Newer buffers that arrive while
+ * it is retained are immediately returned to their producer.
+ *
+ * Callbacks return zero on success or a negative errno-style value, must not
+ * retain borrowed pointers, and must not let an exception unwind across the
+ * callback boundary. Outputs are published by default. A process callback may
+ * independently mark an output unavailable; the helper retains that buffer
+ * and presents it again on the next callback.
  */
 struct pw_ndarray_filter_events {
 	uint32_t version;
@@ -146,6 +167,8 @@ struct pw_ndarray_filter_events {
 			struct pw_ndarray_filter_buffer *outputs,
 			uint32_t n_outputs);
 	int (*deactivate)(void *data);
+	int (*update_parameter)(void *data, uint32_t input_port,
+			const struct pw_ndarray_filter_buffer *parameter);
 };
 
 /** Immutable construction configuration. All strings and shapes are copied. */
