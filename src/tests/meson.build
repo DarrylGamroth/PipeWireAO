@@ -96,6 +96,36 @@ test(
   timeout: 30,
 )
 
+ndarray_filter_parameter_filter = executable(
+  'pw-test-ndarray-filter-parameter-filter',
+  'test-ndarray-filter-parameter-filter.c',
+  dependencies: [pipewire_dep, pthread_lib],
+)
+ndarray_filter_parameter_client = executable(
+  'pw-test-ndarray-filter-parameter-client',
+  'test-ndarray-filter-parameter-client.c',
+  dependencies: [pipewire_dep],
+)
+test(
+  'pw-test-ndarray-filter-parameter',
+  find_program('python3'),
+  args: [
+    files('test-ndarray-filter-parameter.py'),
+    pipewire_exec.full_path(),
+    pwao_link.full_path(),
+    ndarray_filter_parameter_filter.full_path(),
+    ndarray_filter_parameter_client.full_path(),
+  ],
+  depends: [
+    pipewire_exec,
+    pwao_link,
+    ndarray_filter_parameter_filter,
+    ndarray_filter_parameter_client,
+  ],
+  env: polling_remote_env,
+  timeout: 30,
+)
+
 if have_cpp
   test_cpp = executable('pw-test-cpp', 'test-cpp.cpp',
                           dependencies : [pipewire_dep],
