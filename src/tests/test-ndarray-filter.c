@@ -43,7 +43,6 @@ static struct pw_ndarray_filter_port ports[] = {
 			.n_dimensions = SPA_N_ELEMENTS(shape),
 			.shape = shape,
 			.schema = "org.calculon.test.input/1",
-			.profile = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		},
 	},
 	{
@@ -58,7 +57,6 @@ static struct pw_ndarray_filter_port ports[] = {
 			.n_dimensions = SPA_N_ELEMENTS(shape),
 			.shape = shape,
 			.schema = "org.calculon.test.output/1",
-			.profile = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		},
 	},
 };
@@ -90,7 +88,6 @@ static struct spa_pod *build_format(struct spa_pod_builder *builder)
 			SPA_FORMAT_NDARRAY_rate, SPA_POD_Fraction(&SPA_FRACTION(1000, 1)),
 			SPA_FORMAT_NDARRAY_schema,
 			SPA_POD_String("org.calculon.test.input/1"),
-			SPA_FORMAT_NDARRAY_profile, SPA_POD_String("sha256:test-profile"),
 			0);
 	return spa_pod_builder_pop(builder, &object);
 }
@@ -123,11 +120,6 @@ static void test_negotiated_format_strings(void)
 			SPA_FORMAT_NDARRAY_schema, &value) == 0);
 	spa_assert_se(spa_streq(value, "org.calculon.test.input/1"));
 
-	property = spa_pod_find_prop(result, NULL, SPA_FORMAT_NDARRAY_profile);
-	spa_assert_se(property != NULL && spa_pod_is_choice(&property->value));
-	spa_assert_se(spa_format_ndarray_parse_string(result,
-			SPA_FORMAT_NDARRAY_profile, &value) == 0);
-	spa_assert_se(spa_streq(value, "sha256:test-profile"));
 	spa_assert_se(spa_format_ndarray_parse_string(result,
 			SPA_FORMAT_NDARRAY_rate + 100u, &value) == 0);
 	spa_assert_se(value == NULL);
@@ -251,9 +243,6 @@ static void test_config_validation(void)
 	expect_new_error(-EINVAL);
 	ports[0] = saved_port;
 	ports[0].format.schema = "";
-	expect_new_error(-EINVAL);
-	ports[0] = saved_port;
-	ports[0].format.profile = "";
 	expect_new_error(-EINVAL);
 	ports[0] = saved_port;
 
