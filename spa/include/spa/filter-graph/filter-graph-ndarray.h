@@ -18,6 +18,91 @@ extern "C" {
 /** Opaque synchronous ndarray filter graph. */
 struct spa_fgn_graph;
 
+/** Capabilities visible from one admitted node's public contract. */
+enum spa_fgn_node_capability {
+	SPA_FGN_NODE_CAPABILITY_NONE = 0,
+	/** The descriptor exposes reset(); this is not a statefulness declaration. */
+	SPA_FGN_NODE_CAPABILITY_RESETTABLE = (1u << 0),
+	SPA_FGN_NODE_CAPABILITY_RUNTIME_PROPERTIES = (1u << 1),
+	SPA_FGN_NODE_CAPABILITY_PARAMETER_INPUTS = (1u << 2),
+	SPA_FGN_NODE_CAPABILITY_CONDITIONAL_OUTPUTS = (1u << 3),
+	SPA_FGN_NODE_CAPABILITY_PROCESS_THREAD_PREPARATION = (1u << 4),
+};
+
+/** Immutable summary of one admitted graph. */
+struct spa_fgn_graph_info {
+	/** Caller sets this to sizeof(struct spa_fgn_graph_info). */
+	uint32_t struct_size;
+	uint32_t n_nodes;
+	uint32_t n_links;
+	uint32_t n_inputs;
+	uint32_t n_outputs;
+	uint32_t n_lanes;
+	uint32_t executor_flags;
+	uint32_t reserved;
+	/** Payload storage allocated for every node output. */
+	uint64_t allocated_output_buffer_bytes;
+	/** Allocated output storage selected for internal graph processing. */
+	uint64_t internal_output_buffer_bytes;
+};
+
+/** Immutable information about one node in resolved topological order. */
+struct spa_fgn_node_info {
+	/** Caller sets this to sizeof(struct spa_fgn_node_info). */
+	uint32_t struct_size;
+	uint32_t execution_index;
+	uint32_t capabilities;         /**< enum spa_fgn_node_capability mask */
+	uint32_t plugin_flags;         /**< enum spa_fgn_plugin_flag mask */
+	const char *name;              /**< configured graph-local node name */
+	const char *plugin_path;       /**< configured shared-library path */
+	const char *plugin_name;       /**< plugin-family name */
+	const char *descriptor_name;   /**< selected descriptor label */
+	uint32_t n_inputs;
+	uint32_t n_outputs;
+	uint32_t n_properties;
+	uint32_t reserved;
+	uint64_t allocated_output_buffer_bytes;
+	uint64_t internal_output_buffer_bytes;
+};
+
+/** Immutable information about one node port. */
+struct spa_fgn_graph_port_info {
+	/** Caller sets this to sizeof(struct spa_fgn_graph_port_info). */
+	uint32_t struct_size;
+	uint32_t execution_index;
+	uint32_t direction;            /**< enum spa_direction */
+	/** Direction-local position in the node's admitted port sequence. */
+	uint32_t port_ordinal;
+	const struct spa_fgn_port_info *info;
+	const struct spa_fgn_format *format;
+	uint32_t payload_bytes;
+	/** Direction-local external graph port, or SPA_ID_INVALID. */
+	uint32_t external_index;
+	/** Source execution index for a linked input, or SPA_ID_INVALID. */
+	uint32_t source_execution_index;
+	/** Source output ordinal for a linked input, or SPA_ID_INVALID. */
+	uint32_t source_port_ordinal;
+	/** Number of linked inputs consuming this output; zero for an input. */
+	uint32_t n_consumers;
+	/** Graph-owned payload storage for this output; zero for an input. */
+	uint32_t allocated_buffer_bytes;
+	/** Storage used internally when this output is not externally supplied. */
+	uint32_t internal_buffer_bytes;
+	uint32_t reserved;
+};
+
+/** One admitted directed link, expressed in prepared execution coordinates. */
+struct spa_fgn_link_info {
+	/** Caller sets this to sizeof(struct spa_fgn_link_info). */
+	uint32_t struct_size;
+	uint32_t link_index;
+	uint32_t output_execution_index;
+	uint32_t output_port_ordinal;
+	uint32_t input_execution_index;
+	uint32_t input_port_ordinal;
+	uint32_t reserved[2];
+};
+
 /**
  * Build a graph from a standard SPA JSON/config-syntax object.
  *
@@ -45,6 +130,27 @@ int spa_fgn_graph_get_port_format(const struct spa_fgn_graph *graph,
 int spa_fgn_graph_get_port_info(const struct spa_fgn_graph *graph,
 		enum spa_direction direction, uint32_t port, const char **node_name,
 		const struct spa_fgn_port_info **info);
+
+/**
+ * Inspect immutable facts resolved during graph construction.
+ *
+ * These control-path calls do not allocate or invoke plugin callbacks. All
+ * returned pointers are borrowed from graph or its plugin instances and remain
+ * valid until spa_fgn_graph_free(). Node indices use resolved topological
+ * execution order; port ordinals are local to one direction on that node.
+ * Capabilities describe callbacks, properties, and ports that the host can
+ * verify; they do not infer whether an algorithm has temporal state. Every
+ * output structure must have struct_size initialized by the caller.
+ */
+int spa_fgn_graph_get_info(const struct spa_fgn_graph *graph,
+		struct spa_fgn_graph_info *info);
+int spa_fgn_graph_get_node_info(const struct spa_fgn_graph *graph,
+		uint32_t execution_index, struct spa_fgn_node_info *info);
+int spa_fgn_graph_get_node_port_info(const struct spa_fgn_graph *graph,
+		uint32_t execution_index, enum spa_direction direction,
+		uint32_t port_ordinal, struct spa_fgn_graph_port_info *info);
+int spa_fgn_graph_get_link_info(const struct spa_fgn_graph *graph,
+		uint32_t link_index, struct spa_fgn_link_info *info);
 
 /** Build one namespaced SPA_PARAM_PropInfo object. */
 int spa_fgn_graph_enum_prop_info(struct spa_fgn_graph *graph, uint32_t index,
