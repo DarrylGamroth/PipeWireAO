@@ -37,7 +37,9 @@ struct pw_ndarray_filter;
 struct ndarray_port {
 	struct pw_ndarray_filter *filter;
 	uint32_t index;
+	uint32_t data_index;
 	uint32_t direction;
+	uint32_t flags;
 	char *name;
 	uint32_t *shape;
 	char *schema;
@@ -46,6 +48,11 @@ struct ndarray_port {
 	size_t size;
 	int32_t stride;
 	void *filter_port;
+	_Atomic(struct pw_buffer *) pending_parameter;
+	_Atomic bool parameter_scheduled;
+	_Atomic bool retry_parameter;
+	_Atomic bool completed_parameter;
+	struct pw_ndarray_filter_buffer parameter_view;
 };
 
 struct port_data {
@@ -56,6 +63,9 @@ struct pw_ndarray_filter {
 	struct pw_main_loop *main_loop;
 	struct pw_filter *filter;
 	struct spa_source *error_event;
+	struct pw_thread_loop *parameter_loop;
+	struct spa_source *parameter_event;
+	bool parameter_loop_started;
 
 	char *node_name;
 	char *remote_name;
@@ -66,8 +76,11 @@ struct pw_ndarray_filter {
 	struct ndarray_port *ports;
 	uint32_t n_ports;
 	struct ndarray_port **inputs;
+	struct ndarray_port **data_inputs;
 	struct ndarray_port **outputs;
 	uint32_t n_inputs;
+	uint32_t n_data_inputs;
+	uint32_t n_parameter_inputs;
 	uint32_t n_outputs;
 
 	struct pw_buffer **input_buffers;
@@ -141,9 +154,13 @@ static int copy_port(struct ndarray_port *destination,
 	int res;
 
 	if (source == NULL || source->struct_size < sizeof(*source) ||
-	    source->flags != 0 || source->reserved != 0 ||
+	    (source->flags & ~PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER) != 0 ||
+	    source->reserved != 0 ||
 	    (source->direction != SPA_DIRECTION_INPUT &&
 	     source->direction != SPA_DIRECTION_OUTPUT) ||
+	    ((source->flags & PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER) &&
+	     (source->direction != SPA_DIRECTION_INPUT ||
+	      source->format.rate_denom != 0)) ||
 	    (source->format.schema != NULL && source->format.schema[0] == '\0') ||
 	    (source->format.profile != NULL && source->format.profile[0] == '\0'))
 		return -EINVAL;
@@ -153,6 +170,7 @@ static int copy_port(struct ndarray_port *destination,
 		return res;
 
 	destination->direction = source->direction;
+	destination->flags = source->flags;
 	destination->name = strdup(source->name);
 	destination->shape = malloc(source->format.n_dimensions *
 			sizeof(*destination->shape));
@@ -184,7 +202,7 @@ static void clear_port(struct ndarray_port *port)
 static int copy_config(struct pw_ndarray_filter *filter,
 		const struct pw_ndarray_filter_config *config)
 {
-	uint32_t i, input = 0, output = 0;
+	uint32_t i, input = 0, data_input = 0, parameter_input = 0, output = 0;
 	int res;
 
 	if (config == NULL || config->struct_size < sizeof(*config) ||
@@ -223,19 +241,39 @@ static int copy_config(struct pw_ndarray_filter *filter,
 			if (filter->ports[j].direction == filter->ports[i].direction &&
 			    spa_streq(filter->ports[j].name, filter->ports[i].name))
 				return -EEXIST;
-		if (filter->ports[i].direction == SPA_DIRECTION_INPUT)
+		if (filter->ports[i].direction == SPA_DIRECTION_INPUT) {
 			filter->ports[i].index = input++;
-		else
+			if (filter->ports[i].flags &
+			    PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER) {
+				filter->ports[i].data_index = UINT32_MAX;
+				parameter_input++;
+			} else {
+				filter->ports[i].data_index = data_input++;
+			}
+		} else {
 			filter->ports[i].index = output++;
+			filter->ports[i].data_index = UINT32_MAX;
+		}
+		atomic_init(&filter->ports[i].pending_parameter, NULL);
+		atomic_init(&filter->ports[i].parameter_scheduled, false);
+		atomic_init(&filter->ports[i].retry_parameter, false);
+		atomic_init(&filter->ports[i].completed_parameter, false);
 	}
+	if (parameter_input > 0 && config->events->update_parameter == NULL)
+		return -EINVAL;
 	filter->n_inputs = input;
+	filter->n_data_inputs = data_input;
+	filter->n_parameter_inputs = parameter_input;
 	filter->n_outputs = output;
 
 	if ((input > 0 &&
-	     ((filter->inputs = calloc(input, sizeof(*filter->inputs))) == NULL ||
-	      (filter->input_buffers = calloc(input,
+	     (filter->inputs = calloc(input, sizeof(*filter->inputs))) == NULL) ||
+	    (data_input > 0 &&
+	     ((filter->data_inputs = calloc(data_input,
+		      sizeof(*filter->data_inputs))) == NULL ||
+	      (filter->input_buffers = calloc(data_input,
 		      sizeof(*filter->input_buffers))) == NULL ||
-	      (filter->process_inputs = calloc(input,
+	      (filter->process_inputs = calloc(data_input,
 		      sizeof(*filter->process_inputs))) == NULL)) ||
 	    (output > 0 &&
 	     ((filter->outputs = calloc(output, sizeof(*filter->outputs))) == NULL ||
@@ -243,19 +281,24 @@ static int copy_config(struct pw_ndarray_filter *filter,
 		      sizeof(*filter->output_buffers))) == NULL ||
 	      (filter->process_outputs = calloc(output,
 		      sizeof(*filter->process_outputs))) == NULL)) ||
-	    (filter->buffer_regions = calloc(config->n_ports * MAX_BUFFER_REGIONS,
-		    sizeof(*filter->buffer_regions))) == NULL ||
-	    (filter->n_buffer_regions = calloc(config->n_ports,
-		    sizeof(*filter->n_buffer_regions))) == NULL)
+	    (data_input + output > 0 &&
+	     ((filter->buffer_regions = calloc(
+		      (data_input + output) * MAX_BUFFER_REGIONS,
+		      sizeof(*filter->buffer_regions))) == NULL ||
+	      (filter->n_buffer_regions = calloc(data_input + output,
+		      sizeof(*filter->n_buffer_regions))) == NULL)))
 		return -ENOMEM;
 
 	for (i = 0; i < config->n_ports; i++) {
 		struct ndarray_port *port = &filter->ports[i];
 
-		if (port->direction == SPA_DIRECTION_INPUT)
+		if (port->direction == SPA_DIRECTION_INPUT) {
 			filter->inputs[port->index] = port;
-		else
+			if (!(port->flags & PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER))
+				filter->data_inputs[port->data_index] = port;
+		} else {
 			filter->outputs[port->index] = port;
+		}
 	}
 	return 0;
 }
@@ -305,6 +348,8 @@ static int add_port(struct pw_ndarray_filter *filter,
 			NULL);
 	if (properties == NULL)
 		return -ENOMEM;
+	if (port->flags & PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER)
+		pw_properties_set(properties, PW_KEY_PORT_CONTROL, "true");
 	params[0] = build_format(&builder, SPA_PARAM_EnumFormat, &port->format);
 	params[1] = spa_pod_builder_add_object(&builder,
 			SPA_TYPE_OBJECT_ParamBuffers, SPA_PARAM_Buffers,
@@ -490,11 +535,11 @@ static int validate_regions(struct pw_ndarray_filter *filter)
 	int res;
 
 	if ((res = memory_region_init(&input_views, filter->process_inputs,
-		filter->n_inputs * sizeof(*filter->process_inputs))) < 0 ||
+		filter->n_data_inputs * sizeof(*filter->process_inputs))) < 0 ||
 	    (res = memory_region_init(&output_views, filter->process_outputs,
 		filter->n_outputs * sizeof(*filter->process_outputs))) < 0)
 		return res;
-	for (i = 0; i < filter->n_ports; i++) {
+	for (i = 0; i < filter->n_data_inputs + filter->n_outputs; i++) {
 		struct memory_region *regions = &filter->buffer_regions[
 			i * MAX_BUFFER_REGIONS];
 
@@ -618,9 +663,9 @@ static void recycle_inputs(struct pw_ndarray_filter *filter)
 {
 	uint32_t i;
 
-	for (i = 0; i < filter->n_inputs; i++)
+	for (i = 0; i < filter->n_data_inputs; i++)
 		if (filter->input_buffers[i] != NULL) {
-			pw_filter_queue_buffer(filter->inputs[i]->filter_port,
+			pw_filter_queue_buffer(filter->data_inputs[i]->filter_port,
 					filter->input_buffers[i]);
 			filter->input_buffers[i] = NULL;
 		}
@@ -653,6 +698,150 @@ static void signal_process_error(struct pw_ndarray_filter *filter, int res)
 				filter->error_event);
 }
 
+static int project_parameter_buffer(struct ndarray_port *port,
+		struct pw_buffer *buffer)
+{
+	struct memory_region regions[MAX_BUFFER_REGIONS], view;
+	uint32_t n_regions, first, second;
+	int res;
+
+	if ((res = collect_buffer_regions(buffer, port, false, regions,
+			&n_regions)) < 0 ||
+	    (res = memory_region_init(&view, &port->parameter_view,
+			sizeof(port->parameter_view))) < 0)
+		return res;
+	for (first = 0; first < n_regions; first++) {
+		if (memory_regions_overlap(&regions[first], &view))
+			return -EINVAL;
+		for (second = 0; second < first; second++)
+			if (memory_regions_overlap(&regions[first], &regions[second]))
+				return -EINVAL;
+	}
+	return project_buffer(buffer, port, false, &port->parameter_view);
+}
+
+static void update_parameter(struct ndarray_port *port)
+{
+	struct pw_ndarray_filter *filter = port->filter;
+	struct pw_buffer *buffer;
+	int res;
+
+	if (atomic_load_explicit(&filter->destroying, memory_order_acquire))
+		return;
+	buffer = atomic_load_explicit(&port->pending_parameter,
+			memory_order_acquire);
+	if (buffer == NULL)
+		return;
+	res = filter->events.update_parameter(filter->user_data, port->index,
+			&port->parameter_view);
+	if (res > 0)
+		res = -EPROTO;
+	if (res == -EBUSY) {
+		atomic_store_explicit(&port->retry_parameter, true,
+				memory_order_release);
+		return;
+	}
+	if (res < 0)
+		signal_process_error(filter, res);
+	atomic_store_explicit(&port->completed_parameter, true,
+			memory_order_release);
+}
+
+static void parameter_event(void *data, uint64_t count SPA_UNUSED)
+{
+	struct pw_ndarray_filter *filter = data;
+	uint32_t i;
+
+	if (atomic_load_explicit(&filter->destroying, memory_order_acquire))
+		return;
+	for (i = 0; i < filter->n_inputs; i++) {
+		struct ndarray_port *port = filter->inputs[i];
+
+		if ((port->flags & PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER) &&
+		    atomic_exchange_explicit(&port->parameter_scheduled, false,
+			    memory_order_acq_rel))
+			update_parameter(port);
+	}
+}
+
+static void schedule_parameter(struct ndarray_port *port,
+		struct pw_buffer *buffer)
+{
+	struct pw_ndarray_filter *filter = port->filter;
+	struct pw_buffer *expected = NULL;
+	int res;
+
+	if ((res = project_parameter_buffer(port, buffer)) < 0)
+		goto error;
+	if (!atomic_compare_exchange_strong_explicit(&port->pending_parameter,
+			&expected, buffer, memory_order_release,
+			memory_order_relaxed)) {
+		pw_filter_queue_buffer(port->filter_port, buffer);
+		return;
+	}
+	atomic_store_explicit(&port->parameter_scheduled, true,
+			memory_order_release);
+	res = pw_loop_signal_event(pw_thread_loop_get_loop(filter->parameter_loop),
+			filter->parameter_event);
+	if (res >= 0)
+		return;
+	atomic_store_explicit(&port->parameter_scheduled, false,
+			memory_order_release);
+	atomic_store_explicit(&port->pending_parameter, NULL,
+			memory_order_release);
+error:
+	pw_filter_queue_buffer(port->filter_port, buffer);
+	signal_process_error(filter, res);
+}
+
+static void retry_parameter(struct ndarray_port *port)
+{
+	struct pw_ndarray_filter *filter = port->filter;
+	int res;
+
+	if (!atomic_exchange_explicit(&port->retry_parameter, false,
+			memory_order_acq_rel))
+		return;
+	atomic_store_explicit(&port->parameter_scheduled, true,
+			memory_order_release);
+	res = pw_loop_signal_event(pw_thread_loop_get_loop(filter->parameter_loop),
+			filter->parameter_event);
+	if (res >= 0)
+		return;
+	atomic_store_explicit(&port->parameter_scheduled, false,
+			memory_order_release);
+	atomic_store_explicit(&port->retry_parameter, true,
+			memory_order_release);
+	signal_process_error(filter, res);
+}
+
+static void dequeue_parameter(struct ndarray_port *port)
+{
+	struct pw_buffer *buffer = NULL, *next, *completed;
+
+	if (atomic_exchange_explicit(&port->completed_parameter, false,
+			memory_order_acq_rel)) {
+		completed = atomic_exchange_explicit(&port->pending_parameter, NULL,
+				memory_order_acq_rel);
+		if (completed != NULL)
+			pw_filter_queue_buffer(port->filter_port, completed);
+	}
+	if (atomic_load_explicit(&port->pending_parameter,
+			memory_order_acquire) != NULL) {
+		while ((next = pw_filter_dequeue_buffer(port->filter_port)) != NULL)
+			pw_filter_queue_buffer(port->filter_port, next);
+		retry_parameter(port);
+		return;
+	}
+	while ((next = pw_filter_dequeue_buffer(port->filter_port)) != NULL) {
+		if (buffer != NULL)
+			pw_filter_queue_buffer(port->filter_port, buffer);
+		buffer = next;
+	}
+	if (buffer != NULL)
+		schedule_parameter(port, buffer);
+}
+
 static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 {
 	struct pw_ndarray_filter *filter = data;
@@ -661,19 +850,24 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 	int res;
 
 	if (!atomic_load_explicit(&filter->prepared, memory_order_acquire) ||
-	    atomic_load_explicit(&filter->destroying, memory_order_relaxed))
+	    atomic_load_explicit(&filter->destroying, memory_order_acquire))
 		return;
 
 	for (i = 0; i < filter->n_inputs; i++) {
+		struct ndarray_port *port = filter->inputs[i];
 		struct pw_buffer *buffer = NULL, *next;
 
+		if (port->flags & PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER) {
+			dequeue_parameter(port);
+			continue;
+		}
 		while ((next = pw_filter_dequeue_buffer(
-				filter->inputs[i]->filter_port)) != NULL) {
+				port->filter_port)) != NULL) {
 			if (buffer != NULL)
-				pw_filter_queue_buffer(filter->inputs[i]->filter_port, buffer);
+				pw_filter_queue_buffer(port->filter_port, buffer);
 			buffer = next;
 		}
-		filter->input_buffers[i] = buffer;
+		filter->input_buffers[port->data_index] = buffer;
 		if (buffer == NULL)
 			ready = false;
 	}
@@ -689,12 +883,12 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 	if (!ready)
 		goto done;
 
-	for (i = 0; i < filter->n_inputs; i++, region++) {
+	for (i = 0; i < filter->n_data_inputs; i++, region++) {
 		if ((res = collect_buffer_regions(filter->input_buffers[i],
-				filter->inputs[i], false,
+				filter->data_inputs[i], false,
 				&filter->buffer_regions[region * MAX_BUFFER_REGIONS],
 				&filter->n_buffer_regions[region])) < 0 ||
-		    (res = project_buffer(filter->input_buffers[i], filter->inputs[i],
+		    (res = project_buffer(filter->input_buffers[i], filter->data_inputs[i],
 				false, &filter->process_inputs[i])) < 0)
 			goto error;
 	}
@@ -712,7 +906,7 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 		goto error;
 
 	res = filter->events.process(filter->user_data,
-			filter->process_inputs, filter->n_inputs,
+			filter->process_inputs, filter->n_data_inputs,
 			filter->process_outputs, filter->n_outputs);
 	if (res != 0) {
 		if (res > 0)
@@ -866,6 +1060,14 @@ static void error_event(void *data, uint64_t count SPA_UNUSED)
 		fail_on_main_loop(filter, res, "ndarray process callback failed");
 }
 
+static void stop_parameter_loop(struct pw_ndarray_filter *filter)
+{
+	if (!filter->parameter_loop_started)
+		return;
+	pw_thread_loop_stop(filter->parameter_loop);
+	filter->parameter_loop_started = false;
+}
+
 static void free_filter(struct pw_ndarray_filter *filter)
 {
 	uint32_t i;
@@ -873,6 +1075,12 @@ static void free_filter(struct pw_ndarray_filter *filter)
 	if (filter == NULL)
 		return;
 	atomic_store_explicit(&filter->destroying, true, memory_order_release);
+	stop_parameter_loop(filter);
+	if (filter->parameter_event != NULL && filter->parameter_loop != NULL)
+		pw_loop_destroy_source(pw_thread_loop_get_loop(filter->parameter_loop),
+				filter->parameter_event);
+	if (filter->parameter_loop != NULL)
+		pw_thread_loop_destroy(filter->parameter_loop);
 	if (filter->error_event != NULL && filter->main_loop != NULL)
 		pw_loop_destroy_source(pw_main_loop_get_loop(filter->main_loop),
 				filter->error_event);
@@ -889,6 +1097,7 @@ static void free_filter(struct pw_ndarray_filter *filter)
 	free(filter->output_buffers);
 	free(filter->input_buffers);
 	free(filter->outputs);
+	free(filter->data_inputs);
 	free(filter->inputs);
 	free(filter->ports);
 	free(filter->remote_name);
@@ -959,6 +1168,24 @@ int pw_ndarray_filter_new(const struct pw_ndarray_filter_config *config,
 	for (i = 0; i < filter->n_ports; i++)
 		if ((res = add_port(filter, &filter->ports[i])) < 0)
 			goto error;
+	if (filter->n_parameter_inputs > 0) {
+		filter->parameter_loop = pw_thread_loop_new(
+				"ndarray-filter-parameters", NULL);
+		if (filter->parameter_loop == NULL) {
+			res = errno != 0 ? -errno : -ENOMEM;
+			goto error;
+		}
+		filter->parameter_event = pw_loop_add_event(
+				pw_thread_loop_get_loop(filter->parameter_loop),
+				parameter_event, filter);
+		if (filter->parameter_event == NULL) {
+			res = errno != 0 ? -errno : -ENOMEM;
+			goto error;
+		}
+		if ((res = pw_thread_loop_start(filter->parameter_loop)) < 0)
+			goto error;
+		filter->parameter_loop_started = true;
+	}
 	*result = filter;
 	return 0;
 
@@ -1038,6 +1265,7 @@ void pw_ndarray_filter_destroy(struct pw_ndarray_filter *filter)
 		pw_filter_disconnect(filter->filter);
 		filter->connected = false;
 	}
+	stop_parameter_loop(filter);
 	deactivate(filter);
 	free_filter(filter);
 }
