@@ -94,9 +94,11 @@ static void test_valid_config(void)
 
 	spa_assert_se(PW_NDARRAY_FILTER_BUFFER_FLAG_NONE == 0);
 	spa_assert_se(PW_NDARRAY_FILTER_BUFFER_FLAG_OUTPUT_UNAVAILABLE == (1u << 0));
+	spa_assert_se(PW_NDARRAY_FILTER_BUFFER_FLAG_INPUT_UNAVAILABLE == (1u << 1));
 	spa_assert_se(PW_NDARRAY_FILTER_PORT_FLAG_NONE == 0);
 	spa_assert_se(PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER == (1u << 0));
 	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS == 1);
+	spa_assert_se(PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS == (1u << 1));
 
 	res = pw_ndarray_filter_new(&config, &filter);
 	spa_assert_se(res == 0);
@@ -110,6 +112,11 @@ static void test_valid_config(void)
 	pw_ndarray_filter_destroy(NULL);
 
 	config.flags = PW_NDARRAY_FILTER_FLAG_RT_PROCESS;
+	filter = NULL;
+	spa_assert_se(pw_ndarray_filter_new(&config, &filter) == 0);
+	spa_assert_se(filter != NULL);
+	pw_ndarray_filter_destroy(filter);
+	config.flags = PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS;
 	filter = NULL;
 	spa_assert_se(pw_ndarray_filter_new(&config, &filter) == 0);
 	spa_assert_se(filter != NULL);
@@ -134,7 +141,7 @@ static void test_config_validation(void)
 	config.version++;
 	expect_new_error(-EINVAL);
 	config = saved_config;
-	config.flags = (PW_NDARRAY_FILTER_FLAG_RT_PROCESS << 1);
+	config.flags = (PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS << 1);
 	expect_new_error(-EINVAL);
 	config = saved_config;
 	config.node_name = "";
