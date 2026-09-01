@@ -14,6 +14,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <spa/debug/filter-graph-ndarray.h>
+#include <spa/debug/log.h>
 #include <spa/filter-graph/filter-graph-ndarray.h>
 #include <spa/param/buffers.h>
 #include <spa/param/ndarray-utils.h>
@@ -49,6 +51,8 @@ PW_LOG_TOPIC_STATIC(mod_topic, "mod." NAME);
  * External graph ports become ordinary application/ndarray ports. Sparse
  * parameter ports are marked as control ports and use a bounded worker
  * handoff; their preparation never runs in the real-time process callback.
+ * The module logs the resolved execution order, formats, connections, and
+ * graph-owned buffer sizes once at debug log level during construction.
  */
 
 static const struct spa_dict_item module_props[] = {
@@ -105,6 +109,17 @@ struct impl {
 	struct pw_buffer **input_buffers;
 	struct pw_buffer **output_buffers;
 };
+
+static void log_graph_report(const struct spa_fgn_graph *graph)
+{
+	struct spa_debug_log_ctx context;
+
+	if (!pw_log_topic_enabled(SPA_LOG_LEVEL_DEBUG, PW_LOG_TOPIC_DEFAULT))
+		return;
+	context = SPA_LOGT_DEBUG_INIT(pw_log_get(), SPA_LOG_LEVEL_DEBUG,
+			PW_LOG_TOPIC_DEFAULT);
+	(void)spa_debugc_fgn_graph(&context.ctx, 0, graph);
+}
 
 static int fgn_format_size(const struct spa_fgn_format *format,
 		size_t *size, int32_t *stride)
@@ -824,6 +839,7 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 		pw_log_error("can't create ndarray graph: %s", spa_strerror(res));
 		goto error;
 	}
+	log_graph_report(impl->graph);
 	impl->n_inputs = spa_fgn_graph_get_n_inputs(impl->graph);
 	impl->n_outputs = spa_fgn_graph_get_n_outputs(impl->graph);
 	if ((impl->n_inputs > 0 &&
