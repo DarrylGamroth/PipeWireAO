@@ -140,16 +140,20 @@ def main():
         wait_for_text(client_process, logs["client"], "STREAMING", 5)
 
         assert client_process.stdin is not None
+        client_process.stdin.write("0")
+        client_process.stdin.flush()
+        wait_for_text(client_process, logs["client"], "SOURCE 1 absent=1", 5)
+
         client_process.stdin.write("1")
         client_process.stdin.flush()
-        wait_for_text(client_process, logs["client"], "SOURCE 1 value=5", 5)
+        wait_for_text(client_process, logs["client"], "SOURCE 2 value=5", 5)
         wait_for_text(filter_process, logs["filter"], "PARAMETER_BUSY", 5)
         if "PARAMETER_READY" in read_log(logs["filter"]):
             raise TestFailure("busy Parameter was retried without a later cycle")
 
         client_process.stdin.write("2")
         client_process.stdin.flush()
-        wait_for_text(client_process, logs["client"], "SOURCE 2 value=9", 5)
+        wait_for_text(client_process, logs["client"], "SOURCE 3 value=9", 5)
         wait_for_text(filter_process, logs["filter"], "PARAMETER_READY", 5)
 
         client_process.stdin.write("q")
@@ -159,7 +163,7 @@ def main():
         filter_result = filter_process.wait(timeout=5)
         client_text = read_log(logs["client"])
         filter_text = read_log(logs["filter"])
-        if client_result != 0 or "RESULT produced=2" not in client_text:
+        if client_result != 0 or "RESULT produced=3 absent=1" not in client_text:
             raise TestFailure(
                 f"Parameter source failed ({client_result}):\n{client_text}"
             )
