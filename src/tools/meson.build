@@ -12,11 +12,14 @@ tools_sources = [
 ]
 
 foreach t : tools_sources
-  executable('pwao-' + t.get(0).substring(3),
+  tool = executable('pwao-' + t.get(0).substring(3),
     t.get(1),
     install: true,
     dependencies : [pipewire_dep, mathlib],
   )
+  if t.get(0) == 'pw-link'
+    pwao_link = tool
+  endif
 endforeach
 
 executable('pwao-cli',
