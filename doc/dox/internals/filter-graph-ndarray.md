@@ -615,6 +615,35 @@ plugin instance writes at the supplied output chunk offset, preserves it, keeps
 the completed size zero until success, and explicitly propagates any input
 metadata required by its output contract.
 
+## Prepared graph inspection
+
+After graph construction, the control path can inspect the admitted graph
+without duplicating it into another plan representation. The inspection API in
+`spa/filter-graph/filter-graph-ndarray.h` exposes:
+
+- graph counts, executor lanes and flags, and graph-owned output capacity;
+- nodes in resolved topological execution order, including configured and
+  plugin identities and capabilities visible from the admitted contract;
+- each port's descriptor, exact ndarray format, payload extent, external or
+  linked source, output fanout, and graph-owned buffer capacity; and
+- links expressed in the same execution-order coordinates.
+
+The getters allocate nothing, invoke no plugin callback, and return borrowed
+strings and descriptors that remain valid until graph destruction. They report
+only immutable construction facts. In particular, a reset callback makes a
+node `resettable`; it does not prove that the underlying algorithm has temporal
+state. Allocated output capacity describes storage the current host already
+reserves for every node output. The internal subset identifies storage selected
+for links rather than caller-supplied external outputs; neither number implies
+a separate scratch allocator.
+
+`spa/debug/filter-graph-ndarray.h` renders these facts as text. The PipeWire
+module emits that report once during construction when its debug log topic is
+enabled. Inspection and rendering stay off the repeated processing path. This
+initial surface deliberately does not instrument or time individual nodes;
+sampled timings require a separate opt-in design with an explicit measurement
+contract.
+
 ## Properties
 
 Plugin descriptors enumerate local scalar property information. The host
