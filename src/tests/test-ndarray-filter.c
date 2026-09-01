@@ -9,6 +9,8 @@
 
 #include <spa/utils/defs.h>
 #include <spa/param/ndarray.h>
+#include <spa/param/ndarray-utils.h>
+#include <spa/pod/filter.h>
 
 #include <pipewire/ndarray-filter.h>
 
@@ -69,6 +71,67 @@ static struct pw_ndarray_filter_config config = {
 	.ports = ports,
 	.events = &events,
 };
+
+static struct spa_pod *build_format(struct spa_pod_builder *builder)
+{
+	struct spa_pod_frame object;
+
+	spa_pod_builder_push_object(builder, &object,
+			SPA_TYPE_OBJECT_Format, SPA_PARAM_EnumFormat);
+	spa_pod_builder_add(builder,
+			SPA_FORMAT_mediaType, SPA_POD_Id(SPA_MEDIA_TYPE_application),
+			SPA_FORMAT_mediaSubtype, SPA_POD_Id(SPA_MEDIA_SUBTYPE_ndarray),
+			SPA_FORMAT_NDARRAY_elementType, SPA_POD_Id(SPA_ELEMENT_TYPE_F32_LE),
+			SPA_FORMAT_NDARRAY_shape,
+			SPA_POD_Array(sizeof(uint32_t), SPA_TYPE_Int,
+				SPA_N_ELEMENTS(shape), shape),
+			SPA_FORMAT_NDARRAY_layout,
+			SPA_POD_Id(SPA_NDARRAY_LAYOUT_COLUMN_MAJOR),
+			SPA_FORMAT_NDARRAY_rate, SPA_POD_Fraction(&SPA_FRACTION(1000, 1)),
+			SPA_FORMAT_NDARRAY_schema,
+			SPA_POD_String("org.calculon.test.input/1"),
+			SPA_FORMAT_NDARRAY_profile, SPA_POD_String("sha256:test-profile"),
+			0);
+	return spa_pod_builder_pop(builder, &object);
+}
+
+static void test_negotiated_format_strings(void)
+{
+	uint8_t first_data[1024], second_data[1024], result_data[2048];
+	struct spa_pod_builder first_builder =
+		SPA_POD_BUILDER_INIT(first_data, sizeof(first_data));
+	struct spa_pod_builder second_builder =
+		SPA_POD_BUILDER_INIT(second_data, sizeof(second_data));
+	struct spa_pod_builder result_builder =
+		SPA_POD_BUILDER_INIT(result_data, sizeof(result_data));
+	const struct spa_pod *first = build_format(&first_builder);
+	const struct spa_pod *second = build_format(&second_builder);
+	const struct spa_pod_prop *property;
+	struct spa_pod *result = NULL;
+	const char *value;
+
+	spa_assert_se(first != NULL && second != NULL);
+	spa_assert_se(spa_format_ndarray_parse_string(first,
+			SPA_FORMAT_NDARRAY_schema, &value) == 0);
+	spa_assert_se(spa_streq(value, "org.calculon.test.input/1"));
+	spa_assert_se(spa_pod_filter(&result_builder, &result, first, second) == 0);
+	spa_assert_se(result != NULL);
+
+	property = spa_pod_find_prop(result, NULL, SPA_FORMAT_NDARRAY_schema);
+	spa_assert_se(property != NULL && spa_pod_is_choice(&property->value));
+	spa_assert_se(spa_format_ndarray_parse_string(result,
+			SPA_FORMAT_NDARRAY_schema, &value) == 0);
+	spa_assert_se(spa_streq(value, "org.calculon.test.input/1"));
+
+	property = spa_pod_find_prop(result, NULL, SPA_FORMAT_NDARRAY_profile);
+	spa_assert_se(property != NULL && spa_pod_is_choice(&property->value));
+	spa_assert_se(spa_format_ndarray_parse_string(result,
+			SPA_FORMAT_NDARRAY_profile, &value) == 0);
+	spa_assert_se(spa_streq(value, "sha256:test-profile"));
+	spa_assert_se(spa_format_ndarray_parse_string(result,
+			SPA_FORMAT_NDARRAY_rate + 100u, &value) == 0);
+	spa_assert_se(value == NULL);
+}
 
 static void expect_new_error(int expected)
 {
@@ -204,6 +267,7 @@ static void test_config_validation(void)
 
 int main(void)
 {
+	test_negotiated_format_strings();
 	test_valid_config();
 	test_config_validation();
 	return 0;
