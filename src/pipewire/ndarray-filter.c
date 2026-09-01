@@ -83,6 +83,7 @@ struct pw_ndarray_filter {
 	uint32_t n_outputs;
 
 	struct pw_buffer **input_buffers;
+	bool *input_available;
 	struct pw_buffer **output_buffers;
 	struct pw_ndarray_filter_buffer *process_inputs;
 	struct pw_ndarray_filter_buffer *process_outputs;
@@ -267,6 +268,8 @@ static int copy_config(struct pw_ndarray_filter *filter,
 		      sizeof(*filter->data_inputs))) == NULL ||
 	      (filter->input_buffers = calloc(data_input,
 		      sizeof(*filter->input_buffers))) == NULL ||
+	      (filter->input_available = calloc(data_input,
+		      sizeof(*filter->input_available))) == NULL ||
 	      (filter->process_inputs = calloc(data_input,
 		      sizeof(*filter->process_inputs))) == NULL)) ||
 	    (output > 0 &&
@@ -649,6 +652,7 @@ static void recycle_inputs(struct pw_ndarray_filter *filter)
 			pw_filter_queue_buffer(filter->data_inputs[i]->filter_port,
 					filter->input_buffers[i]);
 			filter->input_buffers[i] = NULL;
+			filter->input_available[i] = false;
 		}
 }
 
@@ -811,6 +815,21 @@ static bool parameter_buffer_absent(const struct pw_buffer *buffer)
 		data->chunk->offset <= data->maxsize && data->chunk->size == 0;
 }
 
+static bool data_buffer_absent(const struct pw_buffer *buffer)
+{
+	const struct spa_buffer *spa_buffer;
+	const struct spa_data *data;
+
+	if (buffer == NULL || (spa_buffer = buffer->buffer) == NULL ||
+	    spa_buffer->n_datas != 1 || spa_buffer->datas == NULL ||
+	    (uintptr_t)spa_buffer->datas % _Alignof(struct spa_data) != 0)
+		return false;
+	data = &spa_buffer->datas[0];
+	return data->data != NULL && data->chunk != NULL &&
+		(uintptr_t)data->chunk % _Alignof(struct spa_chunk) == 0 &&
+		data->chunk->offset <= data->maxsize && data->chunk->size == 0;
+}
+
 static void dequeue_parameter(struct ndarray_port *port)
 {
 	struct pw_buffer *buffer = NULL, *next, *completed;
@@ -856,6 +875,7 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 	for (i = 0; i < filter->n_inputs; i++) {
 		struct ndarray_port *port = filter->inputs[i];
 		struct pw_buffer *buffer = NULL, *next;
+		bool available = false;
 
 		if (port->flags & PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER) {
 			dequeue_parameter(port);
@@ -866,9 +886,13 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 			if (buffer != NULL)
 				pw_filter_queue_buffer(port->filter_port, buffer);
 			buffer = next;
+			available = !((filter->flags &
+				PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS) &&
+				data_buffer_absent(next));
 		}
 		filter->input_buffers[port->data_index] = buffer;
-		if (buffer != NULL)
+		filter->input_available[port->data_index] = available;
+		if (available)
 			any_input = true;
 		else if (!(filter->flags &
 			    PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS))
@@ -890,7 +914,7 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 		goto done;
 
 	for (i = 0; i < filter->n_data_inputs; i++, region++) {
-		if (filter->input_buffers[i] == NULL) {
+		if (!filter->input_available[i]) {
 			filter->n_buffer_regions[region] = 0;
 			project_unavailable_input(&filter->process_inputs[i]);
 			continue;
@@ -1106,6 +1130,7 @@ static void free_filter(struct pw_ndarray_filter *filter)
 	free(filter->process_outputs);
 	free(filter->process_inputs);
 	free(filter->output_buffers);
+	free(filter->input_available);
 	free(filter->input_buffers);
 	free(filter->outputs);
 	free(filter->data_inputs);
