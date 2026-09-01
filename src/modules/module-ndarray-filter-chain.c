@@ -173,6 +173,8 @@ static int get_optional_format_string(const struct spa_pod *format,
 		uint32_t key, const char **value)
 {
 	const struct spa_pod_prop *property;
+	const struct spa_pod *resolved;
+	uint32_t n_values, choice;
 
 	if (spa_ndarray_format_key_count(format, key) > 1)
 		return -EINVAL;
@@ -180,7 +182,10 @@ static int get_optional_format_string(const struct spa_pod *format,
 		*value = NULL;
 		return 0;
 	}
-	return spa_pod_get_string(&property->value, value);
+	resolved = spa_pod_get_values(&property->value, &n_values, &choice);
+	if (resolved == NULL || n_values != 1 || choice != SPA_CHOICE_None)
+		return -EINVAL;
+	return spa_pod_get_string(resolved, value);
 }
 
 static bool strings_equal(const char *a, const char *b)
