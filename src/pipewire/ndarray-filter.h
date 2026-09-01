@@ -54,7 +54,9 @@ enum pw_ndarray_filter_port_flags {
 	 *
 	 * Parameter Ports must be inputs and must not declare a repeated rate.
 	 * Their buffers are delivered to update_parameter() on a bounded worker
-	 * rather than to the frame process callback.
+	 * rather than to the frame process callback. A buffer whose first data
+	 * chunk has size zero means that no replacement is present in that graph
+	 * cycle; it is recycled without invoking update_parameter().
 	 */
 	PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER = (1u << 0),
 };
