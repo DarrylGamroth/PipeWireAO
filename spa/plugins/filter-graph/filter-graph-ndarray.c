@@ -63,6 +63,8 @@ struct fgn_port {
 	struct fgn_node *node;
 	const struct spa_fgn_port_info *info;
 	const struct spa_fgn_format *format;
+	size_t payload_size;
+	uint32_t element_size;
 	struct fgn_port *source;
 	uint32_t n_consumers;
 	uint32_t external;
@@ -90,6 +92,7 @@ struct fgn_node {
 	void *initial_prepared;
 	bool process_thread_prepared;
 	uint32_t indegree;
+	char *plugin_path;
 };
 
 struct fgn_link {
@@ -140,9 +143,9 @@ enum fgn_transaction_state {
 };
 
 static int validate_buffer(struct spa_buffer *buffer,
-		const struct spa_fgn_format *format, bool output);
+		const struct fgn_port *port, bool output);
 static int validate_buffer_nonalias(struct spa_buffer *buffer,
-		const struct spa_fgn_format *format);
+		size_t payload_size);
 static void clear_graph_property_transaction(struct spa_fgn_graph *graph);
 static void clear_graph_parameter_transaction(struct spa_fgn_graph *graph);
 
@@ -210,14 +213,12 @@ static bool format_equal(const struct spa_fgn_format *a,
 }
 
 static int storage_init(struct fgn_storage *storage,
-		const struct spa_fgn_format *format)
+		const struct spa_fgn_format *format, size_t size)
 {
-	size_t size, contiguous;
+	size_t contiguous;
 	uint32_t contiguous_axis, element_size;
 	int res;
 
-	if ((res = format_size(format, &size)) < 0)
-		return res;
 	element_size = spa_element_type_size(format->element_type);
 	contiguous_axis = format->layout == SPA_NDARRAY_LAYOUT_ROW_MAJOR
 		? format->n_dimensions - 1 : 0;
@@ -771,6 +772,7 @@ static void node_free(struct fgn_node *node)
 	free(node->outputs);
 	free(node->inputs);
 	free(node->ports);
+	free(node->plugin_path);
 	free(node->name);
 	free(node);
 }
@@ -836,7 +838,8 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 		goto error;
 	}
 	if ((node = calloc(1, sizeof(*node))) == NULL ||
-	    (node->name = strdup(name)) == NULL) {
+	    (node->name = strdup(name)) == NULL ||
+	    (node->plugin_path = strdup(plugin_path)) == NULL) {
 		res = -ENOMEM;
 		goto error;
 	}
@@ -937,8 +940,9 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 		port->external = SPA_ID_INVALID;
 		if ((res = node->descriptor->get_port_format(node->instance,
 				info->index, &port->format)) < 0 ||
-		    (res = format_size(port->format, &(size_t){ 0 })) < 0)
+		    (res = format_size(port->format, &port->payload_size)) < 0)
 			goto error;
+		port->element_size = spa_element_type_size(port->format->element_type);
 		if (info->direction == SPA_DIRECTION_INPUT)
 			n_input++;
 		else
@@ -964,7 +968,8 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 			node->inputs[n_input++] = port;
 		else {
 			node->outputs[n_output++] = port;
-			if ((res = storage_init(&port->storage, port->format)) < 0)
+			if ((res = storage_init(&port->storage, port->format,
+					port->payload_size)) < 0)
 				goto error;
 		}
 	}
@@ -1459,6 +1464,242 @@ int spa_fgn_graph_get_port_info(const struct spa_fgn_graph *graph,
 	return 0;
 }
 
+static uint32_t node_execution_index(const struct spa_fgn_graph *graph,
+		const struct fgn_node *node)
+{
+	uint32_t i;
+
+	for (i = 0; i < graph->n_nodes; i++)
+		if (graph->order[i] == node)
+			return i;
+	return SPA_ID_INVALID;
+}
+
+static uint32_t node_port_ordinal(const struct fgn_node *node,
+		const struct fgn_port *port, enum spa_direction direction)
+{
+	struct fgn_port *const *ports;
+	uint32_t n_ports, i;
+
+	if (direction == SPA_DIRECTION_INPUT) {
+		ports = node->inputs;
+		n_ports = node->n_inputs;
+	} else if (direction == SPA_DIRECTION_OUTPUT) {
+		ports = node->outputs;
+		n_ports = node->n_outputs;
+	} else {
+		return SPA_ID_INVALID;
+	}
+	for (i = 0; i < n_ports; i++)
+		if (ports[i] == port)
+			return i;
+	return SPA_ID_INVALID;
+}
+
+static void node_output_buffer_bytes(const struct fgn_node *node,
+		uint64_t *allocated, uint64_t *internal)
+{
+	uint32_t i;
+
+	*allocated = 0;
+	*internal = 0;
+	for (i = 0; i < node->n_outputs; i++) {
+		const struct fgn_port *port = node->outputs[i];
+
+		*allocated += port->payload_size;
+		if (port->external == SPA_ID_INVALID)
+			*internal += port->payload_size;
+	}
+}
+
+static uint32_t node_capabilities(const struct fgn_node *node)
+{
+	uint32_t capabilities = SPA_FGN_NODE_CAPABILITY_NONE;
+	uint32_t i;
+
+	if (node->descriptor->reset != NULL)
+		capabilities |= SPA_FGN_NODE_CAPABILITY_RESETTABLE;
+	if (spa_fgn_descriptor_has_prepare_process_thread(node->descriptor) &&
+	    node->descriptor->prepare_process_thread != NULL)
+		capabilities |=
+			SPA_FGN_NODE_CAPABILITY_PROCESS_THREAD_PREPARATION;
+	for (i = 0; i < node->n_properties; i++)
+		if (node->properties[i].flags & SPA_FGN_PROPERTY_FLAG_RUNTIME) {
+			capabilities |=
+				SPA_FGN_NODE_CAPABILITY_RUNTIME_PROPERTIES;
+			break;
+		}
+	for (i = 0; i < node->n_inputs; i++)
+		if (node->inputs[i]->info->flags & SPA_FGN_PORT_FLAG_PARAMETER) {
+			capabilities |= SPA_FGN_NODE_CAPABILITY_PARAMETER_INPUTS;
+			break;
+		}
+	for (i = 0; i < node->n_outputs; i++)
+		if (node->outputs[i]->info->flags & SPA_FGN_PORT_FLAG_CONDITIONAL) {
+			capabilities |= SPA_FGN_NODE_CAPABILITY_CONDITIONAL_OUTPUTS;
+			break;
+		}
+	return capabilities;
+}
+
+int spa_fgn_graph_get_info(const struct spa_fgn_graph *graph,
+		struct spa_fgn_graph_info *info)
+{
+	const struct spa_fgn_executor *executor;
+	uint64_t allocated = 0, internal = 0;
+	uint32_t i;
+
+	if (graph == NULL || info == NULL)
+		return -EINVAL;
+	if (info->struct_size < sizeof(*info))
+		return -ENOSPC;
+	if ((executor = spa_fgn_worker_group_get_executor(graph->workers)) == NULL)
+		return -EFAULT;
+	for (i = 0; i < graph->n_nodes; i++) {
+		uint64_t node_allocated, node_internal;
+
+		node_output_buffer_bytes(graph->nodes[i], &node_allocated,
+				&node_internal);
+		allocated += node_allocated;
+		internal += node_internal;
+	}
+	*info = (struct spa_fgn_graph_info) {
+		.struct_size = sizeof(*info),
+		.n_nodes = graph->n_nodes,
+		.n_links = graph->n_links,
+		.n_inputs = graph->n_inputs,
+		.n_outputs = graph->n_outputs,
+		.n_lanes = executor->n_lanes,
+		.executor_flags = executor->flags,
+		.allocated_output_buffer_bytes = allocated,
+		.internal_output_buffer_bytes = internal,
+	};
+	return 0;
+}
+
+int spa_fgn_graph_get_node_info(const struct spa_fgn_graph *graph,
+		uint32_t execution_index, struct spa_fgn_node_info *info)
+{
+	const struct fgn_node *node;
+	uint64_t allocated, internal;
+
+	if (graph == NULL || info == NULL)
+		return -EINVAL;
+	if (info->struct_size < sizeof(*info))
+		return -ENOSPC;
+	if (execution_index >= graph->n_nodes)
+		return -ENOENT;
+	node = graph->order[execution_index];
+	node_output_buffer_bytes(node, &allocated, &internal);
+	*info = (struct spa_fgn_node_info) {
+		.struct_size = sizeof(*info),
+		.execution_index = execution_index,
+		.capabilities = node_capabilities(node),
+		.plugin_flags = node->plugin->flags,
+		.name = node->name,
+		.plugin_path = node->plugin_path,
+		.plugin_name = node->plugin->name,
+		.descriptor_name = node->descriptor->name,
+		.n_inputs = node->n_inputs,
+		.n_outputs = node->n_outputs,
+		.n_properties = node->n_properties,
+		.allocated_output_buffer_bytes = allocated,
+		.internal_output_buffer_bytes = internal,
+	};
+	return 0;
+}
+
+int spa_fgn_graph_get_node_port_info(const struct spa_fgn_graph *graph,
+		uint32_t execution_index, enum spa_direction direction,
+		uint32_t port_ordinal, struct spa_fgn_graph_port_info *info)
+{
+	const struct fgn_node *node;
+	const struct fgn_port *port;
+	uint32_t source_execution_index = SPA_ID_INVALID;
+	uint32_t source_port_ordinal = SPA_ID_INVALID;
+
+	if (graph == NULL || info == NULL)
+		return -EINVAL;
+	if (info->struct_size < sizeof(*info))
+		return -ENOSPC;
+	if (execution_index >= graph->n_nodes)
+		return -ENOENT;
+	node = graph->order[execution_index];
+	if (direction == SPA_DIRECTION_INPUT) {
+		if (port_ordinal >= node->n_inputs)
+			return -ENOENT;
+		port = node->inputs[port_ordinal];
+	} else if (direction == SPA_DIRECTION_OUTPUT) {
+		if (port_ordinal >= node->n_outputs)
+			return -ENOENT;
+		port = node->outputs[port_ordinal];
+	} else {
+		return -EINVAL;
+	}
+	if (port->source != NULL) {
+		source_execution_index = node_execution_index(graph,
+				port->source->node);
+		source_port_ordinal = node_port_ordinal(port->source->node,
+				port->source, SPA_DIRECTION_OUTPUT);
+		if (source_execution_index == SPA_ID_INVALID ||
+		    source_port_ordinal == SPA_ID_INVALID)
+			return -EFAULT;
+	}
+	*info = (struct spa_fgn_graph_port_info) {
+		.struct_size = sizeof(*info),
+		.execution_index = execution_index,
+		.direction = direction,
+		.port_ordinal = port_ordinal,
+		.info = port->info,
+		.format = port->format,
+		.payload_bytes = (uint32_t)port->payload_size,
+		.external_index = port->external,
+		.source_execution_index = source_execution_index,
+		.source_port_ordinal = source_port_ordinal,
+		.n_consumers = direction == SPA_DIRECTION_OUTPUT
+			? port->n_consumers : 0,
+		.allocated_buffer_bytes = direction == SPA_DIRECTION_OUTPUT
+			? (uint32_t)port->payload_size : 0,
+		.internal_buffer_bytes = direction == SPA_DIRECTION_OUTPUT &&
+			port->external == SPA_ID_INVALID
+			? (uint32_t)port->payload_size : 0,
+	};
+	return 0;
+}
+
+int spa_fgn_graph_get_link_info(const struct spa_fgn_graph *graph,
+		uint32_t link_index, struct spa_fgn_link_info *info)
+{
+	const struct fgn_link *link;
+	uint32_t input_node, input_port, output_node, output_port;
+
+	if (graph == NULL || info == NULL)
+		return -EINVAL;
+	if (info->struct_size < sizeof(*info))
+		return -ENOSPC;
+	if (link_index >= graph->n_links)
+		return -ENOENT;
+	link = &graph->links[link_index];
+	output_node = node_execution_index(graph, link->output->node);
+	output_port = node_port_ordinal(link->output->node, link->output,
+			SPA_DIRECTION_OUTPUT);
+	input_node = node_execution_index(graph, link->input->node);
+	input_port = node_port_ordinal(link->input->node, link->input,
+			SPA_DIRECTION_INPUT);
+	if (output_node == SPA_ID_INVALID || output_port == SPA_ID_INVALID ||
+	    input_node == SPA_ID_INVALID || input_port == SPA_ID_INVALID)
+		return -EFAULT;
+	*info = (struct spa_fgn_link_info) {
+		.struct_size = sizeof(*info),
+		.link_index = link_index,
+		.output_execution_index = output_node,
+		.output_port_ordinal = output_port,
+		.input_execution_index = input_node,
+		.input_port_ordinal = input_port,
+	};
+	return 0;
+}
+
 static int property_at(struct spa_fgn_graph *graph, uint32_t index,
 		struct fgn_node **node, const struct spa_fgn_property_info **info)
 {
@@ -1865,8 +2106,9 @@ int spa_fgn_graph_set_parameters(struct spa_fgn_graph *graph,
 			res = -EINVAL;
 			goto done;
 		}
-		if ((res = validate_buffer(source->buffer, port->format, false)) < 0 ||
-		    (res = validate_buffer_nonalias(source->buffer, port->format)) < 0)
+		if ((res = validate_buffer(source->buffer, port, false)) < 0 ||
+		    (res = validate_buffer_nonalias(source->buffer,
+				port->payload_size)) < 0)
 			goto done;
 
 		transaction = get_parameter_transaction(transactions,
@@ -1951,9 +2193,9 @@ int spa_fgn_graph_update_parameter(struct spa_fgn_graph *graph,
 	if (atomic_load_explicit(&graph->parameter_transaction_state,
 			memory_order_acquire) != FGN_TRANSACTION_EMPTY)
 		return -EBUSY;
-	if ((res = validate_buffer(buffer, port->format, false)) < 0)
+	if ((res = validate_buffer(buffer, port, false)) < 0)
 		return res;
-	if ((res = validate_buffer_nonalias(buffer, port->format)) < 0)
+	if ((res = validate_buffer_nonalias(buffer, port->payload_size)) < 0)
 		return res;
 	update = (struct spa_fgn_buffer) {
 		.buffer = buffer,
@@ -2081,15 +2323,14 @@ int spa_fgn_graph_reset(struct spa_fgn_graph *graph)
 }
 
 static int validate_buffer(struct spa_buffer *buffer,
-		const struct spa_fgn_format *format, bool output)
+		const struct fgn_port *port, bool output)
 {
 	struct spa_data *data;
-	size_t size, metadata_bytes = 0;
+	size_t metadata_bytes = 0;
 	uintptr_t payload;
-	uint32_t element_size, i, j;
-	int res;
+	uint32_t i, j;
 
-	if (buffer == NULL)
+	if (buffer == NULL || port == NULL)
 		return -ENOBUFS;
 	if (buffer->n_datas != 1 || buffer->datas == NULL ||
 	    (uintptr_t)buffer->datas % _Alignof(struct spa_data) != 0 ||
@@ -2098,22 +2339,19 @@ static int validate_buffer(struct spa_buffer *buffer,
 	     (buffer->metas == NULL ||
 	      (uintptr_t)buffer->metas % _Alignof(struct spa_meta) != 0)))
 		return -EINVAL;
-	if ((res = format_size(format, &size)) < 0)
-		return res;
-	element_size = spa_element_type_size(format->element_type);
 	data = &buffer->datas[0];
 	if (data->data == NULL || data->chunk == NULL ||
 	    (uintptr_t)data->chunk % _Alignof(struct spa_chunk) != 0)
 		return -EINVAL;
 	if (data->chunk->offset >= data->maxsize ||
-	    data->maxsize - data->chunk->offset < size)
+	    data->maxsize - data->chunk->offset < port->payload_size)
 		return -ENOSPC;
 	if ((uintptr_t)data->data > UINTPTR_MAX - data->chunk->offset)
 		return -EOVERFLOW;
 	payload = (uintptr_t)data->data + data->chunk->offset;
-	if (payload % element_size != 0)
+	if (payload % port->element_size != 0)
 		return -EINVAL;
-	if (!output && (data->chunk->size < size ||
+	if (!output && (data->chunk->size < port->payload_size ||
 		data->chunk->size > data->maxsize - data->chunk->offset))
 		return -EMSGSIZE;
 	for (i = 0; i < buffer->n_metas; i++) {
@@ -2168,12 +2406,10 @@ static bool memory_regions_overlap(const struct memory_region *first,
 		first->start < second->end && second->start < first->end;
 }
 
-static int collect_buffer_regions(struct spa_buffer *buffer,
-		const struct spa_fgn_format *format,
+static int collect_buffer_regions(struct spa_buffer *buffer, size_t payload_size,
 		struct memory_region regions[MAX_BUFFER_REGIONS], uint32_t *n_regions)
 {
 	struct spa_data *data = &buffer->datas[0];
-	size_t payload_size;
 	uint32_t count = 0, i;
 	int res;
 
@@ -2184,8 +2420,6 @@ static int collect_buffer_regions(struct spa_buffer *buffer,
 		count++; \
 	} while (0)
 
-	if ((res = format_size(format, &payload_size)) < 0)
-		return res;
 	ADD_REGION(buffer, sizeof(*buffer));
 	ADD_REGION(buffer->datas, sizeof(*buffer->datas));
 	ADD_REGION(data->chunk, sizeof(*data->chunk));
@@ -2200,13 +2434,14 @@ static int collect_buffer_regions(struct spa_buffer *buffer,
 }
 
 static int validate_buffer_nonalias(struct spa_buffer *buffer,
-		const struct spa_fgn_format *format)
+		size_t payload_size)
 {
 	struct memory_region regions[MAX_BUFFER_REGIONS];
 	uint32_t n_regions, i, j;
 	int res;
 
-	if ((res = collect_buffer_regions(buffer, format, regions, &n_regions)) < 0)
+	if ((res = collect_buffer_regions(buffer, payload_size,
+			regions, &n_regions)) < 0)
 		return res;
 	for (i = 0; i < n_regions; i++)
 		for (j = 0; j < i; j++)
@@ -2216,18 +2451,18 @@ static int validate_buffer_nonalias(struct spa_buffer *buffer,
 }
 
 static int buffers_overlap(struct spa_buffer *first,
-		const struct spa_fgn_format *first_format,
+		size_t first_payload_size,
 		struct spa_buffer *second,
-		const struct spa_fgn_format *second_format, bool *overlap)
+		size_t second_payload_size, bool *overlap)
 {
 	struct memory_region first_regions[MAX_BUFFER_REGIONS];
 	struct memory_region second_regions[MAX_BUFFER_REGIONS];
 	uint32_t n_first, n_second, i, j;
 	int res;
 
-	if ((res = collect_buffer_regions(first, first_format,
+	if ((res = collect_buffer_regions(first, first_payload_size,
 			first_regions, &n_first)) < 0 ||
-	    (res = collect_buffer_regions(second, second_format,
+	    (res = collect_buffer_regions(second, second_payload_size,
 			second_regions, &n_second)) < 0)
 		return res;
 	*overlap = false;
@@ -2242,7 +2477,7 @@ static int buffers_overlap(struct spa_buffer *first,
 }
 
 static int buffer_overlaps_region(struct spa_buffer *buffer,
-		const struct spa_fgn_format *format, const void *pointer, size_t size,
+		size_t payload_size, const void *pointer, size_t size,
 		bool *overlap)
 {
 	struct memory_region buffer_regions[MAX_BUFFER_REGIONS];
@@ -2250,7 +2485,7 @@ static int buffer_overlaps_region(struct spa_buffer *buffer,
 	uint32_t n_buffer_regions, i;
 	int res;
 
-	if ((res = collect_buffer_regions(buffer, format, buffer_regions,
+	if ((res = collect_buffer_regions(buffer, payload_size, buffer_regions,
 			&n_buffer_regions)) < 0 ||
 	    (res = memory_region_init(&region, pointer, size)) < 0)
 		return res;
@@ -2273,16 +2508,16 @@ static int validate_output_ownership(struct spa_fgn_graph *graph,
 
 	for (i = 0; i < n_outputs; i++) {
 		if ((res = validate_buffer_nonalias(outputs[i],
-				graph->outputs[i]->format)) < 0)
+				graph->outputs[i]->payload_size)) < 0)
 			return res;
 		if ((res = buffer_overlaps_region(outputs[i],
-				graph->outputs[i]->format, inputs,
+				graph->outputs[i]->payload_size, inputs,
 				n_inputs * sizeof(*inputs), &overlap)) < 0)
 			return res;
 		if (overlap)
 			return -EINVAL;
 		if ((res = buffer_overlaps_region(outputs[i],
-				graph->outputs[i]->format, outputs,
+				graph->outputs[i]->payload_size, outputs,
 				n_outputs * sizeof(*outputs), &overlap)) < 0)
 			return res;
 		if (overlap)
@@ -2291,7 +2526,7 @@ static int validate_output_ownership(struct spa_fgn_graph *graph,
 			const struct fgn_node *node = graph->nodes[k];
 
 			if ((res = buffer_overlaps_region(outputs[i],
-					graph->outputs[i]->format,
+					graph->outputs[i]->payload_size,
 					node->process_inputs,
 					node->n_inputs * sizeof(*node->process_inputs),
 					&overlap)) < 0)
@@ -2299,7 +2534,7 @@ static int validate_output_ownership(struct spa_fgn_graph *graph,
 			if (overlap)
 				return -EINVAL;
 			if ((res = buffer_overlaps_region(outputs[i],
-					graph->outputs[i]->format,
+					graph->outputs[i]->payload_size,
 					node->process_outputs,
 					node->n_outputs * sizeof(*node->process_outputs),
 					&overlap)) < 0)
@@ -2310,18 +2545,19 @@ static int validate_output_ownership(struct spa_fgn_graph *graph,
 		for (j = 0; j < n_inputs; j++) {
 			if (inputs[j] == NULL)
 				continue;
-			if ((res = validate_buffer_nonalias(inputs[j],
-					graph->inputs[j]->format)) < 0)
-				return res;
-			if ((res = buffers_overlap(outputs[i], graph->outputs[i]->format,
-					inputs[j], graph->inputs[j]->format, &overlap)) < 0)
+			/* Every non-NULL input passed self-alias validation before this
+			 * graph-wide output ownership check. */
+			if ((res = buffers_overlap(outputs[i],
+					graph->outputs[i]->payload_size, inputs[j],
+					graph->inputs[j]->payload_size, &overlap)) < 0)
 				return res;
 			if (overlap)
 				return -EINVAL;
 		}
 		for (j = 0; j < i; j++) {
-			if ((res = buffers_overlap(outputs[i], graph->outputs[i]->format,
-					outputs[j], graph->outputs[j]->format, &overlap)) < 0)
+			if ((res = buffers_overlap(outputs[i],
+					graph->outputs[i]->payload_size, outputs[j],
+					graph->outputs[j]->payload_size, &overlap)) < 0)
 				return res;
 			if (overlap)
 				return -EINVAL;
@@ -2392,20 +2628,17 @@ static void clear_external_output_sizes(struct spa_buffer *const outputs[],
 }
 
 static int validate_completed_output(struct spa_buffer *buffer,
-		const struct spa_fgn_format *format, uint32_t expected_offset,
+		size_t payload_size, uint32_t expected_offset,
 		bool conditional)
 {
 	struct spa_data *data = &buffer->datas[0];
-	size_t size;
-	int res;
 
-	if ((res = format_size(format, &size)) < 0)
-		return res;
 	if (conditional && data->chunk->size == 0)
 		return data->chunk->offset == expected_offset ? 0 : -EMSGSIZE;
-	if (data->chunk->offset != expected_offset || data->chunk->size != size ||
+	if (data->chunk->offset != expected_offset ||
+	    data->chunk->size != payload_size ||
 	    data->chunk->offset >= data->maxsize ||
-	    data->maxsize - data->chunk->offset < size)
+	    data->maxsize - data->chunk->offset < payload_size)
 		return -EMSGSIZE;
 	return 0;
 }
@@ -2445,14 +2678,15 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		if (inputs[i] == NULL &&
 		    (port->info->flags & SPA_FGN_PORT_FLAG_OPTIONAL))
 			continue;
-		if ((res = validate_buffer(inputs[i], port->format, false)) < 0)
+		if ((res = validate_buffer(inputs[i], port, false)) < 0)
 			return res;
-		if ((res = validate_buffer_nonalias(inputs[i], port->format)) < 0)
+		if ((res = validate_buffer_nonalias(inputs[i],
+				port->payload_size)) < 0)
 			return res;
 		port->cycle_buffer = inputs[i];
 	}
 	for (i = 0; i < n_outputs; i++) {
-		if ((res = validate_buffer(outputs[i], graph->outputs[i]->format, true)) < 0)
+		if ((res = validate_buffer(outputs[i], graph->outputs[i], true)) < 0)
 			return res;
 	}
 	if ((res = validate_output_ownership(graph, inputs, n_inputs,
@@ -2460,12 +2694,6 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		return res;
 	for (i = 0; i < n_outputs; i++) {
 		struct spa_data *data = &outputs[i]->datas[0];
-		size_t size;
-
-		if ((res = format_size(graph->outputs[i]->format, &size)) < 0)
-			return res;
-		if (size > UINT32_MAX)
-			return -EOVERFLOW;
 		data->chunk->size = 0;
 		data->chunk->flags = 0;
 		graph->outputs[i]->cycle_buffer = outputs[i];
@@ -2511,7 +2739,7 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		for (j = 0; j < node->n_outputs; j++) {
 			struct fgn_port *port = node->outputs[j];
 			if ((res = validate_completed_output(port->cycle_buffer,
-					port->format, port->cycle_offset,
+					port->payload_size, port->cycle_offset,
 					port->info->flags &
 						SPA_FGN_PORT_FLAG_CONDITIONAL)) < 0)
 				goto process_error;

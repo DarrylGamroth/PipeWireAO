@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <stdatomic.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -17,6 +18,7 @@
 #include <string.h>
 
 #include <spa/buffer/meta.h>
+#include <spa/debug/filter-graph-ndarray.h>
 #include <spa/filter-graph/filter-graph-ndarray.h>
 #include <spa/filter-graph/ndarray-executor.h>
 #include <spa/param/props.h>
@@ -32,6 +34,48 @@ struct test_buffer {
 	struct spa_meta_header header;
 	float values[5];
 };
+
+struct report_capture {
+	struct spa_debug_context context;
+	char text[32768];
+	size_t length;
+	bool truncated;
+};
+
+static void capture_report_line(struct spa_debug_context *context,
+		const char *format, ...) SPA_PRINTF_FUNC(2, 3);
+
+static void capture_report_line(struct spa_debug_context *context,
+		const char *format, ...)
+{
+	struct report_capture *capture = SPA_CONTAINER_OF(context,
+			struct report_capture, context);
+	size_t available = sizeof(capture->text) - capture->length;
+	va_list args;
+	int written;
+
+	if (available <= 1) {
+		capture->truncated = true;
+		return;
+	}
+	va_start(args, format);
+	written = vsnprintf(capture->text + capture->length, available,
+			format, args);
+	va_end(args);
+	if (written < 0 || (size_t)written >= available) {
+		capture->truncated = true;
+		capture->length = sizeof(capture->text) - 1;
+		capture->text[capture->length] = '\0';
+		return;
+	}
+	capture->length += (size_t)written;
+	if (capture->length + 1 >= sizeof(capture->text)) {
+		capture->truncated = true;
+		return;
+	}
+	capture->text[capture->length++] = '\n';
+	capture->text[capture->length] = '\0';
+}
 
 static void init_buffer(struct test_buffer *buffer)
 {
@@ -51,6 +95,139 @@ static void init_buffer(struct test_buffer *buffer)
 	buffer->buffer.metas = &buffer->meta;
 	buffer->buffer.n_datas = 1;
 	buffer->buffer.datas = &buffer->data;
+}
+
+static void test_graph_inspection(const char *plugin)
+{
+	struct spa_fgn_graph *graph = NULL;
+	struct spa_fgn_graph_info graph_info = {
+		.struct_size = sizeof(graph_info),
+	};
+	struct spa_fgn_graph_info short_info = {
+		.struct_size = sizeof(short_info.struct_size),
+	};
+	struct spa_fgn_node_info node = { .struct_size = sizeof(node) };
+	struct spa_fgn_graph_port_info port = { .struct_size = sizeof(port) };
+	struct spa_fgn_link_info link = { .struct_size = sizeof(link) };
+	struct report_capture capture = {
+		.context = { .log = capture_report_line },
+	};
+	char config[4096];
+	int res;
+
+	/* Declaration order is intentionally the reverse of execution order. */
+	res = snprintf(config, sizeof(config),
+		"{ workers = { helpers = 3 } nodes = ["
+		" { type = ndarray name = consumer plugin = \"%s\""
+		"   label = scale-f32"
+		"   config = { shape = [ 2 2 ] schema = test.matrix/1 } }"
+		" { type = ndarray name = producer plugin = \"%s\""
+		"   label = scale-f32"
+		"   config = { shape = [ 2 2 ] schema = test.matrix/1 } }"
+		"] links = ["
+		" { output = \"producer:out\" input = \"consumer:in\" }"
+		"] inputs = [ \"producer:in\" \"producer:coefficients\""
+		"             \"consumer:coefficients\" ]"
+		" outputs = [ \"consumer:out\" ] }",
+		plugin, plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == 0);
+
+	assert(spa_fgn_graph_get_info(NULL, &graph_info) == -EINVAL);
+	assert(spa_fgn_graph_get_info(graph, NULL) == -EINVAL);
+	assert(spa_fgn_graph_get_info(graph, &short_info) == -ENOSPC);
+	assert(spa_fgn_graph_get_info(graph, &graph_info) == 0);
+	assert(graph_info.struct_size == sizeof(graph_info));
+	assert(graph_info.n_nodes == 2);
+	assert(graph_info.n_links == 1);
+	assert(graph_info.n_inputs == 3);
+	assert(graph_info.n_outputs == 1);
+	assert(graph_info.n_lanes == 4);
+	assert(graph_info.executor_flags == SPA_FGN_EXECUTOR_FLAG_POLLING);
+	assert(graph_info.allocated_output_buffer_bytes == 32);
+	assert(graph_info.internal_output_buffer_bytes == 16);
+
+	assert(spa_fgn_graph_get_node_info(graph, 0, &node) == 0);
+	assert(node.execution_index == 0);
+	assert(strcmp(node.name, "producer") == 0);
+	assert(strcmp(node.plugin_path, plugin) == 0);
+	assert(node.plugin_name != NULL && node.plugin_name[0] != '\0');
+	assert(strcmp(node.descriptor_name, "scale-f32") == 0);
+	assert(node.n_inputs == 2);
+	assert(node.n_outputs == 1);
+	assert(node.n_properties == 8);
+	assert(node.capabilities ==
+			(SPA_FGN_NODE_CAPABILITY_RUNTIME_PROPERTIES |
+			 SPA_FGN_NODE_CAPABILITY_PARAMETER_INPUTS));
+	assert(node.allocated_output_buffer_bytes == 16);
+	assert(node.internal_output_buffer_bytes == 16);
+	assert(spa_fgn_graph_get_node_info(graph, 1, &node) == 0);
+	assert(strcmp(node.name, "consumer") == 0);
+	assert(node.allocated_output_buffer_bytes == 16);
+	assert(node.internal_output_buffer_bytes == 0);
+	assert(spa_fgn_graph_get_node_info(graph, 2, &node) == -ENOENT);
+
+	assert(spa_fgn_graph_get_node_port_info(graph, 0,
+			SPA_DIRECTION_INPUT, 0, &port) == 0);
+	assert(strcmp(port.info->name, "in") == 0);
+	assert(port.external_index == 0);
+	assert(port.source_execution_index == SPA_ID_INVALID);
+	assert(port.source_port_ordinal == SPA_ID_INVALID);
+	assert(port.payload_bytes == 4 * sizeof(float));
+	assert(port.format->element_type == SPA_ELEMENT_TYPE_F32_LE);
+	assert(port.format->layout == SPA_NDARRAY_LAYOUT_ROW_MAJOR);
+	assert(port.format->n_dimensions == 2);
+	assert(port.format->shape[0] == 2 && port.format->shape[1] == 2);
+	assert(strcmp(port.format->schema, "test.matrix/1") == 0);
+	assert(port.allocated_buffer_bytes == 0);
+	assert(port.internal_buffer_bytes == 0);
+
+	assert(spa_fgn_graph_get_node_port_info(graph, 1,
+			SPA_DIRECTION_INPUT, 0, &port) == 0);
+	assert(strcmp(port.info->name, "in") == 0);
+	assert(port.external_index == SPA_ID_INVALID);
+	assert(port.source_execution_index == 0);
+	assert(port.source_port_ordinal == 0);
+	assert(spa_fgn_graph_get_node_port_info(graph, 0,
+			SPA_DIRECTION_OUTPUT, 0, &port) == 0);
+	assert(strcmp(port.info->name, "out") == 0);
+	assert(port.n_consumers == 1);
+	assert(port.external_index == SPA_ID_INVALID);
+	assert(port.allocated_buffer_bytes == 16);
+	assert(port.internal_buffer_bytes == 16);
+	assert(spa_fgn_graph_get_node_port_info(graph, 1,
+			SPA_DIRECTION_OUTPUT, 0, &port) == 0);
+	assert(port.external_index == 0);
+	assert(port.n_consumers == 0);
+	assert(port.allocated_buffer_bytes == 16);
+	assert(port.internal_buffer_bytes == 0);
+	assert(spa_fgn_graph_get_node_port_info(graph, 0,
+			(enum spa_direction)2, 0, &port) == -EINVAL);
+	assert(spa_fgn_graph_get_node_port_info(graph, 0,
+			SPA_DIRECTION_OUTPUT, 1, &port) == -ENOENT);
+
+	assert(spa_fgn_graph_get_link_info(graph, 0, &link) == 0);
+	assert(link.link_index == 0);
+	assert(link.output_execution_index == 0);
+	assert(link.output_port_ordinal == 0);
+	assert(link.input_execution_index == 1);
+	assert(link.input_port_ordinal == 0);
+	assert(spa_fgn_graph_get_link_info(graph, 1, &link) == -ENOENT);
+
+	assert(spa_debugc_fgn_graph(&capture.context, 0, graph) == 0);
+	assert(!capture.truncated);
+	assert(strstr(capture.text,
+			"ndarray graph: nodes=2 links=1 inputs=3 outputs=1 lanes=4") != NULL);
+	assert(strstr(capture.text,
+			"output buffers: allocated=32 internal=16 bytes") != NULL);
+	assert(strstr(capture.text, "[0] producer:") != NULL);
+	assert(strstr(capture.text, "[1] consumer:") != NULL);
+	assert(strstr(capture.text, "f32-le[2,2] row-major, 16 bytes") != NULL);
+	assert(strstr(capture.text, "schema=test.matrix/1") != NULL);
+	assert(strstr(capture.text, "runtime-properties parameter-inputs") != NULL);
+	assert(strstr(capture.text, "producer:out -> consumer:in") != NULL);
+
+	spa_fgn_graph_free(graph);
 }
 
 static struct spa_pod *build_gain_update(void *data, size_t size,
@@ -233,6 +410,60 @@ static void check_failed_property_snapshot(const char *plugin)
 	spa_pod_builder_int(&builder, 24);
 	assert(spa_pod_builder_pop(&builder, &outer) != NULL);
 
+	spa_fgn_graph_free(graph);
+}
+
+static void test_process_failure_state_boundary(const char *plugin)
+{
+	struct spa_fgn_graph *graph = NULL;
+	struct spa_fgn_node_info node = { .struct_size = sizeof(node) };
+	struct test_buffer input, output;
+	struct spa_buffer *inputs[1], *outputs[1];
+	char config[2048];
+	uint32_t i;
+	int res;
+
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = stateful plugin = \"%s\""
+		"   label = stateful-pass-f32 }"
+		" { type = ndarray name = failing plugin = \"%s\""
+		"   label = fail-marker-f32 }"
+		"] links = ["
+		" { output = \"stateful:out\" input = \"failing:in\" }"
+		"] inputs = [ \"stateful:in\" ] outputs = [ \"failing:out\" ] }",
+		plugin, plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == 0);
+	assert(spa_fgn_graph_get_node_info(graph, 0, &node) == 0);
+	assert(node.capabilities & SPA_FGN_NODE_CAPABILITY_RESETTABLE);
+	init_buffer(&input);
+	init_buffer(&output);
+	for (i = 0; i < 4; i++)
+		input.values[i] = (float)i;
+	inputs[0] = &input.buffer;
+	outputs[0] = &output.buffer;
+	assert(spa_fgn_graph_activate(graph) == 0);
+
+	/* The first node commits its private call count before the downstream node
+	 * fails. The graph withholds external output but does not roll that state
+	 * back. */
+	input.header.flags = SPA_META_HEADER_FLAG_MARKER;
+	assert(spa_fgn_graph_process(graph, inputs, 1, outputs, 1) == -EIO);
+	assert(output.chunk.size == 0);
+
+	input.header.flags = 0;
+	assert(spa_fgn_graph_process(graph, inputs, 1, outputs, 1) == 0);
+	assert(output.chunk.size == 4 * sizeof(float));
+	for (i = 0; i < 4; i++)
+		assert(output.values[i] == input.values[i] + 2.0f);
+
+	assert(spa_fgn_graph_reset(graph) == 0);
+	assert(spa_fgn_graph_process(graph, inputs, 1, outputs, 1) == 0);
+	for (i = 0; i < 4; i++)
+		assert(output.values[i] == input.values[i] + 1.0f);
+
+	assert(spa_fgn_graph_deactivate(graph) == 0);
 	spa_fgn_graph_free(graph);
 }
 
@@ -733,6 +964,7 @@ static void test_calculon_plugin(const char *plugin)
 static void test_conditional_outputs(const char *plugin)
 {
 	struct spa_fgn_graph *graph = NULL;
+	struct spa_fgn_node_info node = { .struct_size = sizeof(node) };
 	const struct spa_fgn_format *format;
 	struct test_buffer input, output;
 	struct spa_buffer *inputs[2], *outputs[1];
@@ -751,6 +983,8 @@ static void test_conditional_outputs(const char *plugin)
 		plugin, plugin);
 	assert(res > 0 && (size_t)res < sizeof(config));
 	assert(spa_fgn_graph_new(config, &graph) == 0);
+	assert(spa_fgn_graph_get_node_info(graph, 0, &node) == 0);
+	assert(node.capabilities & SPA_FGN_NODE_CAPABILITY_CONDITIONAL_OUTPUTS);
 	init_buffer(&input);
 	init_buffer(&output);
 	for (i = 0; i < 4; i++) {
@@ -823,6 +1057,7 @@ static void *process_on_foreign_thread(void *data)
 static void test_process_thread_preparation(const char *plugin)
 {
 	struct spa_fgn_graph *graph = NULL;
+	struct spa_fgn_node_info node = { .struct_size = sizeof(node) };
 	struct test_buffer input, output;
 	struct spa_buffer *inputs[1], *outputs[1];
 	struct process_thread_context context;
@@ -839,6 +1074,9 @@ static void test_process_thread_preparation(const char *plugin)
 		plugin);
 	assert(res > 0 && (size_t)res < sizeof(config));
 	assert(spa_fgn_graph_new(config, &graph) == 0);
+	assert(spa_fgn_graph_get_node_info(graph, 0, &node) == 0);
+	assert(node.capabilities &
+			SPA_FGN_NODE_CAPABILITY_PROCESS_THREAD_PREPARATION);
 	init_buffer(&input);
 	init_buffer(&output);
 	for (i = 0; i < 4; i++) {
@@ -1159,8 +1397,11 @@ int main(int argc, char *argv[])
 	assert(argc >= 2 && argc <= 4);
 	test_lane_executor();
 	test_dense_executor();
-	if (argc >= 3)
+	test_graph_inspection(argv[1]);
+	if (argc >= 3) {
 		check_failed_property_snapshot(argv[2]);
+		test_process_failure_state_boundary(argv[2]);
+	}
 	if (argc == 4 && spa_streq(argv[3], "conditional"))
 		test_conditional_outputs(argv[1]);
 	if (argc == 4 && spa_streq(argv[3], "conditional"))
