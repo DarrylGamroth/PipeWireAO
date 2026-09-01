@@ -13,7 +13,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
-const ABI_VERSION: u32 = 8;
+const ABI_VERSION: u32 = 7;
 const EXECUTOR_VERSION: u32 = 1;
 const DIRECTION_INPUT: u32 = 0;
 const DIRECTION_OUTPUT: u32 = 1;
@@ -92,7 +92,6 @@ struct Format {
     n_dimensions: u32,
     shape: *const u32,
     schema: *const c_char,
-    profile: *const c_char,
 }
 
 unsafe impl Sync for Format {}
@@ -354,7 +353,6 @@ static FORMAT: Format = Format {
     n_dimensions: 2,
     shape: SHAPE.as_ptr(),
     schema: c"test.matrix/1".as_ptr(),
-    profile: ptr::null(),
 };
 
 static PORTS: [PortInfo; 3] = [
@@ -449,17 +447,6 @@ unsafe extern "C" fn instantiate(
             || executor.n_lanes == 0
             || executor.run_dense_f32.is_none()
             || executor.reserved != 0
-        {
-            return -EINVAL;
-        }
-        // The host supplies canonical JSON. The ndarray contract retires this key even for
-        // plugins, such as this fixed-format example, that ignore other
-        // construction configuration.
-        // SAFETY: FGN lends a NUL-terminated configuration string for this call.
-        let config = unsafe { CStr::from_ptr(config) }.to_bytes();
-        if config
-            .windows(b"\"profile\"".len())
-            .any(|window| window == b"\"profile\"")
         {
             return -EINVAL;
         }

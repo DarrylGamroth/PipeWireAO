@@ -190,9 +190,6 @@ spa_debugc_fgn_graph(struct spa_debug_context *ctx, int indent,
 				if (port.format->schema != NULL)
 					spa_debugc(ctx, "%*sschema=%s", indent + 8, "",
 							port.format->schema);
-				if (port.format->profile != NULL)
-					spa_debugc(ctx, "%*sprofile=%s", indent + 8, "",
-							port.format->profile);
 				if (port.external_index != SPA_ID_INVALID)
 					spa_debugc(ctx, "%*sexternal %s[%" PRIu32 "]",
 							indent + 8, "", direction_name,

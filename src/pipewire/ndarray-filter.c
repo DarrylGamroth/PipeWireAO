@@ -41,7 +41,6 @@ struct ndarray_port {
 	char *name;
 	uint32_t *shape;
 	char *schema;
-	char *profile;
 	struct pw_ndarray_filter_format format;
 	size_t size;
 	int32_t stride;
@@ -144,8 +143,7 @@ static int copy_port(struct ndarray_port *destination,
 	    source->flags != 0 || source->reserved != 0 ||
 	    (source->direction != SPA_DIRECTION_INPUT &&
 	     source->direction != SPA_DIRECTION_OUTPUT) ||
-	    (source->format.schema != NULL && source->format.schema[0] == '\0') ||
-	    (source->format.profile != NULL && source->format.profile[0] == '\0'))
+	    (source->format.schema != NULL && source->format.schema[0] == '\0'))
 		return -EINVAL;
 	if ((res = valid_name(source->name)) < 0 ||
 	    (res = checked_format_size(&source->format,
@@ -163,20 +161,15 @@ static int copy_port(struct ndarray_port *destination,
 	if (source->format.schema != NULL &&
 	    (destination->schema = strdup(source->format.schema)) == NULL)
 		return -ENOMEM;
-	if (source->format.profile != NULL &&
-	    (destination->profile = strdup(source->format.profile)) == NULL)
-		return -ENOMEM;
 	destination->format = source->format;
 	destination->format.shape = destination->shape;
 	destination->format.schema = destination->schema;
-	destination->format.profile = destination->profile;
 	return 0;
 }
 
 static void clear_port(struct ndarray_port *port)
 {
 	free(port->schema);
-	free(port->profile);
 	free(port->shape);
 	free(port->name);
 }
@@ -283,9 +276,6 @@ static struct spa_pod *build_format(struct spa_pod_builder *builder,
 	if (format->schema != NULL)
 		spa_pod_builder_add(builder, SPA_FORMAT_NDARRAY_schema,
 				SPA_POD_String(format->schema), 0);
-	if (format->profile != NULL)
-		spa_pod_builder_add(builder, SPA_FORMAT_NDARRAY_profile,
-				SPA_POD_String(format->profile), 0);
 	return spa_pod_builder_pop(builder, &object);
 }
 
@@ -346,7 +336,7 @@ static int validate_port_format(struct ndarray_port *port,
 		const struct spa_pod *param)
 {
 	struct spa_ndarray_info actual;
-	const char *schema, *profile;
+	const char *schema;
 	uint32_t i;
 	int res;
 
@@ -354,17 +344,14 @@ static int validate_port_format(struct ndarray_port *port,
 		return -EINVAL;
 	if ((res = spa_format_ndarray_parse(param, &actual)) < 0 ||
 	    (res = spa_format_ndarray_parse_string(param,
-		    SPA_FORMAT_NDARRAY_schema, &schema)) < 0 ||
-	    (res = spa_format_ndarray_parse_string(param,
-		    SPA_FORMAT_NDARRAY_profile, &profile)) < 0)
+		    SPA_FORMAT_NDARRAY_schema, &schema)) < 0)
 		return res;
 	if ((uint32_t)actual.element_type != port->format.element_type ||
 	    (uint32_t)actual.layout != port->format.layout ||
 	    actual.rate.num != port->format.rate_num ||
 	    actual.rate.denom != port->format.rate_denom ||
 	    actual.n_dimensions != port->format.n_dimensions ||
-	    !strings_equal(schema, port->format.schema) ||
-	    !strings_equal(profile, port->format.profile))
+	    !strings_equal(schema, port->format.schema))
 		return -EINVAL;
 	for (i = 0; i < actual.n_dimensions; i++)
 		if (actual.shape[i] != port->format.shape[i])
