@@ -50,8 +50,11 @@ enum pw_ndarray_filter_flags {
 	 * The callback still receives every frame-data input in declaration
 	 * order. Inputs without an arrival in that cycle carry
 	 * PW_NDARRAY_FILTER_BUFFER_FLAG_INPUT_UNAVAILABLE and a NULL data
-	 * pointer. The callback must mark every output unavailable when it only
-	 * retains an input for a later joined cycle.
+	 * pointer. A zero-sized input buffer is consumed as an explicit
+	 * no-arrival token; this permits a PipeWire driver to satisfy graph-cycle
+	 * scheduling without inventing a sample. The callback must mark every
+	 * output unavailable when it only retains an input for a later joined
+	 * cycle.
 	 */
 	PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS = (1u << 1),
 };
