@@ -1,5 +1,5 @@
 schema_version = 1
-specification_baseline = "ABI-v8 per-port-profile working trees, reviewed 2026-08-29"
+specification_baseline = "ABI-v7 schema-authoritative working tree, reviewed 2026-09-01"
 specification_files = ["doc/dox/internals/filter-graph-ndarray.md"]
 
 [[requirements]]
@@ -8,17 +8,17 @@ source = "doc/dox/internals/filter-graph-ndarray.md"
 parent_or_rationale = "Language-neutral ndarray plugins"
 owner = "FGN ABI"
 applicability = "mandatory"
-claimed_surfaces = ["C", "Rust", "Calculon Rust"]
-closure_obligations = ["ABI version", "layout", "ABI-v7 format migration", "append-only descriptor extension", "descriptor lifetime", "loader rejection", "declared process-lifetime retention"]
+claimed_surfaces = ["C", "Rust"]
+closure_obligations = ["ABI version", "layout", "append-only descriptor extension", "descriptor lifetime", "loader rejection", "declared process-lifetime retention"]
 implementation_state = "implemented"
-implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/include/spa/filter-graph/ndarray-executor.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/src/abi.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs"]
+implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/include/spa/filter-graph/ndarray-executor.h", "spa/plugins/filter-graph/filter-graph-ndarray.c"]
 evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-revolt-classic.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/crates/calculon-fgn-bundle/src/lib.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py"]
-verified_revision = "ABI-v8 per-port-profile working trees, 2026-08-29"
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-revolt-classic.c"]
+verified_revision = "ABI-v7 schema-authoritative working tree, 2026-09-01"
 verified_environment = "C11 and Rust 1.97.1 on Linux x86_64"
-verified_surfaces = ["C", "Rust", "Calculon Rust"]
-verified_obligations = ["ABI version", "layout", "ABI-v7 loader rejection", "original descriptor-prefix loading", "optional appended lifecycle field", "descriptor lifetime", "loader rejection", "generated Calculon registry loading"]
-remaining_gaps = ["The ABI-v8 retained-registry path has not been repeated under ASan and LeakSanitizer."]
+verified_surfaces = ["C", "Rust"]
+verified_obligations = ["ABI-v7 C/Rust layout", "ABI loader rejection", "original descriptor-prefix loading", "optional appended lifecycle field", "descriptor lifetime", "loader rejection"]
+remaining_gaps = ["External generated plugins that targeted the superseded ABI-v8 experiment must be regenerated against ABI v7. The retained-registry path has not been repeated under ASan and LeakSanitizer."]
 
 [[requirements]]
 id = "FGN-CONFIG-001"
@@ -43,17 +43,17 @@ source = "doc/dox/internals/filter-graph-ndarray.md"
 parent_or_rationale = "Exact per-port scientific compatibility"
 owner = "FGN ABI and graph host"
 applicability = "mandatory"
-claimed_surfaces = ["C graph host", "C plugin", "Rust plugin", "Calculon Rust", "PipeWire module"]
-closure_obligations = ["exact structural fields", "exact schema match", "exact per-port profile match", "profile lifetime", "SPA profile projection", "duplicate profile rejection", "no node-wide profile", "node-wide profile-key rejection", "ABI layout"]
+claimed_surfaces = ["C graph host", "C plugin", "Rust plugin", "PipeWire module", "standalone ndarray filter"]
+closure_obligations = ["exact structural fields", "exact schema match", "schema-owned scientific interpretation", "schema lifetime", "SPA schema projection", "duplicate schema rejection", "ABI layout"]
 implementation_state = "implemented"
-implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "spa/plugins/filter-graph/plugin_ndarray_example.c", "spa/plugins/filter-graph/plugin_ndarray_example.rs", "src/modules/module-ndarray-filter-chain.c", "spa/include/spa/param/format.h", "../calculon-algorithms/crates/calculon-fgn/src/abi.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs"]
-evidence_state = "validated"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "src/tests/test-ndarray-filter.c", "test/test-spa-format.c", "../calculon-algorithms/crates/calculon-fgn/tests/properties.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration_graph.c", "../pipewireao-spa-plugins/spa/plugins/alpao/test-fgn-command-normalization.c"]
-verified_revision = "FGN ABI-v8 per-port-profile working trees, 2026-08-29"
+implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "spa/plugins/filter-graph/plugin_ndarray_example.c", "spa/plugins/filter-graph/plugin_ndarray_example.rs", "src/modules/module-ndarray-filter-chain.c", "src/pipewire/ndarray-filter.c", "spa/include/spa/param/format.h"]
+evidence_state = "partial"
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "src/tests/test-ndarray-filter.c", "test/test-spa-format.c"]
+verified_revision = "FGN ABI-v7 schema-authoritative working tree, 2026-09-01"
 verified_environment = "C11 and Rust 1.97.1 on Linux x86_64"
 verified_surfaces = ["C graph host", "C plugin", "Rust plugin", "PipeWire module", "standalone ndarray filter"]
-verified_obligations = ["ABI-v8 C/Rust layout", "exact rate, schema, and profile comparison", "conditional-output flag projection", "C and Rust node-wide profile-key rejection", "otherwise identical schema mismatch rejection", "SPA profile projection and validation"]
-remaining_gaps = ["A live PipeWire client has not yet negotiated a profile-bearing FGN module port, and duplicate profile POD rejection is source-reviewed but not exercised directly."]
+verified_obligations = ["ABI-v7 C/Rust layout", "exact rate and schema comparison", "schema-authoritative scientific identity", "conditional-output flag projection", "otherwise identical schema mismatch rejection", "SPA schema projection and validation"]
+remaining_gaps = ["External generated Calculon plugins that targeted the superseded ABI-v8 experiment must be regenerated against ABI v7. A live PipeWire client has not yet negotiated a schema-authoritative FGN module port."]
 
 [[requirements]]
 id = "FGN-LIFE-001"

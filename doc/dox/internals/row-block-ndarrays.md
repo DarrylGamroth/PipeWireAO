@@ -69,9 +69,9 @@ port. A single negotiated stream never mixes `[N, width]` and
 
 Packed complete-frame `GRAY8` or `GRAY16_LE` camera video crosses into the FGN
 ndarray graph through `api.ndarray.video-view`. The adapter projects the exact
-shape, rate, schema, and optional interpretation profile and preserves bytes
-and Header metadata. Compatible SPA allocation shares storage; the fallback is
-one packed-row copy. Row-block sources already publish ndarrays and bypass it.
+shape, rate, and schema and preserves bytes and Header metadata. Compatible SPA
+allocation shares storage; the fallback is one packed-row copy. Row-block
+sources already publish ndarrays and bypass it.
 
 ## Row quantum
 
@@ -79,7 +79,7 @@ one packed-row copy. Row-block sources already publish ndarrays and bypass it.
 The Calculon FGN pixel-calibration port declarations and
 `api.ndarray.row-block-rows = N` select the same calibrated block height and
 assembly input. `N` must be positive, smaller than the detector height, and
-divide the height. Exact shape, schema, profile, layout, element type, and rate
+divide the height. Exact shape, schema, layout, element type, and rate
 negotiation rejects an inconsistent graph before processing starts.
 
 For frame rate `F`, detector height `H`, and block height `N`:
@@ -112,20 +112,20 @@ schema       = org.calculon.ao.raw-pixel-row-block/1
 elementType  = U16_LE
 shape        = [N, width]
 layout       = ROW_MAJOR
-profile      = detector interpretation profile
 rate         = frame_rate * height / N
 ```
 
 The calibrated schema is
 `org.calculon.ao.calibrated-pixel-row-block/1` with the same shape, layout,
-profile, and rate, but `F32_LE` elements. `SPA_FORMAT_NDARRAY_profile` is an
-optional per-port format value, not a node-wide setting. A schema that requires
-one uses it as an exact compatibility identity for the fixed detector-index
-interpretation. A change requires format renegotiation. Device identity and a
-mutable calibration generation remain device, construction, parameter, or
-per-buffer metadata; they are not silently folded into this format value. Both
-schemas use ordinary `SPA_IO_Buffers`; a buffer is immutable and complete when
-published.
+and rate, but `F32_LE` elements. Each schema is the exact compatibility
+identity for its detector-index interpretation: `offset` identifies the first
+detector row, the leading array axis advances through contiguous detector
+rows, and the trailing axis advances through detector columns. A different
+detector ordering or coordinate interpretation requires a distinct versioned
+schema. Device identity and a mutable calibration generation remain device,
+construction, parameter, or per-buffer metadata; they are not silently folded
+into the schema. Both schemas use ordinary `SPA_IO_Buffers`; a buffer is
+immutable and complete when published.
 
 ## Frame and block identity
 
@@ -166,7 +166,7 @@ For row-block mode:
 6. If no ordinary output buffer is available, the source abandons the
    remaining blocks and marks the next frame discontinuous.
 
-Row-block mode requires a qualified detector interpretation profile and
+Row-block mode requires the canonical row-block schema and
 `StartOfCameraReadout`/filled-size support. Direct DMA-BUF row publication is
 not used because the CPU must read the in-progress camera allocation. The
 complete-frame mode remains the zero-copy and DMA-BUF option.
@@ -193,7 +193,7 @@ calibrated block; no camera lease crosses the node.
 advertises the exact row-block format and the exact complete-frame format;
 negotiation selects one for the stream. One prepared instance owns a
 preallocated byte workspace for the negotiated element type, layout, block
-shape, complete-frame shape, and every present rate, profile, and schema field.
+shape, complete-frame shape, and every present rate and schema field.
 It accepts clocked or unclocked standard fixed-width rank-two ndarrays in
 row-major or column-major layout without interpreting or converting element
 values. For row blocks it accepts only the next expected offset for the active
