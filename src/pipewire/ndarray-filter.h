@@ -44,6 +44,16 @@ enum pw_ndarray_filter_flags {
 	 * boundary.
 	 */
 	PW_NDARRAY_FILTER_FLAG_RT_PROCESS = (1u << 0),
+	/**
+	 * Invoke process when any frame-data input has arrived.
+	 *
+	 * The callback still receives every frame-data input in declaration
+	 * order. Inputs without an arrival in that cycle carry
+	 * PW_NDARRAY_FILTER_BUFFER_FLAG_INPUT_UNAVAILABLE and a NULL data
+	 * pointer. The callback must mark every output unavailable when it only
+	 * retains an input for a later joined cycle.
+	 */
+	PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS = (1u << 1),
 };
 
 /** Static ndarray-filter Port roles. */
@@ -79,6 +89,14 @@ enum pw_ndarray_filter_buffer_flags {
 	 * input blocks before publishing one completed output.
 	 */
 	PW_NDARRAY_FILTER_BUFFER_FLAG_OUTPUT_UNAVAILABLE = (1u << 0),
+	/**
+	 * No buffer arrived for this input in the current callback.
+	 *
+	 * This flag is helper-owned and appears only on input buffers when
+	 * PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS is enabled. The data pointer
+	 * is NULL and the size, capacity, and metadata masks are zero.
+	 */
+	PW_NDARRAY_FILTER_BUFFER_FLAG_INPUT_UNAVAILABLE = (1u << 1),
 };
 
 /**
@@ -93,8 +111,10 @@ enum pw_ndarray_filter_buffer_flags {
  * an output and which records were present and valid for an input. A callback
  * sets `metadata_valid` on outputs after filling the corresponding by-value
  * record. It may set `PW_NDARRAY_FILTER_BUFFER_FLAG_OUTPUT_UNAVAILABLE` on an
- * output to retain that buffer without publishing it. It must not change any
- * other structural field.
+	 * output to retain that buffer without publishing it. With independent input
+	 * admission, an input without a new buffer carries
+	 * `PW_NDARRAY_FILTER_BUFFER_FLAG_INPUT_UNAVAILABLE`. It must not change any
+	 * structural field.
  */
 struct pw_ndarray_filter_buffer {
 	uint32_t struct_size;
