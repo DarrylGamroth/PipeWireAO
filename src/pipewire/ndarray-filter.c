@@ -342,20 +342,6 @@ static int add_port(struct pw_ndarray_filter *filter,
 	return 0;
 }
 
-static int get_optional_format_string(const struct spa_pod *format,
-		uint32_t key, const char **value)
-{
-	const struct spa_pod_prop *property;
-
-	if (spa_ndarray_format_key_count(format, key) > 1)
-		return -EINVAL;
-	if ((property = spa_pod_find_prop(format, NULL, key)) == NULL) {
-		*value = NULL;
-		return 0;
-	}
-	return spa_pod_get_string(&property->value, value);
-}
-
 static int validate_port_format(struct ndarray_port *port,
 		const struct spa_pod *param)
 {
@@ -367,9 +353,9 @@ static int validate_port_format(struct ndarray_port *port,
 	if (port == NULL || param == NULL)
 		return -EINVAL;
 	if ((res = spa_format_ndarray_parse(param, &actual)) < 0 ||
-	    (res = get_optional_format_string(param,
+	    (res = spa_format_ndarray_parse_string(param,
 		    SPA_FORMAT_NDARRAY_schema, &schema)) < 0 ||
-	    (res = get_optional_format_string(param,
+	    (res = spa_format_ndarray_parse_string(param,
 		    SPA_FORMAT_NDARRAY_profile, &profile)) < 0)
 		return res;
 	if ((uint32_t)actual.element_type != port->format.element_type ||
