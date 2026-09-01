@@ -24,12 +24,12 @@
 #define MAX_BLOCK_FLOATS 1024u
 #define MAX_BLOCKS_PER_FRAME 8u
 
-enum readout_profile {
-	PROFILE_COMPLETE_FRAME,
-	PROFILE_BLOCK_ROW,
-	PROFILE_TWO_REGION_REVERSED,
-	PROFILE_EIGHT_REGION,
-	PROFILE_COUNT,
+enum readout_mapping {
+	MAPPING_COMPLETE_FRAME,
+	MAPPING_BLOCK_ROW,
+	MAPPING_TWO_REGION_REVERSED,
+	MAPPING_EIGHT_REGION,
+	MAPPING_COUNT,
 };
 
 struct test_buffer {
@@ -60,30 +60,30 @@ struct fixture {
 	uint64_t sequence;
 };
 
-static const char *delivery_name(enum readout_profile profile)
+static const char *delivery_name(enum readout_mapping mapping)
 {
-	switch (profile) {
-	case PROFILE_COMPLETE_FRAME:
+	switch (mapping) {
+	case MAPPING_COMPLETE_FRAME:
 		return "complete-frame";
-	case PROFILE_BLOCK_ROW:
+	case MAPPING_BLOCK_ROW:
 		return "block-row";
-	case PROFILE_TWO_REGION_REVERSED:
-	case PROFILE_EIGHT_REGION:
+	case MAPPING_TWO_REGION_REVERSED:
+	case MAPPING_EIGHT_REGION:
 		return "region-block";
 	default:
 		spa_assert_not_reached();
 	}
 }
 
-static const char *profile_name(enum readout_profile profile)
+static const char *mapping_name(enum readout_mapping mapping)
 {
-	switch (profile) {
-	case PROFILE_COMPLETE_FRAME:
-	case PROFILE_BLOCK_ROW:
+	switch (mapping) {
+	case MAPPING_COMPLETE_FRAME:
+	case MAPPING_BLOCK_ROW:
 		return "canonical-raster";
-	case PROFILE_TWO_REGION_REVERSED:
+	case MAPPING_TWO_REGION_REVERSED:
 		return "two-region-reversed";
-	case PROFILE_EIGHT_REGION:
+	case MAPPING_EIGHT_REGION:
 		return "eight-region";
 	default:
 		spa_assert_not_reached();
@@ -157,28 +157,28 @@ static void init_buffer(struct test_buffer *storage, void *data,
 	storage->buffer.datas = &storage->data;
 }
 
-static const char *profile_config(enum readout_profile profile)
+static const char *mapping_config(enum readout_mapping mapping)
 {
-	switch (profile) {
-	case PROFILE_COMPLETE_FRAME:
+	switch (mapping) {
+	case MAPPING_COMPLETE_FRAME:
 		return
 			"\"region_lines\":32,\"block_lines\":32,\"region_samples\":32,"
 			"\"detector_origins\":[[0,0]],"
 			"\"detector_line_steps\":[[1,0]],"
 			"\"detector_sample_steps\":[[0,1]]";
-	case PROFILE_BLOCK_ROW:
+	case MAPPING_BLOCK_ROW:
 		return
 			"\"region_lines\":32,\"block_lines\":4,\"region_samples\":32,"
 			"\"detector_origins\":[[0,0]],"
 			"\"detector_line_steps\":[[1,0]],"
 			"\"detector_sample_steps\":[[0,1]]";
-	case PROFILE_TWO_REGION_REVERSED:
+	case MAPPING_TWO_REGION_REVERSED:
 		return
 			"\"region_lines\":16,\"block_lines\":4,\"region_samples\":32,"
 			"\"detector_origins\":[[0,0],[31,0]],"
 			"\"detector_line_steps\":[[1,0],[-1,0]],"
 			"\"detector_sample_steps\":[[0,1],[0,1]]";
-	case PROFILE_EIGHT_REGION:
+	case MAPPING_EIGHT_REGION:
 		return
 			"\"region_lines\":16,\"block_lines\":4,\"region_samples\":8,"
 			"\"detector_origins\":[[0,0],[15,15],[0,16],[15,31],"
@@ -236,7 +236,7 @@ static char *make_reconstructor(void)
 	return matrix;
 }
 
-static char *make_config(const char *plugin, enum readout_profile profile)
+static char *make_config(const char *plugin, enum readout_mapping mapping)
 {
 	char *mask = make_mask();
 	char *reconstructor = make_reconstructor();
@@ -267,14 +267,14 @@ static char *make_config(const char *plugin, enum readout_profile profile)
 		"\"input\":\"integrate:input\"}],"
 		"\"inputs\":[\"reconstruct:readout-block\"],"
 		"\"outputs\":[\"integrate:output\"]}",
-		plugin, profile_config(profile), mask, reconstructor, plugin);
+		plugin, mapping_config(mapping), mask, reconstructor, plugin);
 	free(mask);
 	free(reconstructor);
 	spa_assert_se(written > 0 && (size_t)written < capacity);
 	return config;
 }
 
-static void init_blocks(struct fixture *fixture, enum readout_profile profile)
+static void init_blocks(struct fixture *fixture, enum readout_mapping mapping)
 {
 	static const int32_t eight_origins[8][2] = {
 		{ 0, 0 }, { 15, 15 }, { 0, 16 }, { 15, 31 },
@@ -282,11 +282,11 @@ static void init_blocks(struct fixture *fixture, enum readout_profile profile)
 	};
 	static const int32_t eight_line_steps[8] = { 1, -1, 1, -1, -1, 1, -1, 1 };
 	static const int32_t eight_sample_steps[8] = { 1, -1, 1, -1, 1, -1, 1, -1 };
-	const bool eight = profile == PROFILE_EIGHT_REGION;
-	const bool two = profile == PROFILE_TWO_REGION_REVERSED;
+	const bool eight = mapping == MAPPING_EIGHT_REGION;
+	const bool two = mapping == MAPPING_TWO_REGION_REVERSED;
 	const uint32_t regions = eight ? 8u : two ? 2u : 1u;
 	const uint32_t region_lines = eight || two ? 16u : 32u;
-	const uint32_t block_lines = profile == PROFILE_COMPLETE_FRAME ? 32u : 4u;
+	const uint32_t block_lines = mapping == MAPPING_COMPLETE_FRAME ? 32u : 4u;
 	const uint32_t samples = eight ? 8u : 32u;
 
 	fixture->blocks_per_frame = region_lines / block_lines;
@@ -319,13 +319,13 @@ static void init_blocks(struct fixture *fixture, enum readout_profile profile)
 }
 
 static void fixture_init(struct fixture *fixture, const char *plugin,
-		enum readout_profile profile)
+		enum readout_mapping mapping)
 {
-	char *config = make_config(plugin, profile);
+	char *config = make_config(plugin, mapping);
 	int res;
 
 	memset(fixture, 0, sizeof(*fixture));
-	init_blocks(fixture, profile);
+	init_blocks(fixture, mapping);
 	init_buffer(&fixture->input, fixture->blocks[0],
 			fixture->block_floats * sizeof(float), true);
 	init_buffer(&fixture->output, fixture->command, sizeof(fixture->command), false);
@@ -405,18 +405,18 @@ int main(int argc, char **argv)
 	struct options options = parse_options(argc, argv);
 	uint32_t run_id = 0;
 
-	printf("run_id,runtime,boundary,delivery,profile,detector_rows,detector_columns,"
+	printf("run_id,runtime,boundary,delivery,mapping,detector_rows,detector_columns,"
 		"reconstruction_pixels,controller_coordinates,blocks_per_frame,samples,"
 		"warmup,batch_ns_per_frame,minimum_ns,p50_ns,p90_ns,p99_ns,p99_9_ns,"
 		"maximum_ns,checksum\n");
-	for (enum readout_profile profile = 0; profile < PROFILE_COUNT; profile++) {
+	for (enum readout_mapping mapping = 0; mapping < MAPPING_COUNT; mapping++) {
 		for (uint32_t repetition = 0; repetition < options.repetitions; repetition++) {
 			struct fixture fixture;
 			uint64_t *latencies = calloc(options.samples, sizeof(*latencies));
 			uint64_t start, elapsed;
 
 			spa_assert_se(latencies != NULL);
-			fixture_init(&fixture, options.plugin, profile);
+			fixture_init(&fixture, options.plugin, mapping);
 			for (uint32_t index = 0; index < options.warmup; index++)
 				execute_frame(&fixture);
 			fixture_reset(&fixture);
@@ -426,7 +426,7 @@ int main(int argc, char **argv)
 			elapsed = monotonic_ns() - start;
 			fixture_clear(&fixture);
 
-			fixture_init(&fixture, options.plugin, profile);
+			fixture_init(&fixture, options.plugin, mapping);
 			for (uint32_t index = 0; index < options.warmup; index++)
 				execute_frame(&fixture);
 			fixture_reset(&fixture);
@@ -439,7 +439,7 @@ int main(int argc, char **argv)
 			printf("%u,fgn-configured-graph,detector-frame-control,%s,%s,32,32,256,277,%u,"
 				"%u,%u,%.3f,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64
 				",%" PRIu64 ",%" PRIu64 ",%.9g\n",
-				++run_id, delivery_name(profile), profile_name(profile),
+				++run_id, delivery_name(mapping), mapping_name(mapping),
 				fixture.blocks_per_frame,
 				options.samples, options.warmup,
 				(double)elapsed / options.samples, latencies[0],

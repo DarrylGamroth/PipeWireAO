@@ -48,7 +48,6 @@ static struct pw_ndarray_filter_port ports[] = {
 			.n_dimensions = SPA_N_ELEMENTS(shape),
 			.shape = shape,
 			.schema = "org.calculon.test.input/1",
-			.profile = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		},
 	},
 	{
@@ -63,7 +62,6 @@ static struct pw_ndarray_filter_port ports[] = {
 			.n_dimensions = SPA_N_ELEMENTS(shape),
 			.shape = shape,
 			.schema = "org.calculon.test.output/1",
-			.profile = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		},
 	},
 };
@@ -228,10 +226,6 @@ static void test_config_validation(void)
 	ports[0].format.schema = "";
 	expect_new_error(-EINVAL);
 	ports[0] = saved_port;
-	ports[0].format.profile = "";
-	expect_new_error(-EINVAL);
-	ports[0] = saved_port;
-
 	ports[1].direction = SPA_DIRECTION_INPUT;
 	ports[1].name = ports[0].name;
 	expect_new_error(-EEXIST);
