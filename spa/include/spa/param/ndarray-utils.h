@@ -132,6 +132,33 @@ static inline uint32_t spa_ndarray_format_key_count(const struct spa_pod *format
 	return count;
 }
 
+/** Parse one optional fixed string property from an ndarray format.
+ *
+ * Fixed formats produced by SPA negotiation may represent a value either as
+ * its direct pod type or as a \ref SPA_CHOICE_None containing that type. An
+ * absent property produces a NULL value.  Duplicate properties and non-fixed
+ * choices are rejected.
+ */
+SPA_API_NDARRAY_UTILS int
+spa_format_ndarray_parse_string(const struct spa_pod *format,
+		uint32_t key, const char **value)
+{
+	const struct spa_pod_prop *property;
+	int res;
+
+	if (format == NULL || value == NULL)
+		return -EINVAL;
+	*value = NULL;
+	if (spa_ndarray_format_key_count(format, key) > 1)
+		return -EINVAL;
+	if ((property = spa_pod_find_prop(format, NULL, key)) == NULL)
+		return 0;
+
+	res = spa_pod_parse_object(format, SPA_TYPE_OBJECT_Format, NULL,
+			key, SPA_POD_String(value));
+	return res < 0 ? res : 0;
+}
+
 SPA_API_NDARRAY_UTILS int
 spa_format_ndarray_ext_parse(const struct spa_pod *format,
 		struct spa_ndarray_info *info, size_t size)
