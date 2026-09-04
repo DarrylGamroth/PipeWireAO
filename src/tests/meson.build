@@ -5,6 +5,7 @@ test_apps = [
   'test-stream',
   'test-filter',
   'test-ndarray-filter',
+  'test-run-control',
   'test-polling-data-loop',
   'test-security-context',
 ]

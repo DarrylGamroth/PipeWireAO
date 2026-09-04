@@ -57,6 +57,15 @@ enum pw_ndarray_filter_flags {
 	 * cycle.
 	 */
 	PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS = (1u << 1),
+	/**
+	 * Accept Version 1 owner-mediated run-control requests.
+	 *
+	 * The filter connects inactive and publishes its initial stopped status.
+	 * A controller may then request running or stopped through the node's
+	 * SPA_PARAM_Props parameter. The helper applies the request locally and
+	 * publishes a token-matched completion status.
+	 */
+	PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL = (1u << 2),
 };
 
 /** Static ndarray-filter Port roles. */
