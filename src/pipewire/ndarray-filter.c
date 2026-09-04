@@ -23,6 +23,7 @@
 #include <pipewire/ndarray-filter.h>
 #include <pipewire/pipewire.h>
 #include <pipewire/properties.h>
+#include <pipewire/run-control.h>
 
 #define MAX_METAS 16u
 #define MAX_META_BYTES 4096u
@@ -96,6 +97,11 @@ struct pw_ndarray_filter {
 	_Atomic bool destroying;
 	bool initialized;
 	bool connected;
+	int64_t last_request_token;
+	int64_t completed_token;
+	int32_t run_control_result;
+	enum pw_ao_run_control_state requested_state;
+	enum pw_ao_run_control_state actual_state;
 };
 
 static int checked_format_size(const struct pw_ndarray_filter_format *format,
@@ -202,7 +208,8 @@ static int copy_config(struct pw_ndarray_filter *filter,
 	if (config == NULL || config->struct_size < sizeof(*config) ||
 	    config->version != PW_VERSION_NDARRAY_FILTER_CONFIG ||
 	    (config->flags & ~(PW_NDARRAY_FILTER_FLAG_RT_PROCESS |
-		    PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS)) != 0 ||
+		    PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS |
+		    PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL)) != 0 ||
 	    config->n_ports == 0 ||
 	    config->n_ports > PW_NDARRAY_FILTER_MAX_PORTS ||
 	    config->ports == NULL || config->events == NULL ||
@@ -1005,6 +1012,74 @@ static int deactivate(struct pw_ndarray_filter *filter)
 }
 
 static void fail_on_main_loop(struct pw_ndarray_filter *filter, int res,
+		const char *message);
+
+static int publish_run_control_status(struct pw_ndarray_filter *filter,
+		int64_t token, int result,
+		enum pw_ao_run_control_state actual_state)
+{
+	uint8_t buffer[1024];
+	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer,
+			sizeof(buffer));
+	struct spa_pod *status;
+	const struct spa_pod *params[1];
+
+	filter->completed_token = token;
+	filter->run_control_result = result;
+	filter->actual_state = actual_state;
+	status = pw_ao_run_control_build_status(&builder, token, result,
+			actual_state);
+	if (status == NULL)
+		return -ENOSPC;
+	params[0] = status;
+	return pw_filter_update_params(filter->filter, NULL, params, 1);
+}
+
+static void complete_run_control(struct pw_ndarray_filter *filter, int result,
+		enum pw_ao_run_control_state actual_state)
+{
+	int publish_result;
+
+	publish_result = publish_run_control_status(filter,
+			filter->last_request_token, result, actual_state);
+	filter->requested_state = PW_AO_RUN_CONTROL_STATE_UNKNOWN;
+	if (publish_result < 0)
+		fail_on_main_loop(filter, publish_result,
+				"can't publish ndarray run-control status");
+}
+
+static int update_processing_state(struct pw_ndarray_filter *filter,
+		enum pw_filter_state state,
+		enum pw_ao_run_control_state *actual)
+{
+	int res = 0;
+
+	*actual = filter->actual_state;
+	if (state == PW_FILTER_STATE_STREAMING &&
+	    (!(filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL) ||
+	     filter->requested_state == PW_AO_RUN_CONTROL_STATE_RUNNING ||
+	     filter->actual_state == PW_AO_RUN_CONTROL_STATE_RUNNING)) {
+		struct pw_loop *data_loop = pw_filter_get_data_loop(filter->filter);
+
+		if (data_loop == NULL)
+			res = -EIO;
+		else
+			res = pw_loop_invoke(data_loop, prepare_process_thread,
+					0, NULL, 0, true, filter);
+		if (res < 0 && filter->events.deactivate != NULL)
+			filter->events.deactivate(filter->user_data);
+		if (res >= 0)
+			*actual = PW_AO_RUN_CONTROL_STATE_RUNNING;
+	} else if (state == PW_FILTER_STATE_PAUSED ||
+		   state == PW_FILTER_STATE_UNCONNECTED) {
+		res = deactivate(filter);
+		if (res >= 0)
+			*actual = PW_AO_RUN_CONTROL_STATE_STOPPED;
+	}
+	return res;
+}
+
+static void fail_on_main_loop(struct pw_ndarray_filter *filter, int res,
 		const char *message)
 {
 	int expected = 0;
@@ -1024,28 +1099,29 @@ static void filter_state_changed(void *data, enum pw_filter_state old SPA_UNUSED
 		enum pw_filter_state state, const char *error SPA_UNUSED)
 {
 	struct pw_ndarray_filter *filter = data;
-	int res = 0;
+	enum pw_ao_run_control_state actual;
+	int res;
 
 	atomic_store_explicit(&filter->state, state, memory_order_release);
-	if (state == PW_FILTER_STATE_STREAMING) {
-		struct pw_loop *data_loop = pw_filter_get_data_loop(filter->filter);
-
-		if (data_loop == NULL)
-			res = -EIO;
-		else
-			res = pw_loop_invoke(data_loop, prepare_process_thread,
-					0, NULL, 0, true, filter);
-		if (res < 0) {
-			if (filter->events.deactivate != NULL)
-				filter->events.deactivate(filter->user_data);
-			fail_on_main_loop(filter, res,
-					"ndarray process-thread preparation failed");
-		}
-	} else if (state == PW_FILTER_STATE_PAUSED ||
-		   state == PW_FILTER_STATE_UNCONNECTED) {
-		if ((res = deactivate(filter)) < 0)
-			fail_on_main_loop(filter, res, "ndarray deactivation failed");
-	} else if (state == PW_FILTER_STATE_ERROR) {
+	res = update_processing_state(filter, state, &actual);
+	if (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL) {
+		if (res < 0 &&
+		    filter->requested_state != PW_AO_RUN_CONTROL_STATE_UNKNOWN)
+			complete_run_control(filter, res, actual);
+		else if (res >= 0 && actual == filter->requested_state)
+			complete_run_control(filter, 0, actual);
+		else if (filter->requested_state ==
+				 PW_AO_RUN_CONTROL_STATE_UNKNOWN &&
+			 actual != filter->actual_state)
+			publish_run_control_status(filter, filter->completed_token,
+					0, actual);
+	}
+	if (res < 0)
+		fail_on_main_loop(filter, res,
+				state == PW_FILTER_STATE_STREAMING
+					? "ndarray process-thread preparation failed"
+					: "ndarray deactivation failed");
+	if (state == PW_FILTER_STATE_ERROR) {
 		int state_error = errno != 0 ? -errno : -EIO;
 		int expected = 0;
 
@@ -1064,7 +1140,60 @@ static void filter_param_changed(void *data, void *port_data,
 	struct port_data *data_port = port_data;
 	int res;
 
-	if (data_port == NULL || id != SPA_PARAM_Format || param == NULL)
+	if (param == NULL)
+		return;
+	if (data_port == NULL && id == SPA_PARAM_Props &&
+	    (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL)) {
+		struct pw_ao_run_control_request request = { 0 };
+		enum pw_filter_state state;
+
+		res = pw_ao_run_control_parse_request(param, &request);
+		if (res == -ENOENT)
+			return;
+		if (res < 0) {
+			if (request.token > 0)
+				publish_run_control_status(filter, request.token, res,
+						filter->actual_state);
+			return;
+		}
+		if (filter->requested_state != PW_AO_RUN_CONTROL_STATE_UNKNOWN) {
+			publish_run_control_status(filter, request.token, -EBUSY,
+					filter->actual_state);
+			return;
+		}
+		if (request.token <= filter->last_request_token) {
+			publish_run_control_status(filter, request.token,
+					request.token == filter->last_request_token
+						? -EALREADY : -ESTALE,
+					filter->actual_state);
+			return;
+		}
+		filter->last_request_token = request.token;
+		if (request.requested_state == filter->actual_state) {
+			complete_run_control(filter, 0, filter->actual_state);
+			return;
+		}
+		filter->requested_state = request.requested_state;
+		res = pw_filter_set_active(filter->filter,
+				request.requested_state ==
+				PW_AO_RUN_CONTROL_STATE_RUNNING);
+		if (res < 0) {
+			complete_run_control(filter, res, filter->actual_state);
+			return;
+		}
+		state = atomic_load_explicit(&filter->state, memory_order_acquire);
+		if ((request.requested_state == PW_AO_RUN_CONTROL_STATE_RUNNING &&
+		     state == PW_FILTER_STATE_STREAMING) ||
+		    (request.requested_state == PW_AO_RUN_CONTROL_STATE_STOPPED &&
+		     state == PW_FILTER_STATE_PAUSED)) {
+			enum pw_ao_run_control_state actual;
+
+			res = update_processing_state(filter, state, &actual);
+			complete_run_control(filter, res, actual);
+		}
+		return;
+	}
+	if (data_port == NULL || id != SPA_PARAM_Format)
 		return;
 	if ((res = validate_port_format(data_port->port, param)) < 0)
 		fail_on_main_loop(filter, res, "invalid ndarray port format");
@@ -1163,6 +1292,7 @@ int pw_ndarray_filter_new(const struct pw_ndarray_filter_config *config,
 	atomic_init(&filter->destroying, false);
 	if ((res = copy_config(filter, config)) < 0)
 		goto error;
+	filter->actual_state = PW_AO_RUN_CONTROL_STATE_STOPPED;
 
 	pw_init(NULL, NULL);
 	filter->initialized = true;
@@ -1194,6 +1324,8 @@ int pw_ndarray_filter_new(const struct pw_ndarray_filter_config *config,
 		pw_properties_free(properties);
 		goto error;
 	}
+	if (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL)
+		pw_properties_set(properties, PW_AO_RUN_CONTROL_KEY_ENABLED, "true");
 	filter->filter = pw_filter_new_simple(
 			pw_main_loop_get_loop(filter->main_loop), filter->node_name,
 			properties, &filter_events, filter);
@@ -1234,13 +1366,27 @@ SPA_EXPORT
 int pw_ndarray_filter_connect(struct pw_ndarray_filter *filter)
 {
 	enum pw_filter_flags flags = 0;
+	uint8_t buffer[1024];
+	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer,
+			sizeof(buffer));
+	const struct spa_pod *params[1];
+	uint32_t n_params = 0;
 	int res;
 
 	if (filter == NULL || filter->filter == NULL || filter->connected)
 		return -EINVAL;
 	if (filter->flags & PW_NDARRAY_FILTER_FLAG_RT_PROCESS)
 		flags |= PW_FILTER_FLAG_RT_PROCESS;
-	res = pw_filter_connect(filter->filter, flags, NULL, 0);
+	if (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL) {
+		flags |= PW_FILTER_FLAG_INACTIVE;
+		params[n_params] = pw_ao_run_control_build_status(&builder, 0, 0,
+				PW_AO_RUN_CONTROL_STATE_STOPPED);
+		if (params[n_params] == NULL)
+			return -ENOSPC;
+		n_params++;
+	}
+	res = pw_filter_connect(filter->filter, flags,
+			n_params > 0 ? params : NULL, n_params);
 	if (res >= 0)
 		filter->connected = true;
 	return res;

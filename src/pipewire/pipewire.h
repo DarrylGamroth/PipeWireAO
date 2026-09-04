@@ -27,6 +27,7 @@
 #include <pipewire/node.h>
 #include <pipewire/properties.h>
 #include <pipewire/proxy.h>
+#include <pipewire/run-control.h>
 #include <pipewire/permission.h>
 #include <pipewire/protocol.h>
 #include <pipewire/port.h>
