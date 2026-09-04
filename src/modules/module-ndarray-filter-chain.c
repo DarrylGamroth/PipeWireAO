@@ -26,6 +26,7 @@
 
 #include <pipewire/filter.h>
 #include <pipewire/impl.h>
+#include <pipewire/run-control.h>
 
 #define NAME "ndarray-filter-chain"
 
@@ -40,6 +41,7 @@ PW_LOG_TOPIC_STATIC(mod_topic, "mod." NAME);
  * \code{.unparsed}
  * pw-cli load-module libpipewire-module-ndarray-filter-chain '{
  *   node.name = ao-composite
+ *   pipewireao.run-control = true
  *   filter.graph = {
  *     nodes = [
  *       { type=ndarray name=algorithm plugin=/path/libcalculon.so label=step }
@@ -53,12 +55,15 @@ PW_LOG_TOPIC_STATIC(mod_topic, "mod." NAME);
  * handoff; their preparation never runs in the real-time process callback.
  * The module logs the resolved execution order, formats, connections, and
  * graph-owned buffer sizes once at debug log level during construction.
+ * With pipewireao.run-control=true, the node connects inactive and accepts
+ * Version 1 owner-mediated start and stop requests through SPA_PARAM_Props.
  */
 
 static const struct spa_dict_item module_props[] = {
 	{ PW_KEY_MODULE_AUTHOR, "PipeWireAO contributors" },
 	{ PW_KEY_MODULE_DESCRIPTION, "Create a composite ndarray filter node" },
-	{ PW_KEY_MODULE_USAGE, "filter.graph=<graph> (node.name=<name>)" },
+	{ PW_KEY_MODULE_USAGE, "filter.graph=<graph> (node.name=<name>) "
+		"(pipewireao.run-control=<bool>)" },
 	{ PW_KEY_MODULE_VERSION, PACKAGE_VERSION },
 };
 
@@ -98,6 +103,13 @@ struct impl {
 	_Atomic bool destroying;
 	_Atomic int process_error;
 	_Atomic bool publish_after_process;
+	bool run_control;
+	int64_t last_request_token;
+	int64_t completed_token;
+	int32_t run_control_result;
+	enum pw_ao_run_control_state requested_state;
+	enum pw_ao_run_control_state actual_state;
+	enum pw_filter_state filter_state;
 
 	struct spa_fgn_graph *graph;
 	struct port **inputs;
@@ -213,24 +225,75 @@ static int validate_port_format(struct port *port, const struct spa_pod *param)
 	return 0;
 }
 
+static int build_graph_param_offsets(struct impl *impl,
+		struct spa_pod_dynamic_builder *builder,
+		uint32_t *offsets, uint32_t *n_params)
+{
+	struct spa_pod *props;
+	int res;
+
+	offsets[*n_params] = builder->b.state.offset;
+	pthread_mutex_lock(&impl->control_lock);
+	res = spa_fgn_graph_get_props(impl->graph, &builder->b, &props);
+	pthread_mutex_unlock(&impl->control_lock);
+	if (res < 0)
+		return res;
+	(*n_params)++;
+	if (!impl->run_control)
+		return 0;
+	offsets[*n_params] = builder->b.state.offset;
+	props = pw_ao_run_control_build_status(&builder->b,
+			impl->completed_token, impl->run_control_result,
+			impl->actual_state);
+	if (props == NULL)
+		return -ENOSPC;
+	(*n_params)++;
+	return 0;
+}
+
 static int publish_graph_props(struct impl *impl)
 {
 	uint8_t initial[4096];
 	struct spa_pod_dynamic_builder builder;
-	struct spa_pod *props;
-	const struct spa_pod *params[1];
+	const struct spa_pod *params[2];
+	uint32_t offsets[2];
+	uint32_t n_params = 0;
 	int res;
 
 	spa_pod_dynamic_builder_init(&builder, initial, sizeof(initial), 4096);
-	pthread_mutex_lock(&impl->control_lock);
-	res = spa_fgn_graph_get_props(impl->graph, &builder.b, &props);
-	pthread_mutex_unlock(&impl->control_lock);
-	if (res >= 0 && impl->filter != NULL) {
-		params[0] = props;
-		res = pw_filter_update_params(impl->filter, NULL, params, 1);
-	}
+	res = build_graph_param_offsets(impl, &builder, offsets, &n_params);
+	for (uint32_t i = 0; res >= 0 && i < n_params; i++)
+		params[i] = SPA_PTROFF(builder.b.data, offsets[i],
+				const struct spa_pod);
+	if (res >= 0 && impl->filter != NULL)
+		res = pw_filter_update_params(impl->filter, NULL, params, n_params);
 	spa_pod_dynamic_builder_clean(&builder);
 	return res;
+}
+
+static void schedule_param_publication(struct impl *impl)
+{
+	atomic_store_explicit(&impl->publish_after_process, true,
+			memory_order_release);
+	if (impl->main_event != NULL)
+		pw_loop_signal_event(impl->main_loop, impl->main_event);
+}
+
+static void publish_run_control_response(struct impl *impl, int64_t token,
+		int result, enum pw_ao_run_control_state actual_state)
+{
+	impl->completed_token = token;
+	impl->run_control_result = result;
+	impl->actual_state = actual_state;
+	schedule_param_publication(impl);
+}
+
+static void complete_run_control(struct impl *impl, int result,
+		enum pw_ao_run_control_state actual_state)
+{
+	publish_run_control_response(impl, impl->last_request_token, result,
+			actual_state);
+	impl->requested_state = PW_AO_RUN_CONTROL_STATE_UNKNOWN;
 }
 
 static void main_event(void *data, uint64_t count SPA_UNUSED)
@@ -505,14 +568,18 @@ static int prepare_process_thread(struct spa_loop *loop SPA_UNUSED,
 	return spa_fgn_graph_prepare_process_thread(impl->graph);
 }
 
-static void filter_state_changed(void *data, enum pw_filter_state old SPA_UNUSED,
-		enum pw_filter_state state, const char *error)
+static int update_graph_processing(struct impl *impl,
+		enum pw_filter_state state,
+		enum pw_ao_run_control_state *actual)
 {
-	struct impl *impl = data;
 	int res = 0;
 
+	*actual = impl->actual_state;
 	pthread_mutex_lock(&impl->control_lock);
-	if (state == PW_FILTER_STATE_STREAMING) {
+	if (state == PW_FILTER_STATE_STREAMING &&
+	    (!impl->run_control ||
+	     impl->requested_state == PW_AO_RUN_CONTROL_STATE_RUNNING ||
+	     impl->actual_state == PW_AO_RUN_CONTROL_STATE_RUNNING)) {
 		struct pw_loop *data_loop;
 
 		res = spa_fgn_graph_activate(impl->graph);
@@ -524,10 +591,38 @@ static void filter_state_changed(void *data, enum pw_filter_state old SPA_UNUSED
 					0, NULL, 0, true, impl);
 		if (res < 0)
 			spa_fgn_graph_deactivate(impl->graph);
+		else
+			*actual = PW_AO_RUN_CONTROL_STATE_RUNNING;
 	} else if (state == PW_FILTER_STATE_PAUSED) {
 		res = spa_fgn_graph_deactivate(impl->graph);
+		if (res >= 0)
+			*actual = PW_AO_RUN_CONTROL_STATE_STOPPED;
 	}
 	pthread_mutex_unlock(&impl->control_lock);
+	return res;
+}
+
+static void filter_state_changed(void *data, enum pw_filter_state old SPA_UNUSED,
+		enum pw_filter_state state, const char *error)
+{
+	struct impl *impl = data;
+	enum pw_ao_run_control_state actual;
+	int res;
+
+	impl->filter_state = state;
+	res = update_graph_processing(impl, state, &actual);
+	if (impl->run_control) {
+		if (res < 0 && impl->requested_state != PW_AO_RUN_CONTROL_STATE_UNKNOWN)
+			complete_run_control(impl, res, actual);
+		else if (res >= 0 && actual == impl->requested_state)
+			complete_run_control(impl, 0, actual);
+		else if (impl->requested_state == PW_AO_RUN_CONTROL_STATE_UNKNOWN &&
+			 actual != PW_AO_RUN_CONTROL_STATE_UNKNOWN &&
+			 actual != impl->actual_state) {
+			impl->actual_state = actual;
+			schedule_param_publication(impl);
+		}
+	}
 	if (res < 0)
 		pw_filter_set_error(impl->filter, res,
 				"ndarray graph state change failed: %s", spa_strerror(res));
@@ -546,6 +641,61 @@ static void filter_param_changed(void *data, void *port_data,
 	if (port_data != NULL && id == SPA_PARAM_Format) {
 		res = validate_port_format(port_data, param);
 	} else if (port_data == NULL && id == SPA_PARAM_Props) {
+		struct pw_ao_run_control_request request = { 0 };
+
+		res = impl->run_control
+			? pw_ao_run_control_parse_request(param, &request) : -ENOENT;
+		if (res != -ENOENT) {
+			if (res < 0) {
+				pw_log_warn("invalid run-control request: %s",
+						spa_strerror(res));
+				if (request.token > 0)
+					publish_run_control_response(impl, request.token,
+							res, impl->actual_state);
+				return;
+			}
+			if (impl->requested_state != PW_AO_RUN_CONTROL_STATE_UNKNOWN) {
+				pw_log_warn("run-control request %" PRIi64
+						" rejected while request %" PRIi64 " is pending",
+						request.token, impl->last_request_token);
+				publish_run_control_response(impl, request.token, -EBUSY,
+						impl->actual_state);
+				return;
+			}
+			if (request.token <= impl->last_request_token) {
+				pw_log_warn("stale or duplicate run-control request %" PRIi64,
+						request.token);
+				publish_run_control_response(impl, request.token,
+						request.token == impl->last_request_token
+							? -EALREADY : -ESTALE,
+						impl->actual_state);
+				return;
+			}
+			impl->last_request_token = request.token;
+			if (request.requested_state == impl->actual_state) {
+				complete_run_control(impl, 0, impl->actual_state);
+				return;
+			}
+			impl->requested_state = request.requested_state;
+			res = pw_filter_set_active(impl->filter,
+					request.requested_state ==
+					PW_AO_RUN_CONTROL_STATE_RUNNING);
+			if (res < 0)
+				complete_run_control(impl, res, impl->actual_state);
+			else if ((request.requested_state ==
+					PW_AO_RUN_CONTROL_STATE_RUNNING &&
+				  impl->filter_state == PW_FILTER_STATE_STREAMING) ||
+				 (request.requested_state ==
+					PW_AO_RUN_CONTROL_STATE_STOPPED &&
+				  impl->filter_state == PW_FILTER_STATE_PAUSED)) {
+				enum pw_ao_run_control_state actual;
+
+				res = update_graph_processing(impl, impl->filter_state,
+						&actual);
+				complete_run_control(impl, res, actual);
+			}
+			return;
+		}
 		pthread_mutex_lock(&impl->control_lock);
 		res = spa_fgn_graph_set_props(impl->graph, param);
 		pthread_mutex_unlock(&impl->control_lock);
@@ -685,19 +835,22 @@ static int connect_filter(struct impl *impl)
 		offsets[n_params++] = offset;
 	}
 	{
-		struct spa_pod *pod;
 		uint32_t *new_offsets;
-		uint32_t offset = builder.b.state.offset;
+		uint32_t built_offsets[2];
+		uint32_t n_built = 0, built_index;
 
-		if ((res = spa_fgn_graph_get_props(impl->graph, &builder.b, &pod)) < 0)
+		if ((res = build_graph_param_offsets(impl, &builder,
+				built_offsets, &n_built)) < 0)
 			goto done;
-		new_offsets = realloc(offsets, sizeof(*offsets) * (n_params + 1));
+		new_offsets = realloc(offsets,
+				sizeof(*offsets) * (n_params + n_built));
 		if (new_offsets == NULL) {
 			res = -ENOMEM;
 			goto done;
 		}
 		offsets = new_offsets;
-		offsets[n_params++] = offset;
+		for (built_index = 0; built_index < n_built; built_index++)
+			offsets[n_params++] = built_offsets[built_index];
 	}
 	if ((params = calloc(n_params, sizeof(*params))) == NULL) {
 		res = -ENOMEM;
@@ -706,7 +859,8 @@ static int connect_filter(struct impl *impl)
 	for (index = 0; index < n_params; index++)
 		params[index] = SPA_PTROFF(builder.b.data, offsets[index],
 				const struct spa_pod);
-	res = pw_filter_connect(impl->filter, PW_FILTER_FLAG_RT_PROCESS,
+	res = pw_filter_connect(impl->filter, PW_FILTER_FLAG_RT_PROCESS |
+			(impl->run_control ? PW_FILTER_FLAG_INACTIVE : 0),
 			params, n_params);
 done:
 	free(params);
@@ -820,6 +974,7 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 	struct pw_properties *properties = NULL;
 	struct impl *impl;
 	const char *graph_config, *name, *remote;
+	const char *run_control;
 	uint32_t id, i;
 	int res;
 
@@ -848,6 +1003,11 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 		pw_log_error("missing filter.graph");
 		goto error;
 	}
+	run_control = pw_properties_get(properties, PW_AO_RUN_CONTROL_KEY_ENABLED);
+	impl->run_control = run_control != NULL &&
+			pw_properties_parse_bool(run_control);
+	impl->actual_state = PW_AO_RUN_CONTROL_STATE_STOPPED;
+	impl->filter_state = PW_FILTER_STATE_UNCONNECTED;
 	if ((res = spa_fgn_graph_new(graph_config, &impl->graph)) < 0) {
 		pw_log_error("can't create ndarray graph: %s", spa_strerror(res));
 		goto error;
