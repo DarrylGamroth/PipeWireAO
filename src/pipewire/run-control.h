@@ -34,6 +34,14 @@ extern "C" {
 #define PW_AO_RUN_CONTROL_KEY_RESULT "pipewireao.run-control.result"
 #define PW_AO_RUN_CONTROL_KEY_ACTUAL_STATE "pipewireao.run-control.actual-state"
 
+/** Version 1 owner-mediated processing-state reset contract. */
+#define PW_AO_RESET_CONTROL_VERSION 1u
+#define PW_AO_RESET_CONTROL_KEY_ENABLED "pipewireao.reset-control"
+#define PW_AO_RESET_CONTROL_KEY_VERSION "pipewireao.reset-control.version"
+#define PW_AO_RESET_CONTROL_KEY_REQUEST_TOKEN "pipewireao.reset-control.request-token"
+#define PW_AO_RESET_CONTROL_KEY_COMPLETED_TOKEN "pipewireao.reset-control.completed-token"
+#define PW_AO_RESET_CONTROL_KEY_RESULT "pipewireao.reset-control.result"
+
 enum pw_ao_run_control_state {
 	PW_AO_RUN_CONTROL_STATE_UNKNOWN,
 	PW_AO_RUN_CONTROL_STATE_STOPPED,
@@ -51,6 +59,17 @@ struct pw_ao_run_control_status {
 	int64_t completed_token;
 	int32_t result;
 	enum pw_ao_run_control_state actual_state;
+};
+
+struct pw_ao_reset_control_request {
+	uint32_t version;
+	int64_t token;
+};
+
+struct pw_ao_reset_control_status {
+	uint32_t version;
+	int64_t completed_token;
+	int32_t result;
 };
 
 /** Return the stable wire spelling for a run-control state. */
@@ -79,6 +98,25 @@ struct spa_pod *pw_ao_run_control_build_status(
 int pw_ao_run_control_parse_status(
 		const struct spa_pod *props,
 		struct pw_ao_run_control_status *status);
+
+/** Build one complete Version 1 processing-state reset request. */
+struct spa_pod *pw_ao_reset_control_build_request(
+		struct spa_pod_builder *builder, int64_t token);
+
+/** Parse one complete reset request. Unknown non-reset Props return -ENOENT. */
+int pw_ao_reset_control_parse_request(
+		const struct spa_pod *props,
+		struct pw_ao_reset_control_request *request);
+
+/** Build one complete Version 1 processing-state reset completion. */
+struct spa_pod *pw_ao_reset_control_build_status(
+		struct spa_pod_builder *builder, int64_t completed_token,
+		int32_t result);
+
+/** Parse one complete reset completion. */
+int pw_ao_reset_control_parse_status(
+		const struct spa_pod *props,
+		struct pw_ao_reset_control_status *status);
 
 /** \} */
 
