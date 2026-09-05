@@ -57,6 +57,36 @@ static struct spa_pod *build_request_values(void *data, size_t size,
 	return spa_pod_builder_pop(&builder, &object);
 }
 
+static struct spa_pod *build_reset_values(void *data, size_t size,
+		int32_t version, int64_t token, bool status, int32_t result,
+		bool duplicate_version)
+{
+	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(data, size);
+	struct spa_pod_frame object, values;
+
+	spa_pod_builder_push_object(&builder, &object,
+			SPA_TYPE_OBJECT_Props, SPA_PARAM_Props);
+	spa_pod_builder_prop(&builder, SPA_PROP_params, 0);
+	spa_pod_builder_push_struct(&builder, &values);
+	spa_pod_builder_add(&builder,
+			SPA_POD_String(PW_AO_RESET_CONTROL_KEY_VERSION),
+			SPA_POD_Int(version),
+			SPA_POD_String(status
+				? PW_AO_RESET_CONTROL_KEY_COMPLETED_TOKEN
+				: PW_AO_RESET_CONTROL_KEY_REQUEST_TOKEN),
+			SPA_POD_Long(token), 0);
+	if (status)
+		spa_pod_builder_add(&builder,
+				SPA_POD_String(PW_AO_RESET_CONTROL_KEY_RESULT),
+				SPA_POD_Int(result), 0);
+	if (duplicate_version)
+		spa_pod_builder_add(&builder,
+				SPA_POD_String(PW_AO_RESET_CONTROL_KEY_VERSION),
+				SPA_POD_Int(version), 0);
+	spa_pod_builder_pop(&builder, &values);
+	return spa_pod_builder_pop(&builder, &object);
+}
+
 int main(int argc SPA_UNUSED, char *argv[] SPA_UNUSED)
 {
 	uint8_t data[1024];
@@ -64,6 +94,8 @@ int main(int argc SPA_UNUSED, char *argv[] SPA_UNUSED)
 	struct spa_pod *pod;
 	struct pw_ao_run_control_request request;
 	struct pw_ao_run_control_status status;
+	struct pw_ao_reset_control_request reset_request;
+	struct pw_ao_reset_control_status reset_status;
 
 	spa_pod_builder_init(&builder, data, sizeof(data));
 	pod = pw_ao_run_control_build_request(&builder, 42,
@@ -110,5 +142,34 @@ int main(int argc SPA_UNUSED, char *argv[] SPA_UNUSED)
 			PW_AO_RUN_CONTROL_STATE_RUNNING), "running") == 0);
 	assert(strcmp(pw_ao_run_control_state_as_string(
 			PW_AO_RUN_CONTROL_STATE_UNKNOWN), "unknown") == 0);
+
+	spa_pod_builder_init(&builder, data, sizeof(data));
+	pod = pw_ao_reset_control_build_request(&builder, 43);
+	assert(pod != NULL);
+	assert(pw_ao_reset_control_parse_request(pod, &reset_request) == 0);
+	assert(reset_request.version == PW_AO_RESET_CONTROL_VERSION);
+	assert(reset_request.token == 43);
+	assert(pw_ao_reset_control_parse_status(pod, &reset_status) == -EINVAL);
+
+	spa_pod_builder_init(&builder, data, sizeof(data));
+	pod = pw_ao_reset_control_build_status(&builder, 43, -EIO);
+	assert(pod != NULL);
+	assert(pw_ao_reset_control_parse_status(pod, &reset_status) == 0);
+	assert(reset_status.version == PW_AO_RESET_CONTROL_VERSION);
+	assert(reset_status.completed_token == 43);
+	assert(reset_status.result == -EIO);
+	assert(pw_ao_reset_control_parse_request(pod, &reset_request) == -EINVAL);
+
+	assert(pw_ao_reset_control_build_request(&builder, 0) == NULL);
+	pod = build_reset_values(data, sizeof(data), 2, 43, false, 0, false);
+	assert(pw_ao_reset_control_parse_request(pod, &reset_request) ==
+			-EPROTONOSUPPORT);
+	pod = build_reset_values(data, sizeof(data), 1, 0, false, 0, false);
+	assert(pw_ao_reset_control_parse_request(pod, &reset_request) == -EINVAL);
+	pod = build_reset_values(data, sizeof(data), 1, 43, false, 0, true);
+	assert(pw_ao_reset_control_parse_request(pod, &reset_request) == -EINVAL);
+	pod = build_unknown(data, sizeof(data));
+	assert(pw_ao_reset_control_parse_request(pod, &reset_request) == -ENOENT);
+	assert(pw_ao_reset_control_parse_status(pod, &reset_status) == -ENOENT);
 	return 0;
 }
