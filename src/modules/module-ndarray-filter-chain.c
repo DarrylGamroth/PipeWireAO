@@ -104,11 +104,15 @@ struct impl {
 	_Atomic int process_error;
 	_Atomic bool publish_after_process;
 	bool run_control;
+	bool reset_control;
 	int64_t last_request_token;
 	int64_t completed_token;
 	int32_t run_control_result;
 	enum pw_ao_run_control_state requested_state;
 	enum pw_ao_run_control_state actual_state;
+	int64_t last_reset_token;
+	int64_t completed_reset_token;
+	int32_t reset_result;
 	enum pw_filter_state filter_state;
 
 	struct spa_fgn_graph *graph;
@@ -239,15 +243,23 @@ static int build_graph_param_offsets(struct impl *impl,
 	if (res < 0)
 		return res;
 	(*n_params)++;
-	if (!impl->run_control)
-		return 0;
-	offsets[*n_params] = builder->b.state.offset;
-	props = pw_ao_run_control_build_status(&builder->b,
-			impl->completed_token, impl->run_control_result,
-			impl->actual_state);
-	if (props == NULL)
-		return -ENOSPC;
-	(*n_params)++;
+	if (impl->run_control) {
+		offsets[*n_params] = builder->b.state.offset;
+		props = pw_ao_run_control_build_status(&builder->b,
+				impl->completed_token, impl->run_control_result,
+				impl->actual_state);
+		if (props == NULL)
+			return -ENOSPC;
+		(*n_params)++;
+	}
+	if (impl->reset_control) {
+		offsets[*n_params] = builder->b.state.offset;
+		props = pw_ao_reset_control_build_status(&builder->b,
+				impl->completed_reset_token, impl->reset_result);
+		if (props == NULL)
+			return -ENOSPC;
+		(*n_params)++;
+	}
 	return 0;
 }
 
@@ -255,8 +267,8 @@ static int publish_graph_props(struct impl *impl)
 {
 	uint8_t initial[4096];
 	struct spa_pod_dynamic_builder builder;
-	const struct spa_pod *params[2];
-	uint32_t offsets[2];
+	const struct spa_pod *params[3];
+	uint32_t offsets[3];
 	uint32_t n_params = 0;
 	int res;
 
@@ -696,6 +708,43 @@ static void filter_param_changed(void *data, void *port_data,
 			}
 			return;
 		}
+		if (impl->reset_control) {
+			struct pw_ao_reset_control_request reset = { 0 };
+
+			res = pw_ao_reset_control_parse_request(param, &reset);
+			if (res != -ENOENT) {
+				if (res < 0) {
+					pw_log_warn("invalid reset-control request: %s",
+							spa_strerror(res));
+					if (reset.token > 0) {
+						impl->completed_reset_token = reset.token;
+						impl->reset_result = res;
+						schedule_param_publication(impl);
+					}
+					return;
+				}
+				if (reset.token <= impl->last_reset_token)
+					res = reset.token == impl->last_reset_token
+						? -EALREADY : -ESTALE;
+				if (res >= 0 &&
+				    (impl->actual_state != PW_AO_RUN_CONTROL_STATE_STOPPED ||
+				     impl->requested_state != PW_AO_RUN_CONTROL_STATE_UNKNOWN))
+					res = -EBUSY;
+				if (res != -EALREADY && res != -ESTALE)
+					impl->last_reset_token = reset.token;
+				if (res >= 0) {
+					pthread_mutex_lock(&impl->control_lock);
+					res = spa_fgn_graph_reset(impl->graph);
+					pthread_mutex_unlock(&impl->control_lock);
+				}
+				if (reset.token > 0) {
+					impl->completed_reset_token = reset.token;
+					impl->reset_result = res;
+					schedule_param_publication(impl);
+				}
+				return;
+			}
+		}
 		pthread_mutex_lock(&impl->control_lock);
 		res = spa_fgn_graph_set_props(impl->graph, param);
 		pthread_mutex_unlock(&impl->control_lock);
@@ -836,7 +885,7 @@ static int connect_filter(struct impl *impl)
 	}
 	{
 		uint32_t *new_offsets;
-		uint32_t built_offsets[2];
+		uint32_t built_offsets[3];
 		uint32_t n_built = 0, built_index;
 
 		if ((res = build_graph_param_offsets(impl, &builder,
@@ -974,7 +1023,7 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 	struct pw_properties *properties = NULL;
 	struct impl *impl;
 	const char *graph_config, *name, *remote;
-	const char *run_control;
+	const char *run_control, *reset_control;
 	uint32_t id, i;
 	int res;
 
@@ -1006,6 +1055,10 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 	run_control = pw_properties_get(properties, PW_AO_RUN_CONTROL_KEY_ENABLED);
 	impl->run_control = run_control != NULL &&
 			pw_properties_parse_bool(run_control);
+	reset_control = pw_properties_get(properties,
+			PW_AO_RESET_CONTROL_KEY_ENABLED);
+	impl->reset_control = reset_control != NULL &&
+			pw_properties_parse_bool(reset_control);
 	impl->actual_state = PW_AO_RUN_CONTROL_STATE_STOPPED;
 	impl->filter_state = PW_FILTER_STATE_UNCONNECTED;
 	if ((res = spa_fgn_graph_new(graph_config, &impl->graph)) < 0) {
@@ -1046,6 +1099,8 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 		pw_properties_set(properties, PW_KEY_MEDIA_CATEGORY, "Filter");
 	if (pw_properties_get(properties, PW_KEY_NODE_VIRTUAL) == NULL)
 		pw_properties_set(properties, PW_KEY_NODE_VIRTUAL, "true");
+	if (impl->reset_control)
+		pw_properties_set(properties, PW_AO_RESET_CONTROL_KEY_ENABLED, "true");
 	remote = pw_properties_get(properties, PW_KEY_REMOTE_NAME);
 	impl->core = pw_context_get_object(context, PW_TYPE_INTERFACE_Core);
 	if (impl->core == NULL) {

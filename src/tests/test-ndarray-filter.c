@@ -29,10 +29,37 @@ static int update_parameter(void *data SPA_UNUSED, uint32_t input_port SPA_UNUSE
 	return 0;
 }
 
+static int enum_prop_info(void *data SPA_UNUSED, uint32_t index SPA_UNUSED,
+		const struct spa_pod **info SPA_UNUSED)
+{
+	return -ENOENT;
+}
+
+static int get_props(void *data SPA_UNUSED,
+		const struct spa_pod **props SPA_UNUSED)
+{
+	return -ENOTSUP;
+}
+
+static int set_props(void *data SPA_UNUSED,
+		const struct spa_pod *props SPA_UNUSED)
+{
+	return 0;
+}
+
+static int reset(void *data SPA_UNUSED)
+{
+	return 0;
+}
+
 static const struct pw_ndarray_filter_events events = {
 	PW_VERSION_NDARRAY_FILTER_EVENTS,
 	.process = process,
 	.update_parameter = update_parameter,
+	.enum_prop_info = enum_prop_info,
+	.get_props = get_props,
+	.set_props = set_props,
+	.reset = reset,
 };
 
 static const uint32_t shape[] = { 277 };
@@ -152,9 +179,12 @@ static void test_valid_config(void)
 	spa_assert_se(PW_NDARRAY_FILTER_BUFFER_FLAG_INPUT_UNAVAILABLE == (1u << 1));
 	spa_assert_se(PW_NDARRAY_FILTER_PORT_FLAG_NONE == 0);
 	spa_assert_se(PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER == (1u << 0));
-	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS == 1);
+	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS_V1 == 1);
+	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS == 2);
 	spa_assert_se(PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS == (1u << 1));
 	spa_assert_se(PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL == (1u << 2));
+	spa_assert_se(PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES == (1u << 3));
+	spa_assert_se(PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL == (1u << 4));
 
 	res = pw_ndarray_filter_new(&config, &filter);
 	spa_assert_se(res == 0);
@@ -182,6 +212,18 @@ static void test_valid_config(void)
 	spa_assert_se(pw_ndarray_filter_new(&config, &filter) == 0);
 	spa_assert_se(filter != NULL);
 	pw_ndarray_filter_destroy(filter);
+	config.flags = PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES;
+	filter = NULL;
+	spa_assert_se(pw_ndarray_filter_new(&config, &filter) == 0);
+	spa_assert_se(filter != NULL);
+	spa_assert_se(pw_ndarray_filter_notify_properties(filter) == 0);
+	spa_assert_se(pw_ndarray_filter_notify_properties(filter) == 0);
+	pw_ndarray_filter_destroy(filter);
+	config.flags = PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL;
+	filter = NULL;
+	spa_assert_se(pw_ndarray_filter_new(&config, &filter) == 0);
+	spa_assert_se(filter != NULL);
+	pw_ndarray_filter_destroy(filter);
 	config.flags = saved_flags;
 }
 
@@ -191,6 +233,8 @@ static void test_config_validation(void)
 	struct pw_ndarray_filter_port saved_port = ports[0];
 	struct pw_ndarray_filter_events missing_process = events;
 	struct pw_ndarray_filter_events missing_parameter = events;
+	struct pw_ndarray_filter_events missing_property = events;
+	struct pw_ndarray_filter_events missing_reset = events;
 	uint32_t invalid_shape[] = { 0 };
 	char long_name[PW_NDARRAY_FILTER_NAME_MAX + 2];
 
@@ -202,7 +246,7 @@ static void test_config_validation(void)
 	config.version++;
 	expect_new_error(-EINVAL);
 	config = saved_config;
-	config.flags = (PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL << 1);
+	config.flags = (PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL << 1);
 	expect_new_error(-EINVAL);
 	config = saved_config;
 	config.node_name = "";
@@ -230,6 +274,22 @@ static void test_config_validation(void)
 	config = saved_config;
 	missing_process.process = NULL;
 	config.events = &missing_process;
+	expect_new_error(-EINVAL);
+	config = saved_config;
+	config.flags = PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES;
+	missing_property.get_props = NULL;
+	config.events = &missing_property;
+	expect_new_error(-EINVAL);
+	config = saved_config;
+	config.flags = PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL;
+	missing_reset.reset = NULL;
+	config.events = &missing_reset;
+	expect_new_error(-EINVAL);
+	config = saved_config;
+	config.flags = PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES;
+	missing_property = events;
+	missing_property.version = PW_VERSION_NDARRAY_FILTER_EVENTS_V1;
+	config.events = &missing_property;
 	expect_new_error(-EINVAL);
 	config = saved_config;
 

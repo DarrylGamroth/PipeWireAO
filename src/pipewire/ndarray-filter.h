@@ -26,7 +26,8 @@ extern "C" {
 
 /** \{ */
 
-#define PW_VERSION_NDARRAY_FILTER_EVENTS 1u
+#define PW_VERSION_NDARRAY_FILTER_EVENTS 2u
+#define PW_VERSION_NDARRAY_FILTER_EVENTS_V1 1u
 #define PW_VERSION_NDARRAY_FILTER_CONFIG 0u
 #define PW_NDARRAY_FILTER_MAX_PORTS 1024u
 #define PW_NDARRAY_FILTER_NAME_MAX 255u
@@ -66,6 +67,22 @@ enum pw_ndarray_filter_flags {
 	 * publishes a token-matched completion status.
 	 */
 	PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL = (1u << 2),
+	/**
+	 * Publish and accept the scientific owner's scalar Props surface.
+	 *
+	 * Version 2 property callbacks are required. Property requests execute on
+	 * the owned main-loop thread. The owner calls
+	 * pw_ndarray_filter_notify_properties() after a requested value becomes
+	 * active at a frame boundary.
+	 */
+	PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES = (1u << 3),
+	/**
+	 * Accept Version 1 owner-mediated processing-state reset requests.
+	 *
+	 * Version 2 reset() is required. Reset is accepted only while processing
+	 * is stopped and no run-control transition is pending.
+	 */
+	PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL = (1u << 4),
 };
 
 /** Static ndarray-filter Port roles. */
@@ -203,6 +220,15 @@ struct pw_ndarray_filter_events {
 	int (*deactivate)(void *data);
 	int (*update_parameter)(void *data, uint32_t input_port,
 			const struct pw_ndarray_filter_buffer *parameter);
+	/** Return PropInfo at index, or -ENOENT after the final declaration. */
+	int (*enum_prop_info)(void *data, uint32_t index,
+			const struct spa_pod **info);
+	/** Return the owner's current requested and active scalar property state. */
+	int (*get_props)(void *data, const struct spa_pod **props);
+	/** Validate and stage one scalar property request. */
+	int (*set_props)(void *data, const struct spa_pod *props);
+	/** Reset processing state while the node is stopped. */
+	int (*reset)(void *data);
 };
 
 /** Immutable construction configuration. All strings and shapes are copied. */
@@ -233,6 +259,15 @@ int pw_ndarray_filter_run(struct pw_ndarray_filter *filter);
 
 /** Request main-loop termination. This operation may be called by another thread. */
 int pw_ndarray_filter_quit(struct pw_ndarray_filter *filter);
+
+/**
+ * Schedule publication of the owner's current Props on the main-loop thread.
+ *
+ * This operation is non-blocking and may be called from a process callback.
+ * Notifications are coalesced. It is valid only with
+ * PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES.
+ */
+int pw_ndarray_filter_notify_properties(struct pw_ndarray_filter *filter);
 
 /** Return the most recently observed state without entering the main loop. */
 enum pw_filter_state pw_ndarray_filter_get_state(

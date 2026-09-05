@@ -5,6 +5,7 @@
 #include "config.h"
 
 #include <errno.h>
+#include <stddef.h>
 #include <limits.h>
 #include <stdatomic.h>
 #include <stdbool.h>
@@ -63,6 +64,7 @@ struct pw_ndarray_filter {
 	struct pw_main_loop *main_loop;
 	struct pw_filter *filter;
 	struct spa_source *error_event;
+	struct spa_source *properties_event;
 	struct pw_thread_loop *parameter_loop;
 	struct spa_source *parameter_event;
 	bool parameter_loop_started;
@@ -95,6 +97,7 @@ struct pw_ndarray_filter {
 	_Atomic int error;
 	_Atomic bool prepared;
 	_Atomic bool destroying;
+	_Atomic bool properties_pending;
 	bool initialized;
 	bool connected;
 	int64_t last_request_token;
@@ -102,6 +105,9 @@ struct pw_ndarray_filter {
 	int32_t run_control_result;
 	enum pw_ao_run_control_state requested_state;
 	enum pw_ao_run_control_state actual_state;
+	int64_t last_reset_token;
+	int64_t completed_reset_token;
+	int32_t reset_result;
 };
 
 static int checked_format_size(const struct pw_ndarray_filter_format *format,
@@ -209,11 +215,14 @@ static int copy_config(struct pw_ndarray_filter *filter,
 	    config->version != PW_VERSION_NDARRAY_FILTER_CONFIG ||
 	    (config->flags & ~(PW_NDARRAY_FILTER_FLAG_RT_PROCESS |
 		    PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS |
-		    PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL)) != 0 ||
+		    PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL |
+		    PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES |
+		    PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL)) != 0 ||
 	    config->n_ports == 0 ||
 	    config->n_ports > PW_NDARRAY_FILTER_MAX_PORTS ||
 	    config->ports == NULL || config->events == NULL ||
-	    config->events->version != PW_VERSION_NDARRAY_FILTER_EVENTS ||
+	    (config->events->version != PW_VERSION_NDARRAY_FILTER_EVENTS_V1 &&
+	     config->events->version != PW_VERSION_NDARRAY_FILTER_EVENTS) ||
 	    config->events->process == NULL ||
 	    (config->remote_name != NULL && config->remote_name[0] == '\0'))
 		return -EINVAL;
@@ -228,7 +237,10 @@ static int copy_config(struct pw_ndarray_filter *filter,
 	    (config->remote_name != NULL && filter->remote_name == NULL) ||
 	    filter->ports == NULL)
 		return -ENOMEM;
-	filter->events = *config->events;
+	memcpy(&filter->events, config->events,
+		config->events->version == PW_VERSION_NDARRAY_FILTER_EVENTS_V1
+			? offsetof(struct pw_ndarray_filter_events, enum_prop_info)
+			: sizeof(filter->events));
 	filter->user_data = config->user_data;
 	filter->flags = config->flags;
 	filter->n_ports = config->n_ports;
@@ -262,6 +274,16 @@ static int copy_config(struct pw_ndarray_filter *filter,
 		atomic_init(&filter->ports[i].completed_parameter, false);
 	}
 	if (parameter_input > 0 && config->events->update_parameter == NULL)
+		return -EINVAL;
+	if ((config->flags & PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES) &&
+	    (config->events->version < PW_VERSION_NDARRAY_FILTER_EVENTS ||
+	     config->events->enum_prop_info == NULL ||
+	     config->events->get_props == NULL ||
+	     config->events->set_props == NULL))
+		return -EINVAL;
+	if ((config->flags & PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL) &&
+	    (config->events->version < PW_VERSION_NDARRAY_FILTER_EVENTS ||
+	     config->events->reset == NULL))
 		return -EINVAL;
 	filter->n_inputs = input;
 	filter->n_data_inputs = data_input;
@@ -735,6 +757,9 @@ static void update_parameter(struct ndarray_port *port)
 	}
 	if (res < 0)
 		signal_process_error(filter, res);
+	else if ((filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES) &&
+		 (res = pw_ndarray_filter_notify_properties(filter)) < 0)
+		signal_process_error(filter, res);
 	atomic_store_explicit(&port->completed_parameter, true,
 			memory_order_release);
 }
@@ -1014,6 +1039,39 @@ static int deactivate(struct pw_ndarray_filter *filter)
 static void fail_on_main_loop(struct pw_ndarray_filter *filter, int res,
 		const char *message);
 
+static int publish_owner_props(struct pw_ndarray_filter *filter)
+{
+	const struct spa_pod *props = NULL;
+	const struct spa_pod *params[1];
+	int res;
+
+	res = filter->events.get_props(filter->user_data, &props);
+	if (res > 0)
+		return -EPROTO;
+	if (res < 0)
+		return res;
+	if (props == NULL ||
+	    !spa_pod_is_object_type(props, SPA_TYPE_OBJECT_Props) ||
+	    SPA_POD_OBJECT_ID(props) != SPA_PARAM_Props)
+		return -EINVAL;
+	params[0] = props;
+	return pw_filter_update_params(filter->filter, NULL, params, 1);
+}
+
+static void properties_event(void *data, uint64_t count SPA_UNUSED)
+{
+	struct pw_ndarray_filter *filter = data;
+	int res;
+
+	if (!atomic_exchange_explicit(&filter->properties_pending, false,
+			memory_order_acq_rel))
+		return;
+	res = publish_owner_props(filter);
+	if (res < 0)
+		fail_on_main_loop(filter, res,
+				"can't publish ndarray owner properties");
+}
+
 static int publish_run_control_status(struct pw_ndarray_filter *filter,
 		int64_t token, int result,
 		enum pw_ao_run_control_state actual_state)
@@ -1033,6 +1091,52 @@ static int publish_run_control_status(struct pw_ndarray_filter *filter,
 		return -ENOSPC;
 	params[0] = status;
 	return pw_filter_update_params(filter->filter, NULL, params, 1);
+}
+
+static int publish_reset_control_status(struct pw_ndarray_filter *filter,
+		int64_t token, int result)
+{
+	uint8_t buffer[1024];
+	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer,
+			sizeof(buffer));
+	struct spa_pod *status;
+	const struct spa_pod *params[1];
+
+	filter->completed_reset_token = token;
+	filter->reset_result = result;
+	status = pw_ao_reset_control_build_status(&builder, token, result);
+	if (status == NULL)
+		return -ENOSPC;
+	params[0] = status;
+	return pw_filter_update_params(filter->filter, NULL, params, 1);
+}
+
+static int publish_owner_prop_info(struct pw_ndarray_filter *filter)
+{
+	uint32_t index;
+
+	for (index = 0; index < PW_NDARRAY_FILTER_MAX_PORTS; index++) {
+		const struct spa_pod *info = NULL;
+		const struct spa_pod *params[1];
+		int res = filter->events.enum_prop_info(filter->user_data,
+				index, &info);
+
+		if (res == -ENOENT)
+			return 0;
+		if (res > 0)
+			return -EPROTO;
+		if (res < 0)
+			return res;
+		if (info == NULL ||
+		    !spa_pod_is_object_type(info, SPA_TYPE_OBJECT_PropInfo) ||
+		    SPA_POD_OBJECT_ID(info) != SPA_PARAM_PropInfo)
+			return -EINVAL;
+		params[0] = info;
+		if ((res = pw_filter_update_params(filter->filter, NULL,
+				params, 1)) < 0)
+			return res;
+	}
+	return -E2BIG;
 }
 
 static void complete_run_control(struct pw_ndarray_filter *filter, int result,
@@ -1148,14 +1252,14 @@ static void filter_param_changed(void *data, void *port_data,
 		enum pw_filter_state state;
 
 		res = pw_ao_run_control_parse_request(param, &request);
-		if (res == -ENOENT)
-			return;
-		if (res < 0) {
+		if (res < 0 && res != -ENOENT) {
 			if (request.token > 0)
 				publish_run_control_status(filter, request.token, res,
 						filter->actual_state);
 			return;
 		}
+		if (res == -ENOENT)
+			goto reset_control;
 		if (filter->requested_state != PW_AO_RUN_CONTROL_STATE_UNKNOWN) {
 			publish_run_control_status(filter, request.token, -EBUSY,
 					filter->actual_state);
@@ -1191,6 +1295,58 @@ static void filter_param_changed(void *data, void *port_data,
 			res = update_processing_state(filter, state, &actual);
 			complete_run_control(filter, res, actual);
 		}
+		return;
+	}
+
+reset_control:
+	if (data_port == NULL && id == SPA_PARAM_Props &&
+	    (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL)) {
+		struct pw_ao_reset_control_request request = { 0 };
+
+		res = pw_ao_reset_control_parse_request(param, &request);
+		if (res < 0 && res != -ENOENT) {
+			if (request.token > 0)
+				publish_reset_control_status(filter, request.token, res);
+			return;
+		}
+		if (res == -ENOENT)
+			goto owner_properties;
+		if (request.token <= filter->last_reset_token) {
+			publish_reset_control_status(filter, request.token,
+					request.token == filter->last_reset_token
+						? -EALREADY : -ESTALE);
+			return;
+		}
+		if (filter->actual_state != PW_AO_RUN_CONTROL_STATE_STOPPED ||
+		    filter->requested_state != PW_AO_RUN_CONTROL_STATE_UNKNOWN) {
+			filter->last_reset_token = request.token;
+			publish_reset_control_status(filter, request.token, -EBUSY);
+			return;
+		}
+		filter->last_reset_token = request.token;
+		res = filter->events.reset(filter->user_data);
+		if (res > 0)
+			res = -EPROTO;
+		publish_reset_control_status(filter, request.token, res);
+		if (res < 0)
+			return;
+		if (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES)
+			pw_ndarray_filter_notify_properties(filter);
+		return;
+	}
+
+owner_properties:
+	if (data_port == NULL && id == SPA_PARAM_Props &&
+	    (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES)) {
+		res = filter->events.set_props(filter->user_data, param);
+		if (res > 0)
+			res = -EPROTO;
+		if (res < 0)
+			fail_on_main_loop(filter, res,
+					"invalid ndarray owner properties");
+		else if ((res = publish_owner_props(filter)) < 0)
+			fail_on_main_loop(filter, res,
+					"can't publish ndarray requested properties");
 		return;
 	}
 	if (data_port == NULL || id != SPA_PARAM_Format)
@@ -1248,6 +1404,9 @@ static void free_filter(struct pw_ndarray_filter *filter)
 	if (filter->error_event != NULL && filter->main_loop != NULL)
 		pw_loop_destroy_source(pw_main_loop_get_loop(filter->main_loop),
 				filter->error_event);
+	if (filter->properties_event != NULL && filter->main_loop != NULL)
+		pw_loop_destroy_source(pw_main_loop_get_loop(filter->main_loop),
+				filter->properties_event);
 	if (filter->filter != NULL)
 		pw_filter_destroy(filter->filter);
 	if (filter->main_loop != NULL)
@@ -1290,6 +1449,7 @@ int pw_ndarray_filter_new(const struct pw_ndarray_filter_config *config,
 	atomic_init(&filter->error, 0);
 	atomic_init(&filter->prepared, false);
 	atomic_init(&filter->destroying, false);
+	atomic_init(&filter->properties_pending, false);
 	if ((res = copy_config(filter, config)) < 0)
 		goto error;
 	filter->actual_state = PW_AO_RUN_CONTROL_STATE_STOPPED;
@@ -1305,6 +1465,15 @@ int pw_ndarray_filter_new(const struct pw_ndarray_filter_config *config,
 	if (filter->error_event == NULL) {
 		res = errno != 0 ? -errno : -ENOMEM;
 		goto error;
+	}
+	if (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES) {
+		filter->properties_event = pw_loop_add_event(
+				pw_main_loop_get_loop(filter->main_loop),
+				properties_event, filter);
+		if (filter->properties_event == NULL) {
+			res = errno != 0 ? -errno : -ENOMEM;
+			goto error;
+		}
 	}
 	properties = pw_properties_new(
 			PW_KEY_NODE_NAME, filter->node_name,
@@ -1326,6 +1495,8 @@ int pw_ndarray_filter_new(const struct pw_ndarray_filter_config *config,
 	}
 	if (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL)
 		pw_properties_set(properties, PW_AO_RUN_CONTROL_KEY_ENABLED, "true");
+	if (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL)
+		pw_properties_set(properties, PW_AO_RESET_CONTROL_KEY_ENABLED, "true");
 	filter->filter = pw_filter_new_simple(
 			pw_main_loop_get_loop(filter->main_loop), filter->node_name,
 			properties, &filter_events, filter);
@@ -1369,7 +1540,7 @@ int pw_ndarray_filter_connect(struct pw_ndarray_filter *filter)
 	uint8_t buffer[1024];
 	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer,
 			sizeof(buffer));
-	const struct spa_pod *params[1];
+	const struct spa_pod *params[3];
 	uint32_t n_params = 0;
 	int res;
 
@@ -1385,10 +1556,31 @@ int pw_ndarray_filter_connect(struct pw_ndarray_filter *filter)
 			return -ENOSPC;
 		n_params++;
 	}
+	if (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL) {
+		params[n_params] = pw_ao_reset_control_build_status(&builder, 0, 0);
+		if (params[n_params] == NULL)
+			return -ENOSPC;
+		n_params++;
+	}
+	if (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES) {
+		res = filter->events.get_props(filter->user_data, &params[n_params]);
+		if (res > 0)
+			return -EPROTO;
+		if (res < 0)
+			return res;
+		if (params[n_params] == NULL ||
+		    !spa_pod_is_object_type(params[n_params], SPA_TYPE_OBJECT_Props) ||
+		    SPA_POD_OBJECT_ID(params[n_params]) != SPA_PARAM_Props)
+			return -EINVAL;
+		n_params++;
+	}
 	res = pw_filter_connect(filter->filter, flags,
 			n_params > 0 ? params : NULL, n_params);
-	if (res >= 0)
+	if (res >= 0) {
 		filter->connected = true;
+		if (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES)
+			res = publish_owner_prop_info(filter);
+	}
 	return res;
 }
 
@@ -1410,6 +1602,26 @@ int pw_ndarray_filter_quit(struct pw_ndarray_filter *filter)
 	if (filter == NULL || filter->main_loop == NULL)
 		return -EINVAL;
 	return pw_main_loop_quit(filter->main_loop);
+}
+
+SPA_EXPORT
+int pw_ndarray_filter_notify_properties(struct pw_ndarray_filter *filter)
+{
+	int res;
+
+	if (filter == NULL || filter->properties_event == NULL ||
+	    !(filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES) ||
+	    atomic_load_explicit(&filter->destroying, memory_order_acquire))
+		return -EINVAL;
+	if (atomic_exchange_explicit(&filter->properties_pending, true,
+			memory_order_acq_rel))
+		return 0;
+	res = pw_loop_signal_event(pw_main_loop_get_loop(filter->main_loop),
+			filter->properties_event);
+	if (res < 0)
+		atomic_store_explicit(&filter->properties_pending, false,
+				memory_order_release);
+	return res;
 }
 
 SPA_EXPORT

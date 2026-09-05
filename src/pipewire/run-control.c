@@ -201,3 +201,127 @@ int pw_ao_run_control_parse_status(const struct spa_pod *props,
 			&status->completed_token, &status->result,
 			&status->actual_state);
 }
+
+SPA_EXPORT
+struct spa_pod *pw_ao_reset_control_build_request(
+		struct spa_pod_builder *builder, int64_t token)
+{
+	struct spa_pod_frame object, values;
+
+	if (builder == NULL || token <= 0 ||
+	    begin_props(builder, &object, &values) < 0)
+		return NULL;
+	spa_pod_builder_add(builder,
+			SPA_POD_String(PW_AO_RESET_CONTROL_KEY_VERSION),
+			SPA_POD_Int(PW_AO_RESET_CONTROL_VERSION),
+			SPA_POD_String(PW_AO_RESET_CONTROL_KEY_REQUEST_TOKEN),
+			SPA_POD_Long(token), 0);
+	spa_pod_builder_pop(builder, &values);
+	return spa_pod_builder_pop(builder, &object);
+}
+
+SPA_EXPORT
+struct spa_pod *pw_ao_reset_control_build_status(
+		struct spa_pod_builder *builder, int64_t completed_token,
+		int32_t result)
+{
+	struct spa_pod_frame object, values;
+
+	if (builder == NULL || completed_token < 0 ||
+	    begin_props(builder, &object, &values) < 0)
+		return NULL;
+	spa_pod_builder_add(builder,
+			SPA_POD_String(PW_AO_RESET_CONTROL_KEY_VERSION),
+			SPA_POD_Int(PW_AO_RESET_CONTROL_VERSION),
+			SPA_POD_String(PW_AO_RESET_CONTROL_KEY_COMPLETED_TOKEN),
+			SPA_POD_Long(completed_token),
+			SPA_POD_String(PW_AO_RESET_CONTROL_KEY_RESULT),
+			SPA_POD_Int(result), 0);
+	spa_pod_builder_pop(builder, &values);
+	return spa_pod_builder_pop(builder, &object);
+}
+
+static int parse_reset_values(const struct spa_pod *props, bool status,
+		uint32_t *version, int64_t *token, int32_t *result)
+{
+	const struct spa_pod_prop *params;
+	struct spa_pod_parser parser;
+	struct spa_pod_frame frame;
+	bool have_version = false, have_token = false, have_result = false;
+	uint32_t fields = 0;
+
+	if (props == NULL ||
+	    !spa_pod_is_object_type(props, SPA_TYPE_OBJECT_Props) ||
+	    SPA_POD_OBJECT_ID(props) != SPA_PARAM_Props)
+		return -EINVAL;
+	params = spa_pod_find_prop(props, NULL, SPA_PROP_params);
+	if (params == NULL || !spa_pod_is_struct(&params->value))
+		return -EINVAL;
+	spa_pod_parser_pod(&parser, &params->value);
+	if (spa_pod_parser_push_struct(&parser, &frame) < 0)
+		return -EINVAL;
+	for (;;) {
+		struct spa_pod *value;
+		const char *key;
+		int res;
+
+		res = spa_pod_parser_get_string(&parser, &key);
+		if (res < 0) {
+			if (parser.state.offset == frame.offset + SPA_POD_SIZE(&frame.pod))
+				break;
+			return -EINVAL;
+		}
+		if (spa_pod_parser_get_pod(&parser, &value) < 0)
+			return -EINVAL;
+		fields++;
+		if (spa_streq(key, PW_AO_RESET_CONTROL_KEY_VERSION)) {
+			int32_t parsed;
+			if (have_version || spa_pod_get_int(value, &parsed) < 0 || parsed < 0)
+				return -EINVAL;
+			*version = (uint32_t)parsed;
+			have_version = true;
+		} else if (spa_streq(key, status
+				? PW_AO_RESET_CONTROL_KEY_COMPLETED_TOKEN
+				: PW_AO_RESET_CONTROL_KEY_REQUEST_TOKEN)) {
+			if (have_token || spa_pod_get_long(value, token) < 0)
+				return -EINVAL;
+			have_token = true;
+		} else if (status && spa_streq(key, PW_AO_RESET_CONTROL_KEY_RESULT)) {
+			if (have_result || spa_pod_get_int(value, result) < 0)
+				return -EINVAL;
+			have_result = true;
+		} else {
+			return fields == 1 ? -ENOENT : -EINVAL;
+		}
+	}
+	if (!have_version || !have_token || (status && !have_result) ||
+	    fields != (status ? 3u : 2u))
+		return -EINVAL;
+	if (*version != PW_AO_RESET_CONTROL_VERSION)
+		return -EPROTONOSUPPORT;
+	if (*token < (status ? 0 : 1))
+		return -EINVAL;
+	return 0;
+}
+
+SPA_EXPORT
+int pw_ao_reset_control_parse_request(const struct spa_pod *props,
+		struct pw_ao_reset_control_request *request)
+{
+	int32_t unused = 0;
+
+	if (request == NULL)
+		return -EINVAL;
+	return parse_reset_values(props, false, &request->version,
+			&request->token, &unused);
+}
+
+SPA_EXPORT
+int pw_ao_reset_control_parse_status(const struct spa_pod *props,
+		struct pw_ao_reset_control_status *status)
+{
+	if (status == NULL)
+		return -EINVAL;
+	return parse_reset_values(props, true, &status->version,
+			&status->completed_token, &status->result);
+}
