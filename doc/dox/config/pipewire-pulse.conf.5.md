@@ -6,7 +6,7 @@ The PipeWire Pulseaudio server configuration file
 
 # SYNOPSIS
 
-*$XDG_CONFIG_HOME/pipewire/pipewire-pulse.conf*
+*$XDG_CONFIG_HOME/pipewire-ao/pipewire-pulse.conf*
 
 *$(PIPEWIRE_CONFIG_DIR)/pipewire-pulse.conf*
 
@@ -16,7 +16,7 @@ The PipeWire Pulseaudio server configuration file
 
 *$(PIPEWIRE_CONFIG_DIR)/pipewire-pulse.conf.d/*
 
-*$XDG_CONFIG_HOME/pipewire/pipewire-pulse.conf.d/*
+*$XDG_CONFIG_HOME/pipewire-ao/pipewire-pulse.conf.d/*
 
 # DESCRIPTION
 

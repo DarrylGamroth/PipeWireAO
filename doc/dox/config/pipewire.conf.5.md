@@ -6,21 +6,21 @@ The PipeWire server configuration file
 
 # SYNOPSIS {#synopsis}
 
-*$PIPEWIRE_CONFIG_DIR/pipewire/pipewire.conf*
+*$PIPEWIREAO_CONFIG_DIR/pipewire/pipewire.conf*
 
-*$XDG_CONFIG_HOME/pipewire/pipewire.conf*
+*$XDG_CONFIG_HOME/pipewire-ao/pipewire.conf*
 
 *$(PIPEWIRE_CONFIG_DIR)/pipewire.conf*
 
 *$(PIPEWIRE_CONFDATADIR)/pipewire.conf*
 
-*$PIPEWIRE_CONFIG_DIR/pipewire/pipewire.conf.d/*
+*$PIPEWIREAO_CONFIG_DIR/pipewire/pipewire.conf.d/*
 
 *$(PIPEWIRE_CONFDATADIR)/pipewire.conf.d/*
 
 *$(PIPEWIRE_CONFIG_DIR)/pipewire.conf.d/*
 
-*$XDG_CONFIG_HOME/pipewire/pipewire.conf.d/*
+*$XDG_CONFIG_HOME/pipewire-ao/pipewire.conf.d/*
 
 
 # DESCRIPTION
@@ -33,25 +33,25 @@ itself. After that it will apply a set of drop-in config overrides.
 
 By default the pipewire daemon will read `pipewire.conf` and looks
 for drop-in config files in the `pipewire.conf.d` subdirectory.
-The environment variable `PIPEWIRE_CONFIG_NAME` can be used to specify
+The environment variable `PIPEWIREAO_CONFIG_NAME` can be used to specify
 an alternative config file name and the drop-in config file directory
 name (by appending `.d` to the config name).
 
 The config file and the drop-in config directories are looked up in
 the order listed in the [SYNOPSIS](#synopsis).
 
-If the environment variable `PIPEWIRE_CONFIG_DIR` is set, it is the
+If the environment variable `PIPEWIREAO_CONFIG_DIR` is set, it is the
 only place where the main config file and the drop-in config files
 are looked up.
 
-If the environment variable `PIPEWIRE_CONFIG_PREFIX` contains an
+If the environment variable `PIPEWIREAO_CONFIG_PREFIX` contains an
 absolute path, it will be searched first for the main config file and
 the drop-in config files.
-If `PIPEWIRE_CONFIG_PREFIX` does not contain an absolute path, it is
+If `PIPEWIREAO_CONFIG_PREFIX` does not contain an absolute path, it is
 used as a subdirectory to locate the main config file and the drop-in
 config files.
 
-When the environment variable `PIPEWIRE_NO_CONFIG` is set to `true`,
+When the environment variable `PIPEWIREAO_NO_CONFIG` is set to `true`,
 only the data config directory $(PIPEWIRE_CONFDATADIR) is searched.
 This is useful when you want to run with the default configuration
 without any system or user overrides.

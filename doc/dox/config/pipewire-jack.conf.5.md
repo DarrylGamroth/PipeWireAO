@@ -6,7 +6,7 @@ The PipeWire JACK client configuration file.
 
 # SYNOPSIS
 
-*$XDG_CONFIG_HOME/pipewire/jack.conf*
+*$XDG_CONFIG_HOME/pipewire-ao/jack.conf*
 
 *$(PIPEWIRE_CONFIG_DIR)/jack.conf*
 
@@ -16,7 +16,7 @@ The PipeWire JACK client configuration file.
 
 *$(PIPEWIRE_CONFIG_DIR)/jack.conf.d/*
 
-*$XDG_CONFIG_HOME/pipewire/jack.conf.d/*
+*$XDG_CONFIG_HOME/pipewire-ao/jack.conf.d/*
 
 # DESCRIPTION
 
