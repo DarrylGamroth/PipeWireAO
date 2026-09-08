@@ -4,6 +4,9 @@
 
 #include "config.h"
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <assert.h>
 #include <pthread.h>
 #include <sched.h>
