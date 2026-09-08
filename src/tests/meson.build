@@ -62,7 +62,8 @@ test(
     pwao_link.full_path(),
     polling_remote_client.full_path(),
   ],
-  depends: [pipewire_exec, pwao_link, polling_remote_client],
+  depends: pipewire_daemon_required_modules +
+    [pipewire_exec, pwao_link, polling_remote_client],
   env: polling_remote_env,
   timeout: 45,
 )
@@ -87,7 +88,7 @@ test(
     ndarray_filter_remote_filter.full_path(),
     ndarray_filter_remote_client.full_path(),
   ],
-  depends: [
+  depends: pipewire_daemon_required_modules + [
     pipewire_exec,
     pwao_link,
     ndarray_filter_remote_filter,
@@ -117,7 +118,7 @@ test(
     ndarray_filter_parameter_filter.full_path(),
     ndarray_filter_parameter_client.full_path(),
   ],
-  depends: [
+  depends: pipewire_daemon_required_modules + [
     pipewire_exec,
     pwao_link,
     ndarray_filter_parameter_filter,
