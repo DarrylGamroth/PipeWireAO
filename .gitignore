@@ -43,3 +43,6 @@ tags
 
 
 # End of https://www.gitignore.io/api/vim
+
+# Local benchmark and qualification output
+/doc/dox/internals/benchmark-data/

@@ -92,10 +92,12 @@ the median of five per-repetition maxima.
 | eventfd | eventfd | FIFO 88 | 5.169 us | 6.371 us | 11.561 us | 14.578 us | 20.278 us | 32.190 us |
 
 The complete samples, run order, executable hashes, source diff, environment,
-and system snapshots are in the
-[latency record](benchmark-data/polling-remote-graph-2026-08-25-record/).
+and system snapshots remain available in repository history at
+[commit 89891efbd](https://github.com/DarrylGamroth/PipeWireAO/tree/89891efbdbfe4785cb00826f61317f58bf42d960/doc/dox/internals/benchmark-data).
 Latency CSVs are individually Zstandard-compressed. `RAW_SHA256SUMS` verifies
-their original contents and `SHA256SUMS` verifies the committed archives.
+their original contents and `SHA256SUMS` verifies the archived files. Raw
+campaign output is not distributed with PipeWireAO; new output belongs in an
+external evidence archive.
 
 ## CPU, cache, TLB, and fault counters
 
@@ -128,19 +130,17 @@ below 0.01 percent. The larger eventfd miss rates are percentages of a much
 smaller number of user-space loads after rescheduling. Absolute L2 and DTLB
 miss counts remain too small to explain microsecond wake latency.
 
-The complete event counts, coverage, and latency samples are in the
-[PMU record](benchmark-data/polling-remote-graph-pmu-2026-08-25-record/).
-It uses the same compressed-CSV and two-manifest convention.
+The archived PMU record at the commit linked above contains the complete event
+counts, coverage, and latency samples. It uses the same compressed-CSV and
+two-manifest convention.
 
 ## Hot functions
 
 Lossless `cycles:u` callgraphs were recorded at 999 Hz with 8 KiB DWARF stacks
 for 10,000 frames in every FIFO 88 mode. Raw `perf.data` files are not retained;
-the text self/children reports and build IDs are in the
-[cycle record](benchmark-data/polling-remote-graph-cycles-2026-08-25-record/).
-Because two sleeping eventfd loops accumulated only 285 user-cycle samples in
-that interval, a separate 200,000-frame
-[eventfd cycle record](benchmark-data/polling-remote-graph-eventfd-cycles-2026-08-25-record/)
+the archived text self/children reports and build IDs are available at the
+commit linked above. Because two sleeping eventfd loops accumulated only 285
+user-cycle samples in that interval, a separate 200,000-frame archived record
 provides 494 lossless samples for that mode.
 
 With two polling loops, `do_poll_loop` accounts for 33.81 percent of combined
