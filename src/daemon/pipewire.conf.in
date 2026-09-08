@@ -1,11 +1,11 @@
 # Daemon config file for PipeWire version @VERSION@ #
 #
 # Copy and edit this file in @PIPEWIRE_CONFIG_DIR@ for system-wide changes
-# or in ~/.config/pipewire for local changes.
+# or in ~/.config/pipewire-ao for local changes.
 #
 # It is also possible to place a file with an updated section in
 # @PIPEWIRE_CONFIG_DIR@/pipewire.conf.d/ for system-wide changes or in
-# ~/.config/pipewire/pipewire.conf.d/ for local changes.
+# ~/.config/pipewire-ao/pipewire.conf.d/ for local changes.
 #
 
 context.properties = {
@@ -150,7 +150,7 @@ context.modules = [
     { name = libpipewire-module-protocol-native
         args = {
             # List of server Unix sockets, and optionally permissions
-            #sockets = [ { name = "pipewire-0" }, { name = "pipewire-0-manager" } ]
+            #sockets = [ { name = "pipewire-ao-0" }, { name = "pipewire-ao-0-manager" } ]
         }
     }
 
@@ -209,7 +209,7 @@ context.modules = [
     { name = libpipewire-module-access
         args = {
             # Socket-specific access permissions
-            #access.socket = { pipewire-0 = "default", pipewire-0-manager = "unrestricted" }
+            #access.socket = { pipewire-ao-0 = "default", pipewire-ao-0-manager = "unrestricted" }
 
             # Deprecated legacy mode (not socket-based),
             # for now enabled by default if access.socket is not specified

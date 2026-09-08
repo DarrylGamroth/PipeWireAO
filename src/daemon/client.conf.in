@@ -1,11 +1,11 @@
 # Client config file for PipeWire version @VERSION@ #
 #
 # Copy and edit this file in @PIPEWIRE_CONFIG_DIR@ for system-wide changes
-# or in ~/.config/pipewire for local changes.
+# or in ~/.config/pipewire-ao for local changes.
 #
 # It is also possible to place a file with an updated section in
 # @PIPEWIRE_CONFIG_DIR@/client.conf.d/ for system-wide changes or in
-# ~/.config/pipewire/client.conf.d/ for local changes.
+# ~/.config/pipewire-ao/client.conf.d/ for local changes.
 #
 
 context.properties = {
