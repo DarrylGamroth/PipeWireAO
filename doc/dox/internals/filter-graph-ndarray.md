@@ -964,6 +964,16 @@ in flight per parameter port. A newer arrival is rejected and recycled while
 that slot is occupied; a plugin instance's `-EBUSY` response is retried after
 the next graph process boundary.
 
+The maintained `pw-test-ndarray-filter-chain-props` test loads this module and
+the C `scale-f32` example in a client connected to an isolated daemon. It sends
+two property updates while the source is unlinked, observes the module's
+occupied-slot rejection, then links and triggers one ndarray frame. A Props
+subscriber must receive the first accepted gain as both requested and active;
+the rejected gain must never appear. Run it with
+`meson test -C build pw-test-ndarray-filter-chain-props --print-errorlogs`.
+This covers module back pressure and active-value publication with an eventfd
+loop; it does not force an odd or changing property revision during a snapshot.
+
 The adapter does not yet rebuild a graph when a format-defining configuration
 value changes or expose the dropped-parameter counter as a node property. The
 direct callback benchmark does not yet cover the outer PipeWire scheduler,

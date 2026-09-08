@@ -128,7 +128,7 @@ closure_obligations = ["bounded slot", "backpressure", "publish before nodes", "
 implementation_state = "implemented"
 implementation_links = ["spa/plugins/filter-graph/filter-graph-ndarray.c"]
 evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "src/tests/test-ndarray-filter-chain-props.c", "src/tests/test-ndarray-filter-chain-props.py"]
 remaining_gaps = ["A barrier-controlled concurrent set/process test is not yet maintained."]
 
 [[requirements]]
@@ -156,12 +156,12 @@ closure_obligations = ["returned-value validation", "even/odd revision", "retry"
 implementation_state = "implemented"
 implementation_links = ["spa/plugins/filter-graph/filter-graph-ndarray.c", "spa/plugins/filter-graph/plugin_ndarray_example.c", "spa/plugins/filter-graph/plugin_ndarray_example.rs", "src/modules/module-ndarray-filter-chain.c", "../calculon-algorithms/crates/calculon-fgn/src/publication.rs", "../calculon-algorithms/crates/calculon-fgn/src/properties.rs", "../calculon-algorithms/crates/calculon-fgn/src/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs"]
 evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/tests/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py"]
-verified_revision = "FGN and Calculon working trees reviewed 2026-08-25"
-verified_environment = "C11 and Rust 1.97.1 forced publication stress on Linux x86_64"
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "src/tests/test-ndarray-filter-chain-props.c", "src/tests/test-ndarray-filter-chain-props.py", "../calculon-algorithms/crates/calculon-fgn/tests/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py"]
+verified_revision = "FGN and Calculon working trees reviewed 2026-08-25; live module Props test against fb8586cd7 plus the test change, 2026-09-08"
+verified_environment = "C11 and Rust 1.97.1 forced publication stress on Linux x86_64; live C example with eventfd loops, GCC 14.2.0, 20 repeated runs and fatal-EBUSY/missing-publication negative controls"
 verified_surfaces = ["C graph host", "C plugin", "Rust plugin", "Calculon Rust", "PipeWire module"]
-verified_obligations = ["returned-value validation", "even/odd revision", "retry", "process flag"]
-remaining_gaps = ["Forced C/Rust multi-writer snapshots, graph retry, process flags, and the module's off-loop mechanism are covered. A live ndarray client has not yet driven active-value republication through the PipeWire module."]
+verified_obligations = ["returned-value validation", "even/odd revision", "retry", "process flag", "off-loop publish with the live C example"]
+remaining_gaps = ["The live module test proves occupied-slot rejection and active-value republication with the C example. Live snapshot retry under an odd or changing property revision is not forced."]
 
 [[requirements]]
 id = "FGN-PARAM-001"
