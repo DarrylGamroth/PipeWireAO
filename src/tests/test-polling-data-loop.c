@@ -318,6 +318,75 @@ static int set_invoked(struct spa_loop *loop, bool async, uint32_t seq,
 	return 17;
 }
 
+#define CONTROL_BURST_ITEMS 128u
+
+struct control_burst {
+	uint32_t entered;
+	uint32_t release;
+	uint32_t completed;
+	uint32_t interleaved;
+};
+
+static int process_control_burst(void *data)
+{
+	struct control_burst *burst = data;
+	uint32_t completed = SPA_ATOMIC_LOAD(burst->completed);
+
+	if (completed > 0 && completed < CONTROL_BURST_ITEMS)
+		SPA_ATOMIC_STORE(burst->interleaved, 1);
+	return 0;
+}
+
+static int run_control_burst_item(struct spa_loop *loop, bool async,
+		uint32_t seq, const void *data, size_t size, void *user_data)
+{
+	struct control_burst *burst = user_data;
+
+	if (SPA_ATOMIC_INC(burst->entered) == 1)
+		while (!SPA_ATOMIC_LOAD(burst->release))
+			pw_data_loop_relax();
+	SPA_ATOMIC_INC(burst->completed);
+	return 0;
+}
+
+static void test_polling_control_burst_is_interleaved(void)
+{
+	struct pw_properties *properties;
+	struct pw_data_loop_source source = { 0 };
+	struct pw_data_loop *loop;
+	struct control_burst burst = { 0 };
+	uint32_t i;
+
+	properties = pw_properties_new(PW_KEY_LOOP_IDLE, "busy-spin",
+			SPA_KEY_THREAD_NAME, "test-polling-control-burst", NULL);
+	spa_assert_se(properties != NULL);
+	loop = pw_data_loop_new(&properties->dict);
+	pw_properties_free(properties);
+	spa_assert_se(loop != NULL);
+	spa_list_init(&source.link);
+	source.process = process_control_burst;
+	source.data = &burst;
+	spa_list_append(&loop->poll_source_list, &source.link);
+	source.added = true;
+	source.enabled = true;
+	spa_assert_se(pw_data_loop_start(loop) == 0);
+
+	spa_assert_se(pw_data_loop_invoke(loop, run_control_burst_item,
+			SPA_ID_INVALID, NULL, 0, false, &burst) == 0);
+	wait_until_at_least(&burst.entered, 1);
+	for (i = 1; i < CONTROL_BURST_ITEMS; i++)
+		spa_assert_se(pw_data_loop_invoke(loop, run_control_burst_item,
+				SPA_ID_INVALID, NULL, 0, false, &burst) == 0);
+	SPA_ATOMIC_STORE(burst.release, 1);
+	wait_until_at_least(&burst.completed, CONTROL_BURST_ITEMS);
+	spa_assert_se(SPA_ATOMIC_LOAD(burst.interleaved) == 1);
+
+	spa_assert_se(pw_data_loop_stop(loop) == 0);
+	spa_list_remove(&source.link);
+	source.added = false;
+	pw_data_loop_destroy(loop);
+}
+
 static void test_polling_data_loop_lifecycle(void)
 {
 	struct pw_properties *properties;
@@ -1359,6 +1428,7 @@ int main(int argc, char *argv[])
 	}
 
 	test_polling_data_loop_lifecycle();
+	test_polling_control_burst_is_interleaved();
 	test_polling_loop_requires_explicit_selection();
 	test_regular_node_polling_activation();
 	test_poll_driver_cycles_without_eventfd();
