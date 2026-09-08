@@ -1094,16 +1094,20 @@ static int publish_run_control_status(struct pw_ndarray_filter *filter,
 			sizeof(buffer));
 	struct spa_pod *status;
 	const struct spa_pod *params[1];
+	int res;
 
-	filter->completed_token = token;
-	filter->run_control_result = result;
 	filter->actual_state = actual_state;
 	status = pw_ao_run_control_build_status(&builder, token, result,
 			actual_state);
 	if (status == NULL)
 		return -ENOSPC;
 	params[0] = status;
-	return pw_filter_update_params(filter->filter, NULL, params, 1);
+	res = pw_filter_update_params(filter->filter, NULL, params, 1);
+	if (res >= 0) {
+		filter->completed_token = token;
+		filter->run_control_result = result;
+	}
+	return res;
 }
 
 static int publish_reset_control_status(struct pw_ndarray_filter *filter,
@@ -1114,14 +1118,41 @@ static int publish_reset_control_status(struct pw_ndarray_filter *filter,
 			sizeof(buffer));
 	struct spa_pod *status;
 	const struct spa_pod *params[1];
+	int res;
 
-	filter->completed_reset_token = token;
-	filter->reset_result = result;
 	status = pw_ao_reset_control_build_status(&builder, token, result);
 	if (status == NULL)
 		return -ENOSPC;
 	params[0] = status;
-	return pw_filter_update_params(filter->filter, NULL, params, 1);
+	res = pw_filter_update_params(filter->filter, NULL, params, 1);
+	if (res >= 0) {
+		filter->completed_reset_token = token;
+		filter->reset_result = result;
+	}
+	return res;
+}
+
+static int publish_run_control_status_or_fail(struct pw_ndarray_filter *filter,
+		int64_t token, int result,
+		enum pw_ao_run_control_state actual_state)
+{
+	int res = publish_run_control_status(filter, token, result, actual_state);
+
+	if (res < 0)
+		fail_on_main_loop(filter, res,
+				"can't publish ndarray run-control status");
+	return res;
+}
+
+static int publish_reset_control_status_or_fail(
+		struct pw_ndarray_filter *filter, int64_t token, int result)
+{
+	int res = publish_reset_control_status(filter, token, result);
+
+	if (res < 0)
+		fail_on_main_loop(filter, res,
+				"can't publish ndarray reset-control status");
+	return res;
 }
 
 static int publish_owner_prop_info(struct pw_ndarray_filter *filter)
@@ -1155,14 +1186,9 @@ static int publish_owner_prop_info(struct pw_ndarray_filter *filter)
 static void complete_run_control(struct pw_ndarray_filter *filter, int result,
 		enum pw_ao_run_control_state actual_state)
 {
-	int publish_result;
-
-	publish_result = publish_run_control_status(filter,
+	publish_run_control_status_or_fail(filter,
 			filter->last_request_token, result, actual_state);
 	filter->requested_state = PW_AO_RUN_CONTROL_STATE_UNKNOWN;
-	if (publish_result < 0)
-		fail_on_main_loop(filter, publish_result,
-				"can't publish ndarray run-control status");
 }
 
 static int update_processing_state(struct pw_ndarray_filter *filter,
@@ -1230,8 +1256,8 @@ static void filter_state_changed(void *data, enum pw_filter_state old SPA_UNUSED
 		else if (filter->requested_state ==
 				 PW_AO_RUN_CONTROL_STATE_UNKNOWN &&
 			 actual != filter->actual_state)
-			publish_run_control_status(filter, filter->completed_token,
-					0, actual);
+			publish_run_control_status_or_fail(filter,
+					filter->completed_token, 0, actual);
 	}
 	if (res < 0)
 		fail_on_main_loop(filter, res,
@@ -1267,19 +1293,19 @@ static void filter_param_changed(void *data, void *port_data,
 		res = pw_ao_run_control_parse_request(param, &request);
 		if (res < 0 && res != -ENOENT) {
 			if (request.token > 0)
-				publish_run_control_status(filter, request.token, res,
-						filter->actual_state);
+				publish_run_control_status_or_fail(filter,
+						request.token, res, filter->actual_state);
 			return;
 		}
 		if (res == -ENOENT)
 			goto reset_control;
 		if (filter->requested_state != PW_AO_RUN_CONTROL_STATE_UNKNOWN) {
-			publish_run_control_status(filter, request.token, -EBUSY,
-					filter->actual_state);
+			publish_run_control_status_or_fail(filter, request.token,
+					-EBUSY, filter->actual_state);
 			return;
 		}
 		if (request.token <= filter->last_request_token) {
-			publish_run_control_status(filter, request.token,
+			publish_run_control_status_or_fail(filter, request.token,
 					request.token == filter->last_request_token
 						? -EALREADY : -ESTALE,
 					filter->actual_state);
@@ -1319,13 +1345,14 @@ reset_control:
 		res = pw_ao_reset_control_parse_request(param, &request);
 		if (res < 0 && res != -ENOENT) {
 			if (request.token > 0)
-				publish_reset_control_status(filter, request.token, res);
+				publish_reset_control_status_or_fail(filter,
+						request.token, res);
 			return;
 		}
 		if (res == -ENOENT)
 			goto owner_properties;
 		if (request.token <= filter->last_reset_token) {
-			publish_reset_control_status(filter, request.token,
+			publish_reset_control_status_or_fail(filter, request.token,
 					request.token == filter->last_reset_token
 						? -EALREADY : -ESTALE);
 			return;
@@ -1333,15 +1360,16 @@ reset_control:
 		if (filter->actual_state != PW_AO_RUN_CONTROL_STATE_STOPPED ||
 		    filter->requested_state != PW_AO_RUN_CONTROL_STATE_UNKNOWN) {
 			filter->last_reset_token = request.token;
-			publish_reset_control_status(filter, request.token, -EBUSY);
+			publish_reset_control_status_or_fail(filter, request.token,
+					-EBUSY);
 			return;
 		}
 		filter->last_reset_token = request.token;
 		res = filter->events.reset(filter->user_data);
 		if (res > 0)
 			res = -EPROTO;
-		publish_reset_control_status(filter, request.token, res);
-		if (res < 0)
+		if (publish_reset_control_status_or_fail(filter,
+				request.token, res) < 0 || res < 0)
 			return;
 		if (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES)
 			pw_ndarray_filter_notify_properties(filter);
