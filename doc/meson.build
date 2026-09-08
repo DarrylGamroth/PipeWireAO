@@ -22,8 +22,8 @@ else
      doc_sysconfdir_value = get_option('sysconfdir')
    endif
    doc_spa_plugindir = doc_prefix_value / get_option('libdir') / spa_name
-   doc_pipewire_configdir = doc_prefix_value / doc_sysconfdir_value / 'pipewire'
-   doc_pipewire_confdatadir = doc_prefix_value / get_option('datadir') / 'pipewire'
+   doc_pipewire_configdir = doc_prefix_value / doc_sysconfdir_value / 'pipewire-ao'
+   doc_pipewire_confdatadir = doc_prefix_value / get_option('datadir') / 'pipewire-ao'
 endif
 
 doxygen_env = environment()
