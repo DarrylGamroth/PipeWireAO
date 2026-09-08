@@ -413,8 +413,8 @@ static void schedule_parameter(struct port *port, struct pw_buffer *buffer)
 	}
 	res = pw_loop_signal_event(pw_thread_loop_get_loop(impl->parameter_loop),
 			impl->parameter_event);
-	if (res < 0) {
-		ndarray_parameter_handoff_cancel_schedule(&port->parameter_handoff);
+	if (res < 0 && ndarray_parameter_handoff_cancel_schedule(
+			&port->parameter_handoff)) {
 		atomic_fetch_add_explicit(&port->dropped_parameters, 1,
 				memory_order_relaxed);
 		pw_filter_queue_buffer(port, buffer);
