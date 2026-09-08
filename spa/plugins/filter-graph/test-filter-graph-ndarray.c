@@ -30,8 +30,9 @@ struct test_buffer {
 	struct spa_buffer buffer;
 	struct spa_data data;
 	struct spa_chunk chunk;
-	struct spa_meta meta;
+	struct spa_meta metas[2];
 	struct spa_meta_header header;
+	struct spa_meta_acquisition acquisition;
 	float values[5];
 };
 
@@ -88,11 +89,15 @@ static void init_buffer(struct test_buffer *buffer)
 	buffer->data.maxsize = sizeof(buffer->values);
 	buffer->data.data = buffer->values;
 	buffer->data.chunk = &buffer->chunk;
-	buffer->meta.type = SPA_META_Header;
-	buffer->meta.size = sizeof(buffer->header);
-	buffer->meta.data = &buffer->header;
-	buffer->buffer.n_metas = 1;
-	buffer->buffer.metas = &buffer->meta;
+	buffer->metas[0].type = SPA_META_Header;
+	buffer->metas[0].size = sizeof(buffer->header);
+	buffer->metas[0].data = &buffer->header;
+	assert(spa_meta_acquisition_init(&buffer->acquisition));
+	buffer->metas[1].type = SPA_META_Acquisition;
+	buffer->metas[1].size = sizeof(buffer->acquisition);
+	buffer->metas[1].data = &buffer->acquisition;
+	buffer->buffer.n_metas = SPA_N_ELEMENTS(buffer->metas);
+	buffer->buffer.metas = buffer->metas;
 	buffer->buffer.n_datas = 1;
 	buffer->buffer.datas = &buffer->data;
 }
@@ -1391,6 +1396,8 @@ int main(int argc, char *argv[])
 	void *saved_data;
 	struct spa_meta *saved_metas;
 	uint32_t saved_maxsize, saved_n_metas;
+	const uint8_t acquisition_domain[SPA_META_ACQUISITION_DOMAIN_SIZE] = { 1 };
+	const uint8_t grandmaster_id[SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE] = { 2 };
 	uint32_t i;
 	int res;
 
@@ -1530,6 +1537,10 @@ int main(int argc, char *argv[])
 		input.values[i] = (float)i + 1.0f;
 	input.header.seq = 42;
 	input.header.pts = 1234567;
+	assert(spa_meta_acquisition_set_identity(&input.acquisition,
+			acquisition_domain, 7, 42));
+	assert(spa_meta_acquisition_set_exposure_start_ptp(&input.acquisition,
+			123456789, 100, grandmaster_id, 3));
 	inputs[0] = &input.buffer;
 	inputs[1] = NULL;
 	outputs[0] = &output.buffer;
@@ -1543,6 +1554,8 @@ int main(int argc, char *argv[])
 		assert(output.values[i] == input.values[i] * 6.0f);
 	assert(output.header.seq == input.header.seq);
 	assert(output.header.pts == input.header.pts);
+	assert(memcmp(&output.acquisition, &input.acquisition,
+			sizeof(input.acquisition)) == 0);
 
 	/* External output offsets are caller-owned and survive graph processing. */
 	output.values[0] = -123.0f;
@@ -1589,9 +1602,9 @@ int main(int argc, char *argv[])
 	assert(spa_fgn_graph_process(graph, inputs, 2, outputs, 1) == -EEXIST);
 	output.buffer.metas = saved_metas;
 	output.buffer.n_metas = saved_n_metas;
-	output.meta.data = input.meta.data;
+	output.metas[0].data = input.metas[0].data;
 	assert(spa_fgn_graph_process(graph, inputs, 2, outputs, 1) == -EINVAL);
-	output.meta.data = &output.header;
+	output.metas[0].data = &output.header;
 
 	/* Declared input extents must remain within maxsize after the offset. */
 	input.chunk.offset = sizeof(float);

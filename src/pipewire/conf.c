@@ -87,7 +87,7 @@ static int get_homeconf_path(char *path, size_t size, const char *prefix, const 
 
 	dir = getenv("XDG_CONFIG_HOME");
 	if (dir != NULL) {
-		const char *paths[] = { dir, "pipewire", prefix, name, NULL };
+		const char *paths[] = { dir, "pipewire-ao", prefix, name, NULL };
 		if (make_path(path, size, paths) == 0 &&
 		    access(path, R_OK) == 0)
 			return 1;
@@ -228,7 +228,7 @@ static int get_homestate_path(char *path, size_t size, const char *prefix, const
 
 	dir = getenv("XDG_STATE_HOME");
 	if (dir != NULL) {
-		const char *paths[] = { dir, "pipewire", prefix, name, NULL };
+		const char *paths[] = { dir, "pipewire-ao", prefix, name, NULL };
 		if (make_path(path, size, paths) == 0 &&
 		    access(path, R_OK) == 0)
 			return 1;
@@ -240,7 +240,7 @@ static int get_homestate_path(char *path, size_t size, const char *prefix, const
 			dir = result ? result->pw_dir : NULL;
 	}
 	if (dir != NULL) {
-		const char *paths[] = { dir, ".local", "state", "pipewire", prefix, name, NULL };
+		const char *paths[] = { dir, ".local", "state", "pipewire-ao", prefix, name, NULL };
 		if (make_path(path, size, paths) == 0 &&
 		    access(path, R_OK) == 0)
 			return 1;
@@ -323,7 +323,7 @@ static int open_write_dir(char *path, int size, const char *prefix)
 	}
 	dir = getenv("XDG_STATE_HOME");
 	if (dir != NULL) {
-		const char *paths[] = { dir, "pipewire", prefix, NULL };
+		const char *paths[] = { dir, "pipewire-ao", prefix, NULL };
 		if (ensure_path(path, size, paths) == 0)
 			goto found;
 	}
@@ -334,7 +334,7 @@ static int open_write_dir(char *path, int size, const char *prefix)
 			dir = result ? result->pw_dir : NULL;
 	}
 	if (dir != NULL) {
-		const char *paths[] = { dir, ".local", "state", "pipewire", prefix, NULL };
+		const char *paths[] = { dir, ".local", "state", "pipewire-ao", prefix, NULL };
 		if (ensure_path(path, size, paths) == 0)
 			goto found;
 	}

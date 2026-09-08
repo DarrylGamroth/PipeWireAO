@@ -99,6 +99,8 @@ static void source_process(void *userdata)
 	struct pw_buffer *buffer;
 	struct spa_data *block;
 	struct spa_meta_header *header;
+	struct spa_meta_acquisition *acquisition;
+	static const uint8_t domain[SPA_META_ACQUISITION_DOMAIN_SIZE] = { 1 };
 	uint32_t sequence;
 	float value;
 
@@ -138,6 +140,16 @@ static void source_process(void *userdata)
 		.dts_offset = 0,
 		.seq = sequence,
 	};
+	acquisition = spa_buffer_find_meta_data(buffer->buffer,
+			SPA_META_Acquisition, sizeof(*acquisition));
+	if (acquisition == NULL || !spa_meta_acquisition_init(acquisition) ||
+	    !spa_meta_acquisition_set_identity(acquisition, domain, 7, sequence) ||
+	    !spa_meta_acquisition_set_exposure_start(acquisition,
+			100000 + sequence, 50)) {
+		(void)pw_stream_queue_buffer(data->source, buffer);
+		quit_with_error(data, "source Acquisition V2 metadata is unavailable");
+		return;
+	}
 	(void)pw_stream_queue_buffer(data->source, buffer);
 	printf("SOURCE %u\n", sequence);
 	fflush(stdout);
@@ -149,6 +161,8 @@ static void sink_process(void *userdata)
 	struct pw_buffer *buffer;
 	struct spa_data *block;
 	struct spa_meta_header *header;
+	struct spa_meta *acquisition_meta;
+	const struct spa_meta_acquisition *acquisition;
 	float value;
 
 	buffer = pw_stream_dequeue_buffer(data->sink);
@@ -167,13 +181,25 @@ static void sink_process(void *userdata)
 			sizeof(value));
 	header = spa_buffer_find_meta_data(buffer->buffer, SPA_META_Header,
 			sizeof(*header));
+	acquisition_meta = spa_buffer_find_meta(buffer->buffer,
+			SPA_META_Acquisition);
+	acquisition = acquisition_meta != NULL ? acquisition_meta->data : NULL;
 	if (value != 3.0f || header == NULL || header->seq != 2 ||
 	    header->offset != 22 || header->pts != 2002 ||
 	    header->dts_offset != 0 ||
 	    header->flags != (SPA_META_HEADER_FLAG_MARKER |
-		    SPA_META_HEADER_FLAG_DISCONT)) {
+			SPA_META_HEADER_FLAG_DISCONT)) {
 		(void)pw_stream_queue_buffer(data->sink, buffer);
 		quit_with_error(data, "sink received an unexpected artifact");
+		return;
+	}
+	if (!spa_meta_acquisition_is_valid(acquisition_meta) ||
+	    acquisition->version != SPA_META_ACQUISITION_VERSION_2 ||
+	    acquisition->generation != 7 || acquisition->sequence != 2 ||
+	    acquisition->exposure_start_nsec != 100002 ||
+	    acquisition->timestamp_uncertainty_nsec != 50) {
+		(void)pw_stream_queue_buffer(data->sink, buffer);
+		quit_with_error(data, "sink received an unexpected Acquisition V2 record");
 		return;
 	}
 	if (atomic_fetch_add_explicit(&data->received, 1,
@@ -266,6 +292,23 @@ static struct spa_pod *build_header_meta(struct spa_pod_builder *builder)
 			SPA_POD_Int(sizeof(struct spa_meta_header)));
 }
 
+static struct spa_pod *build_acquisition_meta(struct spa_pod_builder *builder)
+{
+	struct spa_pod_frame frame;
+
+	spa_pod_builder_push_object(builder, &frame,
+			SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta);
+	spa_pod_builder_add(builder,
+			SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Acquisition),
+			SPA_PARAM_META_size,
+			SPA_POD_Int(sizeof(struct spa_meta_acquisition)),
+			0);
+	spa_pod_builder_prop(builder, SPA_PARAM_META_features,
+			SPA_POD_PROP_FLAG_MANDATORY);
+	spa_pod_builder_int(builder, SPA_META_FEATURE_ACQUISITION_VERSION_2);
+	return spa_pod_builder_pop(builder, &frame);
+}
+
 int main(int argc, char *argv[])
 {
 	static const char data_loops[] =
@@ -274,9 +317,9 @@ int main(int argc, char *argv[])
 	struct test_data data = { .result = 0 };
 	struct pw_properties *context_props, *source_props, *sink_props;
 	struct spa_pod_builder source_builder, sink_builder;
-	struct spa_pod *source_params[2], *sink_params[2];
+	struct spa_pod *source_params[3], *sink_params[3];
 	struct timespec timeout_value = { .tv_sec = 10 };
-	uint8_t source_pods[512], sink_pods[512];
+	uint8_t source_pods[768], sink_pods[768];
 	int result;
 
 	pw_init(&argc, &argv);
@@ -330,11 +373,14 @@ int main(int argc, char *argv[])
 	spa_pod_builder_init(&source_builder, source_pods, sizeof(source_pods));
 	source_params[0] = build_format(&source_builder);
 	source_params[1] = build_header_meta(&source_builder);
+	source_params[2] = build_acquisition_meta(&source_builder);
 	spa_pod_builder_init(&sink_builder, sink_pods, sizeof(sink_pods));
 	sink_params[0] = build_format(&sink_builder);
 	sink_params[1] = build_header_meta(&sink_builder);
+	sink_params[2] = build_acquisition_meta(&sink_builder);
 	if (source_params[0] == NULL || source_params[1] == NULL ||
-	    sink_params[0] == NULL || sink_params[1] == NULL) {
+	    source_params[2] == NULL || sink_params[0] == NULL ||
+	    sink_params[1] == NULL || sink_params[2] == NULL) {
 		fprintf(stderr, "could not build ndarray stream parameters\n");
 		data.result = 1;
 		goto done;
