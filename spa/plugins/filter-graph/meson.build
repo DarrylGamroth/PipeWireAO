@@ -14,6 +14,15 @@ if get_option('tests').allowed()
     install : false,
   )
 
+  spa_filter_graph_plugin_ndarray_example_retained = shared_library(
+    'spa-filter-graph-ndarray-example-retained',
+    [ 'plugin_ndarray_example.c' ],
+    c_args : [ '-DSPA_FGN_EXAMPLE_PLUGIN_FLAGS=SPA_FGN_PLUGIN_FLAG_RETAIN_LIBRARY' ],
+    include_directories : [configinc],
+    dependencies : [ spa_dep, mathlib, pthread_lib ],
+    install : false,
+  )
+
   spa_filter_graph_plugin_ndarray_test_unstable = shared_library(
     'spa-filter-graph-ndarray-test-unstable',
     [ 'plugin_ndarray_test_unstable.c' ],
@@ -26,6 +35,15 @@ if get_option('tests').allowed()
     [ 'test-filter-graph-ndarray.c' ],
     include_directories : [configinc],
     dependencies : [ spa_dep, dl_lib, mathlib ],
+    link_with : ndarray_filter_graph,
+    install : false,
+  )
+
+  ndarray_filter_graph_retain_test = executable(
+    'test-filter-graph-ndarray-retain',
+    [ 'test-filter-graph-ndarray-retain.c' ],
+    include_directories : [configinc],
+    dependencies : [ spa_dep, dl_lib ],
     link_with : ndarray_filter_graph,
     install : false,
   )
@@ -78,6 +96,12 @@ if get_option('tests').allowed()
              'conditional' ],
     depends : [ spa_filter_graph_plugin_ndarray_example,
                 spa_filter_graph_plugin_ndarray_test_unstable ],
+  )
+
+  test('spa-filter-graph-ndarray-retained-c',
+    ndarray_filter_graph_retain_test,
+    args : [ spa_filter_graph_plugin_ndarray_example_retained.full_path() ],
+    depends : [ spa_filter_graph_plugin_ndarray_example_retained ],
   )
 
   rustc = find_program('rustc', required : false)
