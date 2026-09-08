@@ -594,6 +594,24 @@ pipewire_module_session_manager = shared_library('pipewire-module-session-manage
   dependencies : [spa_dep, mathlib, dl_lib, pipewire_dep],
 )
 
+# Modules loaded without ifexists/nofail by the default daemon configuration.
+# Live daemon tests must depend on these targets so a focused test invocation
+# works from a fresh build directory.
+pipewire_daemon_required_modules = [
+  pipewire_module_access,
+  pipewire_module_adapter,
+  pipewire_module_client_device,
+  pipewire_module_client_node,
+  pipewire_module_link_factory,
+  pipewire_module_metadata,
+  pipewire_module_profiler,
+  pipewire_module_protocol_native,
+  pipewire_module_scheduler_v1,
+  pipewire_module_session_manager,
+  pipewire_module_spa_device_factory,
+  pipewire_module_spa_node_factory,
+]
+
 build_module_zeroconf_discover = avahi_dep.found()
 if build_module_zeroconf_discover
   pipewire_module_zeroconf_discover = shared_library('pipewire-module-zeroconf-discover',
