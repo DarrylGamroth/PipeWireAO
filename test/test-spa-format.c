@@ -340,15 +340,28 @@ PWTEST(ndarray_format_utils)
 			matrix.n_dimensions, matrix.shape));
 	pwtest_int_eq(spa_format_ndarray_parse(invalid, &parsed), -EINVAL);
 
+	spa_pod_builder_init(&builder, invalid_buffer, sizeof(invalid_buffer));
+	invalid = spa_pod_builder_add_object(&builder,
+		SPA_TYPE_OBJECT_Format, SPA_PARAM_Format,
+		SPA_FORMAT_mediaType, SPA_POD_Id(SPA_MEDIA_TYPE_application),
+		SPA_FORMAT_mediaSubtype, SPA_POD_Id(SPA_MEDIA_SUBTYPE_ndarray),
+		SPA_FORMAT_NDARRAY_elementType, SPA_POD_Id(SPA_ELEMENT_TYPE_F32_LE),
+		SPA_FORMAT_NDARRAY_shape, SPA_POD_Array(sizeof(uint32_t), SPA_TYPE_Int,
+			matrix.n_dimensions, matrix.shape),
+		SPA_FORMAT_NDARRAY_layout, SPA_POD_Id(SPA_NDARRAY_LAYOUT_ROW_MAJOR),
+		SPA_FORMAT_NDARRAY_rate, SPA_POD_String("1000/1"));
+	pwtest_int_eq(spa_format_ndarray_parse(invalid, &parsed), -EINVAL);
+
 	return PWTEST_PASS;
 }
 
 PWTEST(ndarray_format_choices)
 {
-	uint8_t offered_buffer[2048], fixed_buffer[2048], result_buffer[2048],
+	uint8_t offered_buffer[2048], rate_offered_buffer[2048],
+		fixed_buffer[2048], result_buffer[2048],
 		mismatch_buffer[2048];
 	struct spa_pod_builder builder, result_builder;
-	struct spa_pod *offered, *fixed, *result, *mismatch;
+	struct spa_pod *offered, *rate_offered, *fixed, *result, *mismatch;
 	struct spa_ndarray_info parsed;
 	struct spa_ndarray_info offered_info = SPA_NDARRAY_INFO_INIT(
 		.element_type = SPA_ELEMENT_TYPE_F64_LE,
@@ -375,6 +388,10 @@ PWTEST(ndarray_format_choices)
 		.rate_choice = SPA_CHOICE_Range,
 		.n_rate_values = SPA_N_ELEMENTS(rates),
 		.rate_values = rates);
+	const struct spa_ndarray_choices rate_choices = SPA_NDARRAY_CHOICES_INIT(
+		.rate_choice = SPA_CHOICE_Range,
+		.n_rate_values = SPA_N_ELEMENTS(rates),
+		.rate_values = rates);
 	const struct spa_pod_prop *property;
 
 	pwtest_int_eq(spa_ndarray_choices_validate(&offered_info,
@@ -397,6 +414,12 @@ PWTEST(ndarray_format_choices)
 	pwtest_int_eq(SPA_POD_CHOICE_TYPE(&property->value),
 			(uint32_t)SPA_CHOICE_Range);
 	pwtest_int_lt(spa_format_ndarray_parse(offered, &parsed), 0);
+
+	spa_pod_builder_init(&builder, rate_offered_buffer, sizeof(rate_offered_buffer));
+	rate_offered = spa_format_ndarray_build_choices(&builder, SPA_PARAM_EnumFormat,
+			&offered_info, &rate_choices);
+	pwtest_ptr_notnull(rate_offered);
+	pwtest_int_lt(spa_format_ndarray_parse(rate_offered, &parsed), 0);
 
 	spa_pod_builder_init(&builder, fixed_buffer, sizeof(fixed_buffer));
 	fixed = spa_format_ndarray_build(&builder, SPA_PARAM_EnumFormat, &fixed_info);
