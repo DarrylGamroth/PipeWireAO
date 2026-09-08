@@ -20,9 +20,12 @@ CPU counter and call-graph results are documented separately in
 
 ## Reproduction
 
-Build `pw-test-polling-data-loop`, then run:
+Build the configured tree so the test binary and its runtime SPA support plugin
+come from the same revision, then run:
 
 ```console
+ninja -C build
+
 python3 src/tests/benchmark-polling-data-loop.py \
     build/src/tests/pw-test-polling-data-loop \
     polling-results \
