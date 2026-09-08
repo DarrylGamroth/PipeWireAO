@@ -87,7 +87,7 @@ A polling loop owns a bounded list of prepared local nodes. Each scan:
 1. examines each enabled node once;
 2. claims and processes activations already in `TRIGGERED`;
 3. probes eligible polling graph drivers once;
-4. executes queued control invocations; and
+4. executes up to 32 queued control invocations; and
 5. releases and reacquires the loop lock so lifecycle operations can modify the
    list.
 
@@ -99,6 +99,12 @@ rejected instead of silently changing the latency contract.
 The lock handoff is an administrative boundary. It permits Pause, Suspend,
 port changes, and destruction to remove a source without racing `process()`.
 It is not a kernel wait in the uncontended activation path.
+
+The per-scan control budget prevents sustained nonblocking invoke traffic from
+postponing graph scans or the lock handoff indefinitely. Remaining invocations
+stay queued for later scans. One slow or blocking callback can still occupy its
+own invocation; callers must keep callbacks consistent with their lifecycle
+latency requirements.
 
 ## Ordinary followers
 
