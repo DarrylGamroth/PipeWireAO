@@ -72,10 +72,12 @@ cores were not isolated, SMT remained enabled, the `amd-pstate-epp` governor
 was `powersave`, and boost remained enabled. These facts make the results
 representative of this development host, not a hardware-independent bound.
 
-The complete record is in
-[`benchmark-data/polling-data-loop-2026-08-25-record`](benchmark-data/polling-data-loop-2026-08-25-record).
+Raw campaign output is not distributed with PipeWireAO. The complete
+2026-08-25 record remains available in repository history at
+[commit b1345aea4](https://github.com/DarrylGamroth/PipeWireAO/tree/b1345aea4a5526fccddbe0b6c77073778e2ef4d1/doc/dox/internals/benchmark-data/polling-data-loop-2026-08-25-record).
 Start with `metadata.json`, `environment.txt`, `summary.csv`, and
-`aggregate.csv`; the per-cell CSV files contain the exact histograms.
+`aggregate.csv`; the per-cell CSV files contain the exact histograms. New raw
+campaign output belongs in an external evidence archive.
 
 ### Activation latency
 
