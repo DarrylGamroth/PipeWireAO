@@ -176,11 +176,9 @@ python3 src/tests/sample-polling-data-loop.py \
     build/src/tests/pw-test-polling-data-loop cycle-sample-results
 ```
 
-The complete records are in:
-
-- [`benchmark-data/polling-data-loop-pmu-2026-08-25-record`](benchmark-data/polling-data-loop-pmu-2026-08-25-record);
-- [`benchmark-data/polling-activation-pmu-2026-08-25-record`](benchmark-data/polling-activation-pmu-2026-08-25-record); and
-- [`benchmark-data/polling-data-loop-cycles-2026-08-25-record`](benchmark-data/polling-data-loop-cycles-2026-08-25-record).
-
+Raw campaign output is not distributed with PipeWireAO. The complete PMU,
+activation, and cycle records remain available in repository history at
+[commit c42c0ad82](https://github.com/DarrylGamroth/PipeWireAO/tree/c42c0ad82abbf533fdd55f8adf2e165b4729b6ab/doc/dox/internals/benchmark-data).
 Each record contains its exact commands, environment, source diff, summaries
-or reports, system snapshots, and SHA-256 manifest.
+or reports, system snapshots, and SHA-256 manifest. New raw campaign output
+belongs in an external evidence archive.
