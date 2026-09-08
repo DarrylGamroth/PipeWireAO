@@ -3,10 +3,10 @@
 # This is a base config file for running filters.
 #
 # Place filter fragments in @PIPEWIRE_CONFIG_DIR@/filter-chain.conf.d/
-# for system-wide changes or in ~/.config/pipewire/filter-chain.conf.d/
+# for system-wide changes or in ~/.config/pipewire-ao/filter-chain.conf.d/
 # for local changes.
 #
-# Run the filters with pipewire -c filter-chain.conf
+# Run the filters with pipewire-ao -c filter-chain.conf
 #
 
 context.properties = {
