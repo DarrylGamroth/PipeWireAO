@@ -172,6 +172,7 @@ PWTEST(mempool_import_preserves_huge_page_size)
 	const uint32_t huge_page_size = 2U * 1024U * 1024U;
 	struct pw_mempool *source_pool, *import_pool;
 	struct pw_memblock *source, *imported;
+	struct pw_memmap *map;
 	struct pw_map_range range;
 
 	source_pool = pw_mempool_new(NULL);
@@ -201,6 +202,11 @@ PWTEST(mempool_import_preserves_huge_page_size)
 	pwtest_int_eq(range.offset, 0U);
 	pwtest_int_eq(range.start, 4096U);
 	pwtest_int_eq(range.size, huge_page_size);
+	map = pw_memblock_map(imported, PW_MEMMAP_FLAG_READWRITE,
+			4096U, 4096U, NULL);
+	pwtest_ptr_notnull(map);
+	pwtest_ptr_eq(map->block, imported);
+	pwtest_int_eq(pw_memmap_free(map), 0);
 
 	pw_mempool_destroy(import_pool);
 	pw_mempool_destroy(source_pool);
