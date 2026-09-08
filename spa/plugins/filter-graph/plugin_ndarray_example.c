@@ -18,6 +18,10 @@
 #include <spa/pod/pod.h>
 #include <spa/utils/json.h>
 
+#ifndef SPA_FGN_EXAMPLE_PLUGIN_FLAGS
+#define SPA_FGN_EXAMPLE_PLUGIN_FLAGS SPA_FGN_PLUGIN_FLAG_NONE
+#endif
+
 enum property_id {
 	PROPERTY_GAIN,
 	PROPERTY_ACTIVE_GAIN,
@@ -1073,7 +1077,7 @@ static const struct spa_fgn_plugin plugin = {
 	.abi_version = SPA_FGN_PLUGIN_ABI_VERSION,
 	.name = "example-c",
 	.find_descriptor = find_descriptor,
-	.flags = SPA_FGN_PLUGIN_FLAG_NONE,
+	.flags = SPA_FGN_EXAMPLE_PLUGIN_FLAGS,
 };
 
 SPA_EXPORT
