@@ -35,6 +35,7 @@ SPA_LOG_TOPIC_DEFINE_STATIC(log_topic, "spa.loop");
 #define ITEM_ALIGN	8
 #define DATAS_SIZE	(4096*8)
 #define MAX_EP		32
+#define POLLING_YIELD_FLUSH_MAX	32u
 
 /* the number of concurrent queues for invoke. This is also the number
  * of threads that can concurrently invoke. When there are more, the
@@ -329,13 +330,13 @@ static inline int32_t item_compare(struct invoke_item *a, struct invoke_item *b)
 	return (int32_t)(a->count - b->count);
 }
 
-static void flush_all_queues(struct impl *impl)
+static void flush_queues(struct impl *impl, uint32_t max_items)
 {
-	uint32_t flush_count;
+	uint32_t flush_count, n_items = 0;
 	int res;
 
 	flush_count = SPA_ATOMIC_INC(impl->flush_count);
-	while (true) {
+	while (n_items < max_items) {
 		struct queue *cqueue, *queue = NULL;
 		struct invoke_item *citem, *item = NULL;
 		uint32_t cindex, index;
@@ -390,7 +391,13 @@ static void flush_all_queues(struct impl *impl)
 				spa_log_warn(impl->log, "%p: failed to write event fd:%d: %s",
 						queue, queue->ack_fd, spa_strerror(res));
 		}
+		n_items++;
 	}
+}
+
+static void flush_all_queues(struct impl *impl)
+{
+	flush_queues(impl, UINT32_MAX);
 }
 
 static int
@@ -753,7 +760,7 @@ static int loop_yield(void *object)
 			pthread_self()), -EPERM);
 	spa_return_val_if_fail(impl->recurse == 0, -EBUSY);
 
-	flush_all_queues(impl);
+	flush_queues(impl, POLLING_YIELD_FLUSH_MAX);
 	if ((res = pthread_mutex_unlock(&impl->lock)) != 0)
 		return -res;
 	if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(impl->lock_waiters) != 0)) {
