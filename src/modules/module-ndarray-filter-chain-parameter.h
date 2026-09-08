@@ -53,11 +53,17 @@ static inline bool ndarray_parameter_handoff_claim(
 			memory_order_acq_rel);
 }
 
-static inline void ndarray_parameter_handoff_cancel_schedule(
+static inline bool ndarray_parameter_handoff_cancel_schedule(
 		struct ndarray_parameter_handoff *handoff)
 {
-	atomic_store_explicit(&handoff->scheduled, false, memory_order_release);
+	bool expected = true;
+
+	if (!atomic_compare_exchange_strong_explicit(&handoff->scheduled,
+			&expected, false, memory_order_acq_rel,
+			memory_order_acquire))
+		return false;
 	atomic_store_explicit(&handoff->pending, NULL, memory_order_release);
+	return true;
 }
 
 static inline void ndarray_parameter_handoff_mark_retry(
@@ -79,8 +85,12 @@ static inline bool ndarray_parameter_handoff_rearm_retry(
 static inline void ndarray_parameter_handoff_restore_retry(
 		struct ndarray_parameter_handoff *handoff)
 {
-	atomic_store_explicit(&handoff->scheduled, false, memory_order_release);
-	atomic_store_explicit(&handoff->retry, true, memory_order_release);
+	bool expected = true;
+
+	if (atomic_compare_exchange_strong_explicit(&handoff->scheduled,
+			&expected, false, memory_order_acq_rel,
+			memory_order_acquire))
+		atomic_store_explicit(&handoff->retry, true, memory_order_release);
 }
 
 static inline void ndarray_parameter_handoff_complete(

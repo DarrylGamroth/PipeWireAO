@@ -42,18 +42,28 @@ int main(int argc, char *argv[])
 
 	assert(ndarray_parameter_handoff_schedule(&first, &next_buffer));
 	assert(ndarray_parameter_handoff_claim(&first));
+	/* A failed wake cannot cancel storage already claimed through another
+	 * port's wake. */
+	assert(!ndarray_parameter_handoff_cancel_schedule(&first));
+	assert(ndarray_parameter_handoff_pending(&first) == &next_buffer);
 	ndarray_parameter_handoff_mark_retry(&first);
 	assert(ndarray_parameter_handoff_rearm_retry(&first));
-	assert(!ndarray_parameter_handoff_rearm_retry(&first));
-	assert(ndarray_parameter_handoff_claim(&first));
+	/* Wake failure before a claim restores the retry. */
 	ndarray_parameter_handoff_restore_retry(&first);
 	assert(!ndarray_parameter_handoff_claim(&first));
 	assert(ndarray_parameter_handoff_rearm_retry(&first));
 	assert(ndarray_parameter_handoff_claim(&first));
+	/* Wake failure after a claim must not schedule a duplicate retry. */
+	ndarray_parameter_handoff_restore_retry(&first);
+	assert(!ndarray_parameter_handoff_rearm_retry(&first));
 	assert(ndarray_parameter_handoff_cancel(&first) == &next_buffer);
 	assert(ndarray_parameter_handoff_pending(&first) == NULL);
 
 	ndarray_parameter_handoff_complete(&second);
 	assert(ndarray_parameter_handoff_take_completed(&second) == &second_buffer);
+	assert(ndarray_parameter_handoff_schedule(&second, &second_buffer));
+	assert(ndarray_parameter_handoff_cancel_schedule(&second));
+	assert(ndarray_parameter_handoff_pending(&second) == NULL);
+	assert(!ndarray_parameter_handoff_claim(&second));
 	return 0;
 }
