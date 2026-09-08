@@ -16,6 +16,9 @@
 #include <sys/stat.h>
 #ifdef __linux__
 #include <sys/vfs.h>
+#ifndef HUGETLBFS_MAGIC
+#define HUGETLBFS_MAGIC 0x958458f6
+#endif
 #endif
 
 #include <spa/utils/cleanup.h>
@@ -110,17 +113,14 @@ static unsigned int memblock_huge_memfd_flags(enum pw_memblock_flags flags)
 	return result;
 }
 
-static uint32_t memfd_huge_page_size(int fd, enum pw_memblock_flags flags)
+static uint32_t memfd_huge_page_size(int fd)
 {
-	if (flags & PW_MEMBLOCK_FLAG_HUGE_2MB_HINT)
-		return 2U * 1024U * 1024U;
-	if (flags & PW_MEMBLOCK_FLAG_HUGE_1GB_HINT)
-		return 1024U * 1024U * 1024U;
 #ifdef __linux__
 	{
 		struct statfs stat;
 
-		if (fstatfs(fd, &stat) == 0 && stat.f_bsize > 0 &&
+		if (fstatfs(fd, &stat) == 0 && stat.f_type == HUGETLBFS_MAGIC &&
+		    stat.f_bsize > 0 &&
 		    (uint64_t)stat.f_bsize <= UINT32_MAX)
 			return (uint32_t)stat.f_bsize;
 	}
@@ -465,7 +465,10 @@ struct pw_memmap * pw_memblock_map(struct pw_memblock *block,
 	m = memblock_find_mapping(b, flags, offset, size);
 	if (m == NULL) {
 		struct pw_map_range range;
-		if (pw_map_range_init(&range, offset, size, p->pagesize) < 0) {
+		uint32_t page_size = b->this.page_size != 0 ?
+			b->this.page_size : p->pagesize;
+
+		if (pw_map_range_init(&range, offset, size, page_size) < 0) {
 			errno = EOVERFLOW;
 			return NULL;
 		}
@@ -632,7 +635,7 @@ retry_memfd:
 		goto error_free;
 	}
 	if (try_huge) {
-		uint32_t page_size = memfd_huge_page_size(b->this.fd, flags);
+		uint32_t page_size = memfd_huge_page_size(b->this.fd);
 
 		if (page_size == 0 || size > UINT32_MAX - (page_size - 1U))
 			goto fallback_huge_close;
@@ -785,7 +788,18 @@ struct pw_memblock * pw_mempool_import(struct pw_mempool *pool,
 	b->this.pool = pool;
 	b->this.type = type;
 	b->this.fd = fd;
-	b->this.flags = flags;
+	b->this.flags = flags & ~PW_MEMBLOCK_FLAG_HUGE_PAGES;
+	b->this.page_size = impl->pagesize;
+#ifdef HAVE_MEMFD_CREATE
+	{
+		uint32_t page_size = memfd_huge_page_size(fd);
+
+		if (page_size != 0) {
+			b->this.flags |= PW_MEMBLOCK_FLAG_HUGE_PAGES;
+			b->this.page_size = page_size;
+		}
+	}
+#endif
 	b->this.id = pw_map_insert_new(&impl->map, b);
 	spa_list_append(&impl->blocks, &b->link);
 
