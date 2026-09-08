@@ -18,6 +18,13 @@ they are outside the AO runtime profile. When explicitly enabled, retained
 upstream compatibility layers keep their upstream-specific environment
 controls.
 
+Install coexistence assumes that system PipeWire and PipeWireAO run in
+separate processes. Do not load `libpipewire-0.3` and `libpipewire-ao-0.3`, or
+plugins linked to each of them, into the same process: both libraries export
+the `pw_` symbol namespace, so the dynamic linker can bind a call to the wrong
+implementation according to load order. Use the separate daemon sockets for
+inter-process integration.
+
 ## Upstream foundation
 
 [PipeWire](https://pipewire.org) is a server and user space API to
