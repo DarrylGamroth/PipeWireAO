@@ -321,11 +321,14 @@ static int set_invoked(struct spa_loop *loop, bool async, uint32_t seq,
 #define CONTROL_BURST_ITEMS 128u
 
 struct control_burst {
+	struct pw_loop *loop;
 	uint32_t scans;
 	uint32_t entered;
 	uint32_t release;
 	uint32_t completed;
 	uint32_t interleaved;
+	int nested_result;
+	int nested_yield_result;
 };
 
 static int process_control_burst(void *data)
@@ -339,14 +342,26 @@ static int process_control_burst(void *data)
 	return 0;
 }
 
+static int run_nested_control_item(struct spa_loop *loop SPA_UNUSED, bool async SPA_UNUSED,
+		uint32_t seq SPA_UNUSED, const void *data SPA_UNUSED,
+		size_t size SPA_UNUSED, void *user_data SPA_UNUSED)
+{
+	return 0;
+}
+
 static int run_control_burst_item(struct spa_loop *loop, bool async,
 		uint32_t seq, const void *data, size_t size, void *user_data)
 {
 	struct control_burst *burst = user_data;
 
-	if (SPA_ATOMIC_INC(burst->entered) == 1)
+	if (SPA_ATOMIC_INC(burst->entered) == 1) {
 		while (!SPA_ATOMIC_LOAD(burst->release))
 			pw_data_loop_relax();
+		burst->nested_result = spa_loop_invoke(loop, run_nested_control_item,
+				SPA_ID_INVALID, NULL, 0, false, NULL);
+		burst->nested_yield_result = spa_loop_control_yield(
+				burst->loop->control);
+	}
 	SPA_ATOMIC_INC(burst->completed);
 	return 0;
 }
@@ -356,7 +371,10 @@ static void test_polling_control_burst_is_interleaved(void)
 	struct pw_properties *properties;
 	struct pw_data_loop_source source = { 0 };
 	struct pw_data_loop *loop;
-	struct control_burst burst = { 0 };
+	struct control_burst burst = {
+		.nested_result = INT_MIN,
+		.nested_yield_result = INT_MIN,
+	};
 	uint32_t i;
 
 	properties = pw_properties_new(PW_KEY_LOOP_IDLE, "busy-spin",
@@ -365,6 +383,7 @@ static void test_polling_control_burst_is_interleaved(void)
 	loop = pw_data_loop_new(&properties->dict);
 	pw_properties_free(properties);
 	spa_assert_se(loop != NULL);
+	burst.loop = pw_data_loop_get_loop(loop);
 	spa_list_init(&source.link);
 	source.process = process_control_burst;
 	source.data = &burst;
@@ -382,6 +401,8 @@ static void test_polling_control_burst_is_interleaved(void)
 				SPA_ID_INVALID, NULL, 0, false, &burst) == 0);
 	SPA_ATOMIC_STORE(burst.release, 1);
 	wait_until_at_least(&burst.completed, CONTROL_BURST_ITEMS);
+	spa_assert_se(burst.nested_result == -EBUSY);
+	spa_assert_se(burst.nested_yield_result == -EBUSY);
 	spa_assert_se(SPA_ATOMIC_LOAD(burst.interleaved) == 1);
 
 	spa_assert_se(pw_data_loop_stop(loop) == 0);
