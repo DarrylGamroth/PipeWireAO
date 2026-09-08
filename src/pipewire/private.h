@@ -980,6 +980,8 @@ struct pw_impl_node {
 	struct pw_loop *data_loop;		/**< the data loop for this node */
 	struct pw_data_loop *data_loop_impl;	/**< owning data-loop implementation, or NULL */
 	struct pw_data_loop_source poll_source;	/**< polling-loop process source */
+	struct spa_source poll_error_source;	/**< poll-driver terminal result source */
+	int poll_error;				/**< first terminal poll-driver result */
 
 	struct spa_fraction latency;		/**< requested latency */
 	struct spa_fraction max_latency;	/**< maximum latency */

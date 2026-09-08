@@ -506,6 +506,46 @@ static void test_poll_driver_cycles_without_eventfd(void)
 	fixture_clear(&fixture);
 }
 
+static void test_poll_driver_terminal_process_error(void)
+{
+	static const char data_loops[] =
+		"[ { loop.name = driver-poll thread.name = driver-poll "
+		"loop.class = data.rt loop.idle = busy-spin } ]";
+	struct fixture fixture;
+	struct synthetic_node synthetic;
+	struct pw_impl_node *node;
+	struct pw_properties *properties;
+	uint32_t failed_calls;
+
+	fixture_init_data_loops(&fixture, data_loops);
+	synthetic_init_poll_driver(&synthetic);
+	synthetic.process_result = -EIO;
+	properties = pw_properties_new(PW_KEY_NODE_NAME,
+			"synthetic-failing-poll-driver",
+			PW_KEY_NODE_LOOP_NAME, "driver-poll",
+			PW_KEY_NODE_DRIVER, "true", NULL);
+	spa_assert_se(properties != NULL);
+	node = pw_context_create_node(fixture.context, properties, 0);
+	spa_assert_se(node != NULL);
+	spa_assert_se(pw_impl_node_set_implementation(node, &synthetic.node) == 0);
+	spa_assert_se(pw_impl_node_set_active(node, true) == 0);
+	spa_assert_se(pw_impl_node_set_state(node, PW_NODE_STATE_RUNNING) == EBUSY);
+	wait_for_node_state(&fixture, node, PW_NODE_STATE_ERROR);
+	spa_assert_se(node->info.error != NULL);
+	spa_assert_se(strstr(node->info.error, spa_strerror(-EIO)) != NULL);
+	spa_assert_se(!node->poll_source.added);
+	failed_calls = SPA_ATOMIC_LOAD(synthetic.process_calls);
+	spa_assert_se(failed_calls == 1);
+	usleep(1000);
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.process_calls) == failed_calls);
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.starts) == 1);
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.pauses) == 1);
+	spa_assert_se(SPA_ATOMIC_LOAD(synthetic.lifecycle_overlap) == 0);
+
+	pw_impl_node_destroy(node);
+	fixture_clear(&fixture);
+}
+
 struct cross_process_activation {
 	struct pw_node_activation activation;
 	uint32_t child_ready;
@@ -1322,6 +1362,7 @@ int main(int argc, char *argv[])
 	test_polling_loop_requires_explicit_selection();
 	test_regular_node_polling_activation();
 	test_poll_driver_cycles_without_eventfd();
+	test_poll_driver_terminal_process_error();
 	test_cross_process_polling_activation();
 	test_failed_polling_activation_preserves_signal_time();
 	test_exported_node_polling_activation();

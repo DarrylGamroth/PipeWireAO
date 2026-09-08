@@ -83,6 +83,66 @@ static inline bool is_poll_driver(const struct pw_impl_node *node)
 	return SPA_FLAG_IS_SET(node->spa_flags, SPA_NODE_FLAG_POLL_DRIVER);
 }
 
+static int pause_failed_poll_driver(struct spa_loop *loop, bool async,
+		uint32_t seq, const void *data, size_t size, void *user_data)
+{
+	struct pw_impl_node *node = user_data;
+
+	node->poll_source.enabled = false;
+	return spa_node_send_command(node->node,
+			&SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_Pause));
+}
+
+static void poll_error_event(struct spa_source *source)
+{
+	struct pw_impl_node *node = source->data;
+	struct impl *impl = SPA_CONTAINER_OF(node, struct impl, this);
+	struct pw_loop *main_loop = pw_context_get_main_loop(node->context);
+	uint64_t count;
+	int res;
+
+	if ((source->rmask & SPA_IO_IN) == 0)
+		return;
+	res = spa_system_eventfd_read(main_loop->system, source->fd, &count);
+	if (res < 0 && res != -EAGAIN) {
+		pw_log_error("%p: failed to read poll-driver terminal result: %s",
+				node, spa_strerror(res));
+		return;
+	}
+	res = SPA_ATOMIC_LOAD(node->poll_error);
+	if (res >= 0 || node->info.state != PW_NODE_STATE_RUNNING)
+		return;
+	if (pw_loop_locked(node->data_loop, pause_failed_poll_driver,
+			1, NULL, 0, node) < 0)
+		pw_log_warn("%p: failed to pause poll driver after terminal error",
+				node);
+	impl->last_error = res;
+	pw_impl_node_set_state(node, PW_NODE_STATE_ERROR);
+}
+
+static int ensure_poll_error_source(struct pw_impl_node *node)
+{
+	struct pw_loop *main_loop = pw_context_get_main_loop(node->context);
+	int res;
+
+	if (node->poll_error_source.fd >= 0)
+		return 0;
+	res = spa_system_eventfd_create(main_loop->system,
+			SPA_FD_CLOEXEC | SPA_FD_NONBLOCK);
+	if (res < 0)
+		return res;
+	node->poll_error_source.fd = res;
+	node->poll_error_source.func = poll_error_event;
+	node->poll_error_source.data = node;
+	node->poll_error_source.mask = SPA_IO_IN | SPA_IO_ERR | SPA_IO_HUP;
+	if ((res = pw_loop_add_source(main_loop, &node->poll_error_source)) < 0) {
+		spa_system_close(main_loop->system, node->poll_error_source.fd);
+		node->poll_error_source.fd = -1;
+		return res;
+	}
+	return 0;
+}
+
 static int poll_process_node(void *data);
 static int node_ready(void *data, int status);
 
@@ -514,6 +574,16 @@ static void node_update_state(struct pw_impl_node *node, enum pw_node_state stat
 		pw_log_debug("%p: start node driving:%d driver:%d prepared:%d", node,
 				node->driving, node->driver, node->rt.prepared);
 
+		if (res >= 0 && is_poll_driver(node) && !node->remote) {
+			res = ensure_poll_error_source(node);
+			if (res < 0) {
+				state = PW_NODE_STATE_ERROR;
+				error = spa_aprintf("Poll-driver error handoff: %s",
+						spa_strerror(res));
+			} else {
+				SPA_ATOMIC_STORE(node->poll_error, 0);
+			}
+		}
 		if (res >= 0) {
 			res = add_node_to_graph(node);
 			if (res < 0) {
@@ -1662,8 +1732,16 @@ static int poll_process_node(void *data)
 		status = spa_node_process_fast(node->node);
 		if (status == SPA_STATUS_OK)
 			return 0;
-		if (status < 0)
+		if (status < 0) {
+			if (SPA_ATOMIC_CAS(node->poll_error, 0, status)) {
+				struct pw_loop *main_loop =
+					pw_context_get_main_loop(node->context);
+
+				(void) spa_system_eventfd_write(main_loop->system,
+						node->poll_error_source.fd, 1);
+			}
 			return status;
+		}
 		pw_log_trace_fp("%p: polled driver %s produced status:%d",
 				node, node->name, status);
 		node_ready(node, status);
@@ -1771,6 +1849,7 @@ struct pw_impl_node *pw_context_create_node(struct pw_context *context,
 		goto error_clean;
 	}
 	this->source.fd = -1;
+	this->poll_error_source.fd = -1;
 	if (properties == NULL)
 		properties = pw_properties_new(NULL, NULL);
 	if (properties == NULL) {
@@ -2625,6 +2704,12 @@ void pw_impl_node_destroy(struct pw_impl_node *node)
 	pw_map_clear(&node->output_port_map);
 
 	pw_work_queue_cancel(impl->work, node, SPA_ID_INVALID);
+	if (node->poll_error_source.fd >= 0) {
+		struct pw_loop *main_loop = pw_context_get_main_loop(context);
+
+		pw_loop_remove_source(main_loop, &node->poll_error_source);
+		spa_system_close(main_loop->system, node->poll_error_source.fd);
+	}
 	pw_properties_free(node->properties);
 	spa_clear_ptr(impl->pending_request_process, free);
 
