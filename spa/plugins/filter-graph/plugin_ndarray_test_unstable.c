@@ -5,7 +5,9 @@
 #include "config.h"
 
 #include <errno.h>
+#include <stdatomic.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -108,6 +110,125 @@ static const struct spa_fgn_descriptor descriptor = {
 	.get_prop = get_prop,
 	.get_prop_revision = get_prop_revision,
 	.process = process,
+};
+
+struct recovering_instance {
+	_Atomic uint64_t revision;
+	_Atomic int64_t value;
+	_Atomic int64_t mirror;
+	_Atomic uint32_t process_calls;
+	_Atomic uint32_t odd_revision_reads;
+};
+
+static const struct spa_fgn_property_info recovering_properties[] = {
+	SPA_FGN_PROPERTY_INFO_INIT(
+		0, SPA_FGN_PROPERTY_FLAG_READONLY,
+		"value", "Test value", "1",
+		SPA_FGN_VALUE_LONG_INIT(0),
+		SPA_FGN_VALUE_NONE_INIT, SPA_FGN_VALUE_NONE_INIT, 0, NULL),
+	SPA_FGN_PROPERTY_INFO_INIT(
+		1, SPA_FGN_PROPERTY_FLAG_READONLY,
+		"mirror", "Test mirror", "1",
+		SPA_FGN_VALUE_LONG_INIT(0),
+		SPA_FGN_VALUE_NONE_INIT, SPA_FGN_VALUE_NONE_INIT, 0, NULL),
+};
+
+static int recovering_instantiate(const struct spa_fgn_descriptor *descriptor,
+		const char *config, const struct spa_fgn_executor *executor,
+		void **result)
+{
+	struct recovering_instance *instance;
+
+	if (descriptor == NULL || config == NULL || executor == NULL ||
+	    executor->version != SPA_FGN_EXECUTOR_VERSION || result == NULL ||
+	    strcmp(config, "{}") != 0)
+		return -EINVAL;
+	if ((instance = calloc(1, sizeof(*instance))) == NULL)
+		return -ENOMEM;
+	atomic_init(&instance->revision, 0);
+	atomic_init(&instance->value, 0);
+	atomic_init(&instance->mirror, 0);
+	atomic_init(&instance->process_calls, 0);
+	atomic_init(&instance->odd_revision_reads, 0);
+	*result = instance;
+	return 0;
+}
+
+static int recovering_enum_prop_info(void *instance, uint32_t index,
+		struct spa_fgn_property_info *info)
+{
+	if (instance == NULL)
+		return -EINVAL;
+	return spa_fgn_enum_prop_info_table(recovering_properties,
+			SPA_N_ELEMENTS(recovering_properties), index, info);
+}
+
+static int recovering_get_prop(void *data, uint32_t id,
+		struct spa_fgn_value *value)
+{
+	struct recovering_instance *instance = data;
+
+	if (instance == NULL || value == NULL || id >= 2)
+		return -EINVAL;
+	*value = (struct spa_fgn_value)SPA_FGN_VALUE_LONG_INIT(
+			id == 0
+				? atomic_load_explicit(&instance->value, memory_order_acquire)
+				: atomic_load_explicit(&instance->mirror, memory_order_acquire));
+	return 0;
+}
+
+static uint64_t recovering_get_prop_revision(void *data)
+{
+	struct recovering_instance *instance = data;
+	uint64_t revision = atomic_load_explicit(&instance->revision,
+			memory_order_acquire);
+
+	/* The first odd read closes process(); the second is the main-loop
+	 * snapshot that the live test waits for before completing the write. */
+	if ((revision & 1u) != 0 &&
+	    atomic_fetch_add_explicit(&instance->odd_revision_reads, 1,
+			memory_order_acq_rel) == 1) {
+		puts("ODD_SNAPSHOT revision=1");
+		fflush(stdout);
+	}
+	return revision;
+}
+
+static int recovering_process(void *data, const struct spa_fgn_buffer *inputs,
+		uint32_t n_inputs, struct spa_fgn_buffer *outputs,
+		uint32_t n_outputs)
+{
+	struct recovering_instance *instance = data;
+	uint32_t call;
+
+	if (instance == NULL || inputs == NULL || n_inputs != 1 ||
+	    inputs[0].buffer == NULL || outputs != NULL || n_outputs != 0)
+		return -EINVAL;
+	call = atomic_fetch_add_explicit(&instance->process_calls, 1,
+			memory_order_acq_rel) + 1;
+	if (call == 1) {
+		atomic_store_explicit(&instance->revision, 1, memory_order_seq_cst);
+		atomic_store_explicit(&instance->value, 2, memory_order_seq_cst);
+	} else if (call == 2) {
+		atomic_store_explicit(&instance->mirror, 20, memory_order_release);
+		atomic_store_explicit(&instance->revision, 2, memory_order_release);
+	}
+	return 0;
+}
+
+static const struct spa_fgn_descriptor recovering_descriptor = {
+	.struct_size = sizeof(struct spa_fgn_descriptor),
+	.version = SPA_FGN_PLUGIN_ABI_VERSION,
+	.name = "recovering-properties",
+	.n_ports = SPA_N_ELEMENTS(ports),
+	.ports = ports,
+	.instantiate = recovering_instantiate,
+	.cleanup = free,
+	.get_port_format = get_port_format,
+	.enum_prop_info = recovering_enum_prop_info,
+	.get_prop = recovering_get_prop,
+	.get_prop_revision = recovering_get_prop_revision,
+	.process = recovering_process,
 };
 
 enum flow_kind {
@@ -253,6 +374,8 @@ static const struct spa_fgn_descriptor *find_descriptor(const char *name)
 		return NULL;
 	if (strcmp(name, descriptor.name) == 0)
 		return &descriptor;
+	if (strcmp(name, recovering_descriptor.name) == 0)
+		return &recovering_descriptor;
 	for (i = 0; i < SPA_N_ELEMENTS(flow_descriptors); i++)
 		if (strcmp(name, flow_descriptors[i].name) == 0)
 			return &flow_descriptors[i];

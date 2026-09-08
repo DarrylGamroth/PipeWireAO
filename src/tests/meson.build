@@ -147,6 +147,7 @@ test(
     pwao_link.full_path(),
     ndarray_filter_chain_props.full_path(),
     spa_filter_graph_plugin_ndarray_example.full_path(),
+    spa_filter_graph_plugin_ndarray_test_unstable.full_path(),
   ],
   depends: pipewire_daemon_required_modules + [
     spa_support_lib,
@@ -155,6 +156,32 @@ test(
     ndarray_filter_chain_props,
     pipewire_module_ndarray_filter_chain,
     spa_filter_graph_plugin_ndarray_example,
+    spa_filter_graph_plugin_ndarray_test_unstable,
+  ],
+  env: polling_remote_env,
+  timeout: 30,
+)
+
+test(
+  'pw-test-ndarray-filter-chain-teardown',
+  find_program('python3'),
+  args: [
+    files('test-ndarray-filter-chain-props.py'),
+    pipewire_exec.full_path(),
+    pwao_link.full_path(),
+    ndarray_filter_chain_props.full_path(),
+    spa_filter_graph_plugin_ndarray_example.full_path(),
+    spa_filter_graph_plugin_ndarray_test_unstable.full_path(),
+    'teardown',
+  ],
+  depends: pipewire_daemon_required_modules + [
+    spa_support_lib,
+    pipewire_exec,
+    pwao_link,
+    ndarray_filter_chain_props,
+    pipewire_module_ndarray_filter_chain,
+    spa_filter_graph_plugin_ndarray_example,
+    spa_filter_graph_plugin_ndarray_test_unstable,
   ],
   env: polling_remote_env,
   timeout: 30,
