@@ -971,8 +971,18 @@ occupied-slot rejection, then links and triggers one ndarray frame. A Props
 subscriber must receive the first accepted gain as both requested and active;
 the rejected gain must never appear. Run it with
 `meson test -C build pw-test-ndarray-filter-chain-props --print-errorlogs`.
-This covers module back pressure and active-value publication with an eventfd
-loop; it does not force an odd or changing property revision during a snapshot.
+The same test uses a test-only plugin to hold two related values at revision 1,
+requires the module to reject that odd snapshot, then completes revision 2 and
+requires the coherent pair to be published.
+
+The `pw-test-ndarray-filter-chain-teardown` test blocks main-loop dispatch after
+the data loop signals its real eventfd. It destroys the module while that
+notification is pending, requires teardown to remove that exact event source,
+and then completes a core roundtrip. Run it with
+`meson test -C build pw-test-ndarray-filter-chain-teardown --print-errorlogs`.
+The production teardown removes the filter from its graph under the data-loop
+lock, stops the parameter worker, and removes the main-loop event before it
+releases graph and callback storage.
 
 The adapter does not yet rebuild a graph when a format-defining configuration
 value changes or expose the dropped-parameter counter as a node property. The
