@@ -167,12 +167,53 @@ PWTEST(mempool_conflicting_huge_page_hints_fall_back)
 	return PWTEST_PASS;
 }
 
+PWTEST(mempool_import_preserves_huge_page_size)
+{
+	const uint32_t huge_page_size = 2U * 1024U * 1024U;
+	struct pw_mempool *source_pool, *import_pool;
+	struct pw_memblock *source, *imported;
+	struct pw_map_range range;
+
+	source_pool = pw_mempool_new(NULL);
+	import_pool = pw_mempool_new(NULL);
+	pwtest_ptr_notnull(source_pool);
+	pwtest_ptr_notnull(import_pool);
+
+	source = pw_mempool_alloc(source_pool,
+			PW_MEMBLOCK_FLAG_READWRITE |
+			PW_MEMBLOCK_FLAG_HUGE_PAGES_HINT |
+			PW_MEMBLOCK_FLAG_HUGE_2MB_HINT,
+			SPA_DATA_MemFd, 4096U);
+	pwtest_ptr_notnull(source);
+	if (!SPA_FLAG_IS_SET(source->flags, PW_MEMBLOCK_FLAG_HUGE_PAGES)) {
+		pw_mempool_destroy(import_pool);
+		pw_mempool_destroy(source_pool);
+		return PWTEST_SKIP;
+	}
+
+	imported = pw_mempool_import_block(import_pool, source);
+	pwtest_ptr_notnull(imported);
+	pwtest_bool_true(SPA_FLAG_IS_SET(imported->flags,
+			PW_MEMBLOCK_FLAG_HUGE_PAGES));
+	pwtest_int_eq(imported->page_size, huge_page_size);
+	pwtest_int_eq(pw_map_range_init(&range, 4096U, 4096U,
+			imported->page_size), 0);
+	pwtest_int_eq(range.offset, 0U);
+	pwtest_int_eq(range.start, 4096U);
+	pwtest_int_eq(range.size, huge_page_size);
+
+	pw_mempool_destroy(import_pool);
+	pw_mempool_destroy(source_pool);
+	return PWTEST_PASS;
+}
+
 PWTEST_SUITE(pw_mempool)
 {
 	pwtest_add(mempool_issue4884, PWTEST_NOARG);
 	pwtest_add(map_range_overflow, PWTEST_NOARG);
 	pwtest_add(mempool_huge_page_hint_falls_back, PWTEST_NOARG);
 	pwtest_add(mempool_conflicting_huge_page_hints_fall_back, PWTEST_NOARG);
+	pwtest_add(mempool_import_preserves_huge_page_size, PWTEST_NOARG);
 
 	return PWTEST_PASS;
 }
