@@ -88,7 +88,9 @@ struct spa_thread *pw_data_loop_get_thread(struct pw_data_loop *loop);
  *
  * If called from the loop's thread, all callbacks previously queued with
  * pw_data_loop_invoke() will be run synchronously, which might cause
- * unexpected reentrancy problems.
+ * unexpected reentrancy problems. A recursive invocation from a callback
+ * being drained by a polling loop returns `-EBUSY` so that the loop's bounded
+ * control-work budget cannot be bypassed.
  *
  * \param[in] loop The loop to invoke func on.
  * \param func The function to be invoked.
@@ -103,7 +105,8 @@ struct spa_thread *pw_data_loop_get_thread(struct pw_data_loop *loop);
  *              returns immediately. Passing \true does not risk a deadlock because
  *              the data thread is never allowed to wait on any other thread.
  * \param user_data An opaque pointer passed to func.
- * \return `-EPIPE` if the internal ring buffer filled up,
+ * \return `-EPIPE` if the internal ring buffer filled up, `-EBUSY` for a
+ *         recursive invocation while a polling loop drains control work;
  *         if block is \false, 0 is returned when seq is SPA_ID_INVALID or the
  *         sequence number with the ASYNC bit set otherwise. When block is \true,
  *         the return value of func is returned.
