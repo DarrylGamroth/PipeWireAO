@@ -597,14 +597,14 @@ therefore decrement and wake a peer or the driver directly after processing,
 without routing the real-time edge through the server main loop. Atomic
 activation state remains the cross-process synchronization contract.
 
-PipeWireAO extension: a version-1 activation owner can set
+PipeWireAO extension: a version-2 activation owner can set
 `PW_NODE_ACTIVATION_FLAG_POLLING` in that shared record. Updated producers then
 publish `TRIGGERED` without writing the target eventfd. The exported
 implementation's polling data loop observes the same activation mapping and
 calls `process()` after claiming `TRIGGERED -> AWAKE`. Wake policy is per
-target, so polling and eventfd clients can coexist in one graph. An older
-producer remains correct but continues to write the eventfd because it does not
-recognize the polling flag. See \ref page_polling_data_loops for the complete
+target, so polling and eventfd clients can coexist in one graph. Version-1
+peers remain eventfd-driven; a current polling owner rejects a version-1 server
+during graph preparation. See \ref page_polling_data_loops for the complete
 extension contract.
 
 A remote driver starts its graph directly in its client data loop. It signals

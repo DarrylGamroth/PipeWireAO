@@ -154,7 +154,7 @@ reports its flags. A poll driver cannot be assigned an external driver.
 
 ## Exported and remote nodes
 
-Activation version 1 is shared between the daemon and an exported node's
+Activation version 2 is shared between the daemon and an exported node's
 implementation process. The process that owns `process()` sets
 `PW_NODE_ACTIVATION_FLAG_POLLING` in that shared record when its assigned
 loop is polling.
@@ -174,11 +174,11 @@ The daemon-side remote node represents topology; it does not execute or poll
 the client implementation. Each process that owns polling nodes needs its own
 configured polling loop and CPU reservation.
 
-Version-0 activation records are rejected for polling because they lack the
-atomic publication contract. An older version-1 producer remains functionally
-correct but may continue writing the eventfd because it does not understand the
-polling flag; the path is syscall-free only when every possible trigger honors
-the flag.
+Version-0 and version-1 activation records cannot own polling processing
+because they lack the version-2 timestamp publication contract. A current
+polling owner paired with a version-1 server fails graph preparation with
+`-EPROTONOSUPPORT`. Independently compiled version-1 peers remain compatible
+through the eventfd path; they do not advertise or use polling wake policy.
 
 ## Memory ordering
 
