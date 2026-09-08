@@ -108,7 +108,9 @@ struct spa_loop_methods {
 	 *
 	 * If called from the loop's thread, all callbacks previously queued with
 	 * invoke() will be run synchronously, which might cause unexpected
-	 * reentrancy problems.
+	 * reentrancy problems. An implementation that bounds work in yield() may
+	 * return `-EBUSY` for a recursive invocation from a callback being drained
+	 * by yield().
 	 *
 	 * \param[in] object The callbacks data.
 	 * \param func The function to be invoked.
@@ -126,7 +128,8 @@ struct spa_loop_methods {
 	 *              of blocking invokes between 2 threads as you can easily end up
 	 *              in a deadly embrace.
 	 * \param user_data An opaque pointer passed to func.
-	 * \return `-EPIPE` if the internal ring buffer filled up,
+	 * \return `-EPIPE` if the internal ring buffer filled up, `-EBUSY` if a
+	 *         bounded yield rejects recursive invocation,
 	 *         if block is \false, 0 if seq was SPA_ID_INVALID or
 	 *         seq with the ASYNC flag set
 	 *         or the return value of func otherwise. */
@@ -379,10 +382,11 @@ struct spa_loop_control_methods {
 	 * file descriptors.
 	 *
 	 * This function must be called by the thread that entered the loop and
-	 * with no additional recursive loop locks held. It dispatches queued
-	 * invokes, then releases and immediately reacquires the
+	 * with no additional recursive loop locks held. It dispatches a bounded
+	 * batch of queued invokes, then releases and immediately reacquires the
 	 * loop lock so administrative callers can modify loop-owned state. It does
-	 * not wait for or dispatch fd sources.
+	 * not wait for or dispatch fd sources. A recursive call from a dispatched
+	 * callback returns `-EBUSY`.
 	 * Since version 3:3.
 	 *
 	 * \param[in] object the control
