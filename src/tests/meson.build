@@ -133,6 +133,35 @@ test(
   timeout: 30,
 )
 
+ndarray_filter_props_filter = executable(
+  'pw-test-ndarray-filter-props-filter',
+  'test-ndarray-filter-props-filter.c',
+  dependencies: [pipewire_dep, pthread_lib],
+)
+ndarray_filter_props_client = executable(
+  'pw-test-ndarray-filter-props-client',
+  'test-ndarray-filter-props-client.c',
+  dependencies: [pipewire_dep],
+)
+test(
+  'pw-test-ndarray-filter-props',
+  find_program('python3'),
+  args: [
+    files('test-ndarray-filter-props.py'),
+    pipewire_exec.full_path(),
+    ndarray_filter_props_filter.full_path(),
+    ndarray_filter_props_client.full_path(),
+  ],
+  depends: pipewire_daemon_required_modules + [
+    spa_support_lib,
+    pipewire_exec,
+    ndarray_filter_props_filter,
+    ndarray_filter_props_client,
+  ],
+  env: polling_remote_env,
+  timeout: 30,
+)
+
 ndarray_filter_chain_props = executable(
   'pw-test-ndarray-filter-chain-props',
   'test-ndarray-filter-chain-props.c',
