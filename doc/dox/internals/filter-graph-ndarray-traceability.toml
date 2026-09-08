@@ -13,12 +13,12 @@ closure_obligations = ["ABI version", "layout", "append-only descriptor extensio
 implementation_state = "implemented"
 implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/include/spa/filter-graph/ndarray-executor.h", "spa/plugins/filter-graph/filter-graph-ndarray.c"]
 evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-revolt-classic.c"]
-verified_revision = "ABI-v7 schema-authoritative working tree, 2026-09-01"
-verified_environment = "C11 and Rust 1.97.1 on Linux x86_64"
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "spa/plugins/filter-graph/test-filter-graph-ndarray-retain.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-revolt-classic.c"]
+verified_revision = "ABI-v7 retained-registry test against d63bd9e08 plus the test change, 2026-09-08"
+verified_environment = "C11 and Rust 1.97.1 on Linux x86_64; retained C plugin repeated under ASan, UBSan, and LeakSanitizer"
 verified_surfaces = ["C", "Rust"]
-verified_obligations = ["ABI-v7 C/Rust layout", "ABI loader rejection", "original descriptor-prefix loading", "optional appended lifecycle field", "descriptor lifetime", "loader rejection"]
-remaining_gaps = ["External generated plugins that targeted the superseded ABI-v8 experiment must be regenerated against ABI v7. The retained-registry path has not been repeated under ASan and LeakSanitizer."]
+verified_obligations = ["ABI-v7 C/Rust layout", "ABI loader rejection", "original descriptor-prefix loading", "optional appended lifecycle field", "descriptor lifetime", "loader rejection", "declared process-lifetime retention"]
+remaining_gaps = ["External generated plugins that targeted the superseded ABI-v8 experiment must be regenerated against ABI v7."]
 
 [[requirements]]
 id = "FGN-CONFIG-001"
@@ -66,8 +66,12 @@ closure_obligations = ["callback serialization", "borrowed lifetimes", "release/
 implementation_state = "implemented"
 implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/include/spa/filter-graph/filter-graph-ndarray.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "src/modules/module-ndarray-filter-chain.c", "../calculon-algorithms/crates/calculon-fgn/src/publication.rs", "../calculon-algorithms/crates/calculon-fgn/src/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/unary.rs", "../calculon-algorithms/crates/calculon-fgn/src/source.rs", "../calculon-algorithms/crates/calculon-fgn/src/declaration.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs", "../calculon-algorithms/julia/CalculonFGN/src/CalculonFGN.jl"]
 evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/tests/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py", "../calculon-algorithms/scripts/test_julia_fgn_executor.py"]
-remaining_gaps = ["A live ndarray client has not yet forced teardown while a data-loop notification is outstanding. The host lifecycle exists, but no generated Julia plugin callback table uses it yet."]
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "src/tests/test-ndarray-filter-chain-props.c", "src/tests/test-ndarray-filter-chain-props.py", "../calculon-algorithms/crates/calculon-fgn/tests/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py", "../calculon-algorithms/scripts/test_julia_fgn_executor.py"]
+verified_revision = "Live teardown against d63bd9e08 plus the test change, 2026-09-08"
+verified_environment = "Live C example with eventfd loops, GCC 14.2.0 on Linux x86_64; 20 repeated runs, ASan+UBSan, and a missing-event-removal negative control"
+verified_surfaces = ["PipeWire module", "C plugin"]
+verified_obligations = ["shutdown with a pending data-loop main-event notification"]
+remaining_gaps = ["The host lifecycle exists, but no generated Julia plugin callback table uses it yet."]
 
 [[requirements]]
 id = "FGN-BUF-001"
@@ -157,11 +161,10 @@ implementation_state = "implemented"
 implementation_links = ["spa/plugins/filter-graph/filter-graph-ndarray.c", "spa/plugins/filter-graph/plugin_ndarray_example.c", "spa/plugins/filter-graph/plugin_ndarray_example.rs", "src/modules/module-ndarray-filter-chain.c", "../calculon-algorithms/crates/calculon-fgn/src/publication.rs", "../calculon-algorithms/crates/calculon-fgn/src/properties.rs", "../calculon-algorithms/crates/calculon-fgn/src/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs"]
 evidence_state = "partial"
 evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "src/tests/test-ndarray-filter-chain-props.c", "src/tests/test-ndarray-filter-chain-props.py", "../calculon-algorithms/crates/calculon-fgn/tests/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py"]
-verified_revision = "FGN and Calculon working trees reviewed 2026-08-25; live module Props test against fb8586cd7 plus the test change, 2026-09-08"
-verified_environment = "C11 and Rust 1.97.1 forced publication stress on Linux x86_64; live C example with eventfd loops, GCC 14.2.0, 20 repeated runs and fatal-EBUSY/missing-publication negative controls"
+verified_revision = "FGN and Calculon working trees reviewed 2026-08-25; live module Props tests against d63bd9e08 plus the test change, 2026-09-08"
+verified_environment = "C11 and Rust 1.97.1 forced publication stress on Linux x86_64; live C fixtures with eventfd loops, GCC 14.2.0, repeated runs, and fatal-EBUSY/missing-publication negative controls"
 verified_surfaces = ["C graph host", "C plugin", "Rust plugin", "Calculon Rust", "PipeWire module"]
-verified_obligations = ["returned-value validation", "even/odd revision", "retry", "process flag", "off-loop publish with the live C example"]
-remaining_gaps = ["The live module test proves occupied-slot rejection and active-value republication with the C example. Live snapshot retry under an odd or changing property revision is not forced."]
+verified_obligations = ["returned-value validation", "even/odd revision", "retry", "process flag", "off-loop publish with the live C example", "live odd-revision rejection and coherent recovery"]
 
 [[requirements]]
 id = "FGN-PARAM-001"
@@ -293,9 +296,12 @@ claimed_surfaces = ["PipeWire module"]
 closure_obligations = ["PropInfo", "Props", "loss documentation", "runtime mutability"]
 implementation_state = "implemented"
 implementation_links = ["spa/plugins/filter-graph/filter-graph-ndarray.c", "src/modules/module-ndarray-filter-chain.c", "doc/dox/internals/filter-graph-ndarray.md"]
-evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py"]
-remaining_gaps = ["A live client covers module load, ndarray-format discovery, PropInfo/Props enumeration, and a non-erroring multi-property submission. It does not yet drive a process boundary and observe republished active values."]
+evidence_state = "validated"
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "src/tests/test-ndarray-filter-chain-props.c", "src/tests/test-ndarray-filter-chain-props.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py"]
+verified_revision = "Live PipeWire module Props tests against d63bd9e08 plus the test change, 2026-09-08"
+verified_environment = "Live C fixtures with eventfd loops and an isolated PipeWireAO daemon on Linux x86_64"
+verified_surfaces = ["PipeWire module"]
+verified_obligations = ["PropInfo", "Props", "documented projection loss", "runtime mutability", "process-boundary active-value republication"]
 
 [[requirements]]
 id = "FGN-RUST-001"
