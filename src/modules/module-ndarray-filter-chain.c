@@ -197,6 +197,23 @@ static struct spa_pod *build_format(struct spa_pod_builder *builder,
 	return spa_pod_builder_pop(builder, &object);
 }
 
+static struct spa_pod *build_acquisition_meta(struct spa_pod_builder *builder)
+{
+	struct spa_pod_frame frame;
+
+	spa_pod_builder_push_object(builder, &frame,
+			SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta);
+	spa_pod_builder_add(builder,
+			SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Acquisition),
+			SPA_PARAM_META_size,
+			SPA_POD_Int(sizeof(struct spa_meta_acquisition)),
+			0);
+	spa_pod_builder_prop(builder, SPA_PARAM_META_features,
+			SPA_POD_PROP_FLAG_MANDATORY);
+	spa_pod_builder_int(builder, SPA_META_FEATURE_ACQUISITION_VERSION_2);
+	return spa_pod_builder_pop(builder, &frame);
+}
+
 static bool strings_equal(const char *a, const char *b)
 {
 	return a == b || (a != NULL && b != NULL && spa_streq(a, b));
@@ -822,11 +839,7 @@ static int add_graph_port(struct impl *impl, enum spa_direction direction,
 			SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Header),
 			SPA_PARAM_META_size,
 			SPA_POD_Int(sizeof(struct spa_meta_header)));
-	params[n_params++] = spa_pod_builder_add_object(&builder,
-			SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta,
-			SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Acquisition),
-			SPA_PARAM_META_size,
-			SPA_POD_Int(sizeof(struct spa_meta_acquisition)));
+	params[n_params++] = build_acquisition_meta(&builder);
 	for (uint32_t i = 0; i < n_params; i++)
 		if (params[i] == NULL) {
 			pw_properties_free(properties);

@@ -52,7 +52,10 @@ static int process(void *userdata,
 	    output->capacity < sizeof(output_value) ||
 	    input->data == NULL || output->data == NULL ||
 	    (input->metadata_valid & PW_NDARRAY_FILTER_METADATA_HEADER) == 0 ||
-	    (output->metadata_available & PW_NDARRAY_FILTER_METADATA_HEADER) == 0)
+	    (input->metadata_valid & PW_NDARRAY_FILTER_METADATA_ACQUISITION) == 0 ||
+	    (output->metadata_available & PW_NDARRAY_FILTER_METADATA_HEADER) == 0 ||
+	    (output->metadata_available & PW_NDARRAY_FILTER_METADATA_ACQUISITION) == 0 ||
+	    input->acquisition.version != SPA_META_ACQUISITION_VERSION_2)
 		return -EINVAL;
 	memcpy(&input_value, input->data, sizeof(input_value));
 	callback = atomic_fetch_add_explicit(&data->callbacks, 1,
@@ -87,6 +90,8 @@ static int process(void *userdata,
 		.seq = 2,
 	};
 	output->metadata_valid |= PW_NDARRAY_FILTER_METADATA_HEADER;
+	output->acquisition = input->acquisition;
+	output->metadata_valid |= PW_NDARRAY_FILTER_METADATA_ACQUISITION;
 	printf("COMPLETE\n");
 	fflush(stdout);
 	return 0;

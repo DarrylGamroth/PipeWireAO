@@ -6,7 +6,7 @@ The PipeWire client configuration file.
 
 # SYNOPSIS
 
-*$XDG_CONFIG_HOME/pipewire/client.conf*
+*$XDG_CONFIG_HOME/pipewire-ao/client.conf*
 
 *$(PIPEWIRE_CONFIG_DIR)/client.conf*
 
@@ -16,7 +16,7 @@ The PipeWire client configuration file.
 
 *$(PIPEWIRE_CONFIG_DIR)/client.conf.d/*
 
-*$XDG_CONFIG_HOME/pipewire/client.conf.d/*
+*$XDG_CONFIG_HOME/pipewire-ao/client.conf.d/*
 
 # DESCRIPTION
 

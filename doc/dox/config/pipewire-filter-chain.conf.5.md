@@ -6,7 +6,7 @@ PipeWire example configuration for running audio filters.
 
 # SYNOPSIS
 
-*$XDG_CONFIG_HOME/pipewire/filter-chain.conf*
+*$XDG_CONFIG_HOME/pipewire-ao/filter-chain.conf*
 
 *$(PIPEWIRE_CONFIG_DIR)/filter-chain.conf*
 
@@ -16,7 +16,7 @@ PipeWire example configuration for running audio filters.
 
 *$(PIPEWIRE_CONFIG_DIR)/filter-chain.conf.d/*
 
-*$XDG_CONFIG_HOME/pipewire/filter-chain.conf.d/*
+*$XDG_CONFIG_HOME/pipewire-ao/filter-chain.conf.d/*
 
 # DESCRIPTION
 
