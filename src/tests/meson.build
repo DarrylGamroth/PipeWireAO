@@ -6,6 +6,7 @@ test_apps = [
   'test-filter',
   'test-ndarray-filter',
   'test-ndarray-filter-publication',
+  'test-ndarray-filter-chain-parameter',
   'test-run-control',
   'test-polling-data-loop',
   'test-security-context',

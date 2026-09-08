@@ -28,6 +28,8 @@
 #include <pipewire/impl.h>
 #include <pipewire/run-control.h>
 
+#include "module-ndarray-filter-chain-parameter.h"
+
 #define NAME "ndarray-filter-chain"
 
 PW_LOG_TOPIC_STATIC(mod_topic, "mod." NAME);
@@ -74,9 +76,7 @@ struct port {
 	uint32_t index;
 	enum spa_direction direction;
 	uint32_t flags;
-	_Atomic(struct pw_buffer *) pending_parameter;
-	_Atomic bool retry_parameter;
-	_Atomic bool completed_parameter;
+	struct ndarray_parameter_handoff parameter_handoff;
 	_Atomic uint64_t dropped_parameters;
 };
 
@@ -362,8 +362,7 @@ static void update_parameter(struct port *port)
 
 	if (atomic_load_explicit(&impl->destroying, memory_order_acquire))
 		return;
-	buffer = atomic_load_explicit(&port->pending_parameter,
-			memory_order_acquire);
+	buffer = ndarray_parameter_handoff_pending(&port->parameter_handoff);
 	if (buffer == NULL)
 		return;
 	pthread_mutex_lock(&impl->control_lock);
@@ -371,8 +370,7 @@ static void update_parameter(struct port *port)
 			buffer->buffer);
 	pthread_mutex_unlock(&impl->control_lock);
 	if (res == -EBUSY) {
-		atomic_store_explicit(&port->retry_parameter, true,
-				memory_order_release);
+		ndarray_parameter_handoff_mark_retry(&port->parameter_handoff);
 		return;
 	}
 	if (res < 0)
@@ -384,8 +382,7 @@ static void update_parameter(struct port *port)
 		pw_loop_signal_event(impl->main_loop, impl->main_event);
 	}
 	/* The data loop is the sole producer for pw_filter_queue_buffer(). */
-	atomic_store_explicit(&port->completed_parameter, true,
-			memory_order_release);
+	ndarray_parameter_handoff_complete(&port->parameter_handoff);
 }
 
 static void parameter_event(void *data, uint64_t count SPA_UNUSED)
@@ -398,8 +395,7 @@ static void parameter_event(void *data, uint64_t count SPA_UNUSED)
 	for (i = 0; i < impl->n_inputs; i++) {
 		struct port *port = impl->inputs[i];
 		if ((port->flags & SPA_FGN_PORT_FLAG_PARAMETER) &&
-		    atomic_load_explicit(&port->pending_parameter,
-				memory_order_acquire) != NULL)
+		    ndarray_parameter_handoff_claim(&port->parameter_handoff))
 			update_parameter(port);
 	}
 }
@@ -407,11 +403,9 @@ static void parameter_event(void *data, uint64_t count SPA_UNUSED)
 static void schedule_parameter(struct port *port, struct pw_buffer *buffer)
 {
 	struct impl *impl = port->impl;
-	struct pw_buffer *expected = NULL;
 	int res;
 
-	if (!atomic_compare_exchange_strong_explicit(&port->pending_parameter,
-			&expected, buffer, memory_order_release, memory_order_relaxed)) {
+	if (!ndarray_parameter_handoff_schedule(&port->parameter_handoff, buffer)) {
 		atomic_fetch_add_explicit(&port->dropped_parameters, 1,
 				memory_order_relaxed);
 		pw_filter_queue_buffer(port, buffer);
@@ -420,8 +414,7 @@ static void schedule_parameter(struct port *port, struct pw_buffer *buffer)
 	res = pw_loop_signal_event(pw_thread_loop_get_loop(impl->parameter_loop),
 			impl->parameter_event);
 	if (res < 0) {
-		atomic_store_explicit(&port->pending_parameter, NULL,
-				memory_order_release);
+		ndarray_parameter_handoff_cancel_schedule(&port->parameter_handoff);
 		atomic_fetch_add_explicit(&port->dropped_parameters, 1,
 				memory_order_relaxed);
 		pw_filter_queue_buffer(port, buffer);
@@ -448,13 +441,10 @@ static void dequeue_parameter(struct port *port)
 	struct pw_buffer *buffer = NULL, *next;
 	struct pw_buffer *completed;
 
-	if (atomic_exchange_explicit(&port->completed_parameter, false,
-			memory_order_acq_rel)) {
-		completed = atomic_exchange_explicit(&port->pending_parameter, NULL,
-				memory_order_acq_rel);
-		if (completed != NULL)
-			pw_filter_queue_buffer(port, completed);
-	}
+	completed = ndarray_parameter_handoff_take_completed(
+			&port->parameter_handoff);
+	if (completed != NULL)
+		pw_filter_queue_buffer(port, completed);
 
 	while ((next = pw_filter_dequeue_buffer(port)) != NULL) {
 		if (parameter_buffer_absent(next)) {
@@ -568,14 +558,14 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 			for (i = 0; i < impl->n_inputs; i++) {
 				struct port *port = impl->inputs[i];
 				if ((port->flags & SPA_FGN_PORT_FLAG_PARAMETER) &&
-				    atomic_exchange_explicit(&port->retry_parameter,
-						false, memory_order_acq_rel)) {
+				    ndarray_parameter_handoff_rearm_retry(
+						&port->parameter_handoff)) {
 					res = pw_loop_signal_event(
 							pw_thread_loop_get_loop(impl->parameter_loop),
 							impl->parameter_event);
 					if (res < 0)
-						atomic_store_explicit(&port->retry_parameter,
-								true, memory_order_release);
+						ndarray_parameter_handoff_restore_retry(
+								&port->parameter_handoff);
 				}
 			}
 		}
@@ -765,6 +755,11 @@ static void filter_param_changed(void *data, void *port_data,
 		pthread_mutex_lock(&impl->control_lock);
 		res = spa_fgn_graph_set_props(impl->graph, param);
 		pthread_mutex_unlock(&impl->control_lock);
+		if (res == -EBUSY) {
+			pw_log_warn("ndarray graph property update rejected while a "
+					"transaction is pending");
+			return;
+		}
 		if (res >= 0)
 			atomic_store_explicit(&impl->publish_after_process, true,
 					memory_order_release);
@@ -856,9 +851,7 @@ static int add_graph_port(struct impl *impl, enum spa_direction direction,
 	port->index = index;
 	port->direction = direction;
 	port->flags = info->flags;
-	atomic_init(&port->pending_parameter, NULL);
-	atomic_init(&port->retry_parameter, false);
-	atomic_init(&port->completed_parameter, false);
+	ndarray_parameter_handoff_init(&port->parameter_handoff);
 	atomic_init(&port->dropped_parameters, 0);
 	if (direction == SPA_DIRECTION_INPUT)
 		impl->inputs[index] = port;
@@ -985,9 +978,8 @@ static void impl_destroy(struct impl *impl)
 	pw_loop_invoke(impl->main_loop, NULL, 0, NULL, 0, false, impl);
 	for (i = 0; i < impl->n_inputs; i++)
 		if (impl->inputs != NULL && impl->inputs[i] != NULL) {
-			struct pw_buffer *buffer = atomic_exchange_explicit(
-					&impl->inputs[i]->pending_parameter, NULL,
-					memory_order_acq_rel);
+			struct pw_buffer *buffer = ndarray_parameter_handoff_cancel(
+					&impl->inputs[i]->parameter_handoff);
 			if (buffer != NULL && impl->filter != NULL)
 				pw_filter_queue_buffer(impl->inputs[i], buffer);
 		}
