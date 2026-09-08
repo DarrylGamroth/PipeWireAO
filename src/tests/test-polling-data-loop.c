@@ -321,6 +321,7 @@ static int set_invoked(struct spa_loop *loop, bool async, uint32_t seq,
 #define CONTROL_BURST_ITEMS 128u
 
 struct control_burst {
+	uint32_t scans;
 	uint32_t entered;
 	uint32_t release;
 	uint32_t completed;
@@ -332,6 +333,7 @@ static int process_control_burst(void *data)
 	struct control_burst *burst = data;
 	uint32_t completed = SPA_ATOMIC_LOAD(burst->completed);
 
+	SPA_ATOMIC_INC(burst->scans);
 	if (completed > 0 && completed < CONTROL_BURST_ITEMS)
 		SPA_ATOMIC_STORE(burst->interleaved, 1);
 	return 0;
@@ -370,6 +372,7 @@ static void test_polling_control_burst_is_interleaved(void)
 	source.added = true;
 	source.enabled = true;
 	spa_assert_se(pw_data_loop_start(loop) == 0);
+	wait_until_at_least(&burst.scans, 1);
 
 	spa_assert_se(pw_data_loop_invoke(loop, run_control_burst_item,
 			SPA_ID_INVALID, NULL, 0, false, &burst) == 0);
