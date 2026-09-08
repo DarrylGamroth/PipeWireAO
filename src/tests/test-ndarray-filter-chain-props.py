@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: Copyright © 2026 PipeWireAO contributors
 # SPDX-License-Identifier: MIT
 
-"""Exercise the real module's occupied Props slot and active-value publication."""
+"""Exercise live property publication, snapshot retry, and pending teardown."""
 
 import os
 from pathlib import Path
@@ -34,13 +34,8 @@ def stop(process):
             process.wait()
 
 
-def main():
-    if len(sys.argv) != 5:
-        return 2
-    daemon_path, link_path, client_path, plugin_path = (
-        str(Path(path).resolve()) for path in sys.argv[1:]
-    )
-    with tempfile.TemporaryDirectory(prefix="pwao-ndarray-props.") as temporary:
+def run_case(daemon_path, link_path, client_path, plugin_path, mode, filter_name):
+    with tempfile.TemporaryDirectory(prefix=f"pwao-ndarray-props-{mode}.") as temporary:
         root = Path(temporary)
         environment = os.environ.copy()
         environment.update({
@@ -61,18 +56,23 @@ def main():
                 wait_for(daemon, lambda: (root / "pipewire-ao-0").is_socket(),
                          "daemon socket")
                 client = subprocess.Popen(
-                    [client_path, plugin_path], env=environment,
+                    [client_path, plugin_path, mode], env=environment,
                     stdin=subprocess.PIPE, stdout=client_output,
                     stderr=subprocess.STDOUT, text=True,
                 )
-                # This warning is emitted only by the module's -EBUSY branch.
-                # No source is linked until the actual rejection is observed.
-                wait_for(client, lambda:
-                         "ndarray graph property update rejected while a transaction is pending"
-                         in client_log.read_text(),
-                         "the module to reject the occupied Props slot")
+                if mode in ("back-pressure", "teardown"):
+                    # This warning is emitted only by the module's -EBUSY branch.
+                    # No source is linked until the actual rejection is observed.
+                    wait_for(client, lambda:
+                             "ndarray graph property update rejected while a transaction is pending"
+                             in client_log.read_text(),
+                             "the module to reject the occupied Props slot")
+                else:
+                    wait_for(client, lambda:
+                             "INITIAL value=0 mirror=0" in client_log.read_text(),
+                             "the initial stable property snapshot")
                 linked = subprocess.run(
-                    [link_path, "-w", "ndarray-props-source", "ndarray-props-filter"],
+                    [link_path, "-w", "ndarray-props-source", filter_name],
                     env=environment, capture_output=True, text=True, timeout=5,
                 )
                 if linked.returncode != 0:
@@ -81,13 +81,34 @@ def main():
                          "source to start")
                 client.stdin.write("1")
                 client.stdin.flush()
-                if client.wait(timeout=5) != 0 or "ACTIVE gain=3" not in client_log.read_text():
-                    raise RuntimeError("accepted gain was not published after the graph cycle")
+                if mode == "back-pressure":
+                    if (client.wait(timeout=5) != 0 or
+                            "ACTIVE gain=3" not in client_log.read_text()):
+                        raise RuntimeError(
+                            "accepted gain was not published after the graph cycle")
+                elif mode == "unstable-snapshot":
+                    wait_for(client, lambda:
+                             "ODD_SNAPSHOT revision=1" in client_log.read_text(),
+                             "the module to reject its odd property snapshot")
+                    if "STABLE value=2 mirror=20" in client_log.read_text():
+                        raise RuntimeError("odd property snapshot was published")
+                    client.stdin.write("1")
+                    client.stdin.flush()
+                    if (client.wait(timeout=5) != 0 or
+                            "STABLE value=2 mirror=20" not in client_log.read_text()):
+                        raise RuntimeError(
+                            "stable property snapshot was not published after recovery")
+                else:
+                    expected = "TEARDOWN pending event removed; core roundtrip completed"
+                    if client.wait(timeout=7) != 0 or expected not in client_log.read_text():
+                        raise RuntimeError(
+                            "module teardown did not remove the pending notification")
                 if daemon.poll() is not None:
                     raise RuntimeError("daemon exited during the Props test")
-                print("live ndarray filter-chain Props back pressure and publication passed")
+                print(f"live ndarray filter-chain Props {mode} passed")
                 return 0
-            except (RuntimeError, subprocess.TimeoutExpired) as error:
+            except (BrokenPipeError, RuntimeError,
+                    subprocess.TimeoutExpired) as error:
                 print(error, file=sys.stderr)
                 for path in (daemon_log, client_log):
                     print(f"{path.name}:\n{path.read_text()}", file=sys.stderr)
@@ -95,6 +116,22 @@ def main():
             finally:
                 stop(client)
                 stop(daemon)
+
+
+def main():
+    if len(sys.argv) not in (6, 7) or (len(sys.argv) == 7 and sys.argv[6] != "teardown"):
+        return 2
+    daemon_path, link_path, client_path, example_plugin, unstable_plugin = (
+        str(Path(path).resolve()) for path in sys.argv[1:6]
+    )
+    if len(sys.argv) == 7:
+        return run_case(daemon_path, link_path, client_path, example_plugin,
+                        "teardown", "ndarray-props-filter")
+    if run_case(daemon_path, link_path, client_path, example_plugin,
+                "back-pressure", "ndarray-props-filter") != 0:
+        return 1
+    return run_case(daemon_path, link_path, client_path, unstable_plugin,
+                    "unstable-snapshot", "ndarray-unstable-props-filter")
 
 
 if __name__ == "__main__":
