@@ -220,7 +220,11 @@ struct pw_ndarray_filter_events {
 	int (*deactivate)(void *data);
 	int (*update_parameter)(void *data, uint32_t input_port,
 			const struct pw_ndarray_filter_buffer *parameter);
-	/** Return PropInfo at index, or -ENOENT after the final declaration. */
+	/**
+	 * Return PropInfo at index, or -ENOENT after the final declaration.
+	 * Every returned POD must remain valid until pw_ndarray_filter_connect()
+	 * returns.
+	 */
 	int (*enum_prop_info)(void *data, uint32_t index,
 			const struct spa_pod **info);
 	/** Return the owner's current requested and active scalar property state. */
