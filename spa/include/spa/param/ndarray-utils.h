@@ -185,10 +185,13 @@ spa_format_ndarray_ext_parse(const struct spa_pod *format,
 			SPA_FORMAT_mediaSubtype, SPA_POD_Id(&media_subtype),
 			SPA_FORMAT_NDARRAY_elementType, SPA_POD_Id(&element_type),
 			SPA_FORMAT_NDARRAY_shape, SPA_POD_Pod(&shape_pod),
-			SPA_FORMAT_NDARRAY_layout, SPA_POD_Id(&layout),
-			SPA_FORMAT_NDARRAY_rate, SPA_POD_OPT_Fraction(&rate));
+			SPA_FORMAT_NDARRAY_layout, SPA_POD_Id(&layout));
 	if (res < 0)
 		return res;
+	if (spa_ndarray_format_key_count(format, SPA_FORMAT_NDARRAY_rate) == 1 &&
+	    spa_pod_parse_object(format, SPA_TYPE_OBJECT_Format, NULL,
+			SPA_FORMAT_NDARRAY_rate, SPA_POD_Fraction(&rate)) < 0)
+		return -EINVAL;
 	if (media_type != SPA_MEDIA_TYPE_application ||
 	    media_subtype != SPA_MEDIA_SUBTYPE_ndarray)
 		return -EINVAL;
