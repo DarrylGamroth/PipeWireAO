@@ -1104,15 +1104,16 @@ static int load_external_ports(struct spa_fgn_graph *graph, struct spa_json *jso
 	return 0;
 }
 
-static int load_default_ports(struct spa_fgn_graph *graph)
+static int load_default_ports(struct spa_fgn_graph *graph,
+		enum spa_direction direction)
 {
-	struct fgn_node *first = graph->nodes[0];
-	struct fgn_node *last = graph->nodes[graph->n_nodes - 1];
+	struct fgn_node *node = direction == SPA_DIRECTION_INPUT
+		? graph->nodes[0] : graph->nodes[graph->n_nodes - 1];
 	uint32_t i;
 
-	if (graph->n_inputs == 0)
-		for (i = 0; i < first->n_inputs; i++) {
-			struct fgn_port *port = first->inputs[i];
+	if (direction == SPA_DIRECTION_INPUT) {
+		for (i = 0; i < node->n_inputs; i++) {
+			struct fgn_port *port = node->inputs[i];
 			struct fgn_port **tmp;
 			size_t ports_size;
 			int res;
@@ -1128,9 +1129,9 @@ static int load_default_ports(struct spa_fgn_graph *graph)
 			port->external = graph->n_inputs;
 			graph->inputs[graph->n_inputs++] = port;
 		}
-	if (graph->n_outputs == 0)
-		for (i = 0; i < last->n_outputs; i++) {
-			struct fgn_port *port = last->outputs[i];
+	} else {
+		for (i = 0; i < node->n_outputs; i++) {
+			struct fgn_port *port = node->outputs[i];
 			struct fgn_port **tmp;
 			size_t ports_size;
 			int res;
@@ -1144,6 +1145,7 @@ static int load_default_ports(struct spa_fgn_graph *graph)
 			port->external = graph->n_outputs;
 			graph->outputs[graph->n_outputs++] = port;
 		}
+	}
 	return 0;
 }
 
@@ -1330,8 +1332,11 @@ int spa_fgn_graph_new(const char *config, struct spa_fgn_graph **result)
 		char expected;
 
 		if (spa_streq(key, "workers")) {
-			if (have_workers ||
-			    (res = parse_workers(&top, token, len, &n_helpers)) < 0)
+			if (have_workers) {
+				res = -EINVAL;
+				goto error;
+			}
+			if ((res = parse_workers(&top, token, len, &n_helpers)) < 0)
 				goto error;
 			have_workers = true;
 			continue;
@@ -1377,7 +1382,11 @@ int spa_fgn_graph_new(const char *config, struct spa_fgn_graph **result)
 	if (have_outputs && (res = load_external_ports(graph, &outputs,
 			SPA_DIRECTION_OUTPUT)) < 0)
 		goto error;
-	if ((!have_inputs || !have_outputs) && (res = load_default_ports(graph)) < 0)
+	if (!have_inputs && (res = load_default_ports(graph,
+			SPA_DIRECTION_INPUT)) < 0)
+		goto error;
+	if (!have_outputs && (res = load_default_ports(graph,
+			SPA_DIRECTION_OUTPUT)) < 0)
 		goto error;
 	if ((res = validate_graph(graph)) < 0 || (res = sort_graph(graph)) < 0 ||
 	    (res = queue_initial_property_transaction(graph)) < 0)

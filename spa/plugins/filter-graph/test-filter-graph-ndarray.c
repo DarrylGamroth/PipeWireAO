@@ -235,6 +235,53 @@ static void test_graph_inspection(const char *plugin)
 	spa_fgn_graph_free(graph);
 }
 
+static void test_graph_admission(const char *plugin)
+{
+	struct spa_fgn_graph *graph = NULL;
+	char config[2048];
+	int res;
+
+	res = snprintf(config, sizeof(config),
+		"{ workers = { helpers = 0 } workers = { helpers = 0 }"
+		" nodes = ["
+		" { type = ndarray name = scale plugin = \"%s\""
+		"   label = scale-f32 } ] }", plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == -EINVAL);
+	assert(graph == NULL);
+
+	/* Omitted directions use defaults; an explicit empty direction stays
+	 * empty even when the other direction is omitted. */
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = scale plugin = \"%s\""
+		"   label = scale-f32 } ] outputs = [ ] }", plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == 0);
+	assert(spa_fgn_graph_get_n_inputs(graph) == 2);
+	assert(spa_fgn_graph_get_n_outputs(graph) == 0);
+	spa_fgn_graph_free(graph);
+	graph = NULL;
+
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = scale plugin = \"%s\""
+		"   label = scale-f32 } ] inputs = [ ] }", plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == -ENOTCONN);
+	assert(graph == NULL);
+
+	res = snprintf(config, sizeof(config),
+		"{ nodes = ["
+		" { type = ndarray name = scale plugin = \"%s\""
+		"   label = scale-f32 } ] }", plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == 0);
+	assert(spa_fgn_graph_get_n_inputs(graph) == 2);
+	assert(spa_fgn_graph_get_n_outputs(graph) == 1);
+	spa_fgn_graph_free(graph);
+}
+
 static struct spa_pod *build_gain_update(void *data, size_t size,
 		float first, float second)
 {
@@ -1405,6 +1452,7 @@ int main(int argc, char *argv[])
 	test_lane_executor();
 	test_dense_executor();
 	test_graph_inspection(argv[1]);
+	test_graph_admission(argv[1]);
 	if (argc >= 3) {
 		check_failed_property_snapshot(argv[2]);
 		test_process_failure_state_boundary(argv[2]);
