@@ -17,6 +17,7 @@ foreach a : test_apps
       include_directories: [includes_inc],
       install : installed_tests_enabled,
       install_dir : installed_tests_execdir),
+    depends : [spa_support_lib],
     env : [
       'PIPEWIREAO_SPA_PLUGIN_DIR=@0@'.format(spa_dep.get_variable('plugindir')),
       'PIPEWIREAO_CONFIG_DIR=@0@'.format(pipewire_dep.get_variable('confdatadir')),
@@ -63,7 +64,7 @@ test(
     polling_remote_client.full_path(),
   ],
   depends: pipewire_daemon_required_modules +
-    [pipewire_exec, pwao_link, polling_remote_client],
+    [spa_support_lib, pipewire_exec, pwao_link, polling_remote_client],
   env: polling_remote_env,
   timeout: 45,
 )
@@ -89,6 +90,7 @@ test(
     ndarray_filter_remote_client.full_path(),
   ],
   depends: pipewire_daemon_required_modules + [
+    spa_support_lib,
     pipewire_exec,
     pwao_link,
     ndarray_filter_remote_filter,
@@ -119,6 +121,7 @@ test(
     ndarray_filter_parameter_client.full_path(),
   ],
   depends: pipewire_daemon_required_modules + [
+    spa_support_lib,
     pipewire_exec,
     pwao_link,
     ndarray_filter_parameter_filter,
