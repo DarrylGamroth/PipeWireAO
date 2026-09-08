@@ -185,9 +185,12 @@ bottleneck, not for PipeWire activation or eventfd state.
 
 ## Reproduction
 
-Build the daemon, link tool, and `pw-test-polling-remote-client`, then run:
+Build the configured tree so the daemon, client, SPA support plugin, and
+runtime modules come from the same revision, then run:
 
 ```console
+ninja -C build
+
 python3 src/tests/benchmark-polling-remote.py \
     build/src/daemon/pipewire-ao \
     build/src/tools/pwao-link \
