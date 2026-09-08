@@ -103,6 +103,7 @@ struct impl {
 	int enter_count;
 	int recurse;
 	bool polling;
+	bool yielding;
 
 	struct spa_source *wakeup;
 
@@ -548,6 +549,11 @@ static int loop_invoke(void *object, spa_invoke_func_t func, uint32_t seq,
 	struct queue *queue;
 	int res = 0, suppressed;
 	uint64_t nsec;
+	pthread_t loop_thread = SPA_ATOMIC_LOAD(impl->thread);
+
+	if (SPA_UNLIKELY(loop_thread != 0 &&
+			pthread_equal(loop_thread, pthread_self()) && impl->yielding))
+		return -EBUSY;
 
 	while (true) {
 		queue = get_queue(impl);
@@ -759,8 +765,11 @@ static int loop_yield(void *object)
 	spa_return_val_if_fail(pthread_equal(SPA_ATOMIC_LOAD(impl->thread),
 			pthread_self()), -EPERM);
 	spa_return_val_if_fail(impl->recurse == 0, -EBUSY);
+	spa_return_val_if_fail(!impl->yielding, -EBUSY);
 
+	impl->yielding = true;
 	flush_queues(impl, POLLING_YIELD_FLUSH_MAX);
+	impl->yielding = false;
 	if ((res = pthread_mutex_unlock(&impl->lock)) != 0)
 		return -res;
 	if (SPA_UNLIKELY(SPA_ATOMIC_LOAD(impl->lock_waiters) != 0)) {
