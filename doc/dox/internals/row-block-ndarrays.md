@@ -294,8 +294,22 @@ signal an eventfd-driven downstream loop or a polling downstream loop.
 quantum; `loop.idle` changes how the destination waits for activation. Neither
 changes the ndarray format or buffer ownership.
 
-This design removes the obsolete progressive metadata, latest-buffer
-transport, per-node RTC process flag, and private RTC data loop. The remaining
-PipeWireAO core extensions are the ndarray format, acquisition metadata,
-polling data-loop wake policy, polling driver flag, and cross-process polling
-activation bit.
+Standalone `pw_ndarray_filter` clients that consume loss-intolerant row blocks
+set `PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS`. The helper then retains the oldest
+admitted input until one process callback consumes it and uses the negotiated
+fixed buffer pools as bounded back pressure. Clients that omit the flag retain
+the ordinary PipeWire drain-to-latest behavior, which remains suitable for
+observational streams.
+
+When FIFO admission finds another complete input set after a callback, it
+emits PipeWire's standard `RequestProcess` request. A trigger-driven graph must
+use a driver that services that command with another graph cycle; periodic
+drivers can make progress on their next scheduled cycle. This is the ordinary
+PipeWire driver contract rather than a second scheduler inside the ndarray
+helper.
+
+This design removes the obsolete progressive metadata, progressively mutated
+shared buffers, per-node RTC process flag, and private RTC data loop. The
+remaining PipeWireAO core extensions are the ndarray format, acquisition
+metadata, polling data-loop wake policy, polling driver flag, and cross-process
+polling activation bit.

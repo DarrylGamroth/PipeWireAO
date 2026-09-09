@@ -5,6 +5,7 @@ test_apps = [
   'test-stream',
   'test-filter',
   'test-ndarray-filter',
+  'test-ndarray-filter-admission',
   'test-ndarray-filter-publication',
   'test-ndarray-filter-chain-parameter',
   'test-run-control',
@@ -90,6 +91,28 @@ test(
     pwao_link.full_path(),
     ndarray_filter_remote_filter.full_path(),
     ndarray_filter_remote_client.full_path(),
+  ],
+  depends: pipewire_daemon_required_modules + [
+    spa_support_lib,
+    pipewire_exec,
+    pwao_link,
+    ndarray_filter_remote_filter,
+    ndarray_filter_remote_client,
+  ],
+  env: polling_remote_env,
+  timeout: 30,
+)
+
+test(
+  'pw-test-ndarray-filter-fifo',
+  find_program('python3'),
+  args: [
+    files('test-ndarray-filter-remote.py'),
+    pipewire_exec.full_path(),
+    pwao_link.full_path(),
+    ndarray_filter_remote_filter.full_path(),
+    ndarray_filter_remote_client.full_path(),
+    '--fifo-inputs',
   ],
   depends: pipewire_daemon_required_modules + [
     spa_support_lib,

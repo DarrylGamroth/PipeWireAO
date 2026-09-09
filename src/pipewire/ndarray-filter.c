@@ -65,6 +65,7 @@ struct pw_ndarray_filter {
 	struct pw_main_loop *main_loop;
 	struct pw_filter *filter;
 	struct spa_source *error_event;
+	struct spa_source *fifo_process_event;
 	struct spa_source *properties_event;
 	struct pw_thread_loop *parameter_loop;
 	struct spa_source *parameter_event;
@@ -98,6 +99,7 @@ struct pw_ndarray_filter {
 	_Atomic int error;
 	_Atomic bool prepared;
 	_Atomic bool destroying;
+	_Atomic bool fifo_process_scheduled;
 	_Atomic bool properties_pending;
 	bool initialized;
 	bool connected;
@@ -218,7 +220,8 @@ static int copy_config(struct pw_ndarray_filter *filter,
 		    PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS |
 		    PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL |
 		    PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES |
-		    PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL)) != 0 ||
+		    PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL |
+		    PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS)) != 0 ||
 	    config->n_ports == 0 ||
 	    config->n_ports > PW_NDARRAY_FILTER_MAX_PORTS ||
 	    config->ports == NULL || config->events == NULL ||
@@ -726,6 +729,38 @@ static void signal_process_error(struct pw_ndarray_filter *filter, int res)
 				filter->error_event);
 }
 
+static void fifo_process_event(void *data, uint64_t count SPA_UNUSED)
+{
+	struct pw_ndarray_filter *filter = data;
+	int res;
+
+	atomic_store_explicit(&filter->fifo_process_scheduled, false,
+			memory_order_release);
+	if (atomic_load_explicit(&filter->destroying, memory_order_acquire) ||
+	    filter->filter == NULL)
+		return;
+	if ((res = pw_filter_trigger_process(filter->filter)) < 0)
+		signal_process_error(filter, res);
+}
+
+static void schedule_fifo_process(struct pw_ndarray_filter *filter)
+{
+	bool expected = false;
+	int res;
+
+	if (!atomic_compare_exchange_strong_explicit(
+			&filter->fifo_process_scheduled, &expected, true,
+			memory_order_acq_rel, memory_order_relaxed))
+		return;
+	res = pw_loop_signal_event(pw_main_loop_get_loop(filter->main_loop),
+			filter->fifo_process_event);
+	if (res < 0) {
+		atomic_store_explicit(&filter->fifo_process_scheduled, false,
+				memory_order_release);
+		signal_process_error(filter, res);
+	}
+}
+
 static int project_parameter_buffer(struct ndarray_port *port,
 		struct pw_buffer *buffer)
 {
@@ -876,6 +911,46 @@ static bool data_buffer_absent(const struct pw_buffer *buffer)
 		data->chunk->offset <= data->maxsize && data->chunk->size == 0;
 }
 
+static bool dequeue_fifo_input(struct pw_ndarray_filter *filter,
+		struct ndarray_port *port)
+{
+	uint32_t index = port->data_index;
+	struct pw_buffer *buffer;
+
+	if (filter->input_buffers[index] != NULL)
+		return filter->input_available[index];
+	while ((buffer = pw_filter_dequeue_buffer(port->filter_port)) != NULL) {
+		if ((filter->flags & PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS) &&
+		    data_buffer_absent(buffer)) {
+			pw_filter_queue_buffer(port->filter_port, buffer);
+			continue;
+		}
+		filter->input_buffers[index] = buffer;
+		filter->input_available[index] = true;
+		return true;
+	}
+	filter->input_available[index] = false;
+	return false;
+}
+
+static void schedule_fifo_backlog(struct pw_ndarray_filter *filter)
+{
+	bool any_input = false, all_inputs = true;
+	uint32_t i;
+
+	for (i = 0; i < filter->n_data_inputs; i++) {
+		bool available = dequeue_fifo_input(filter, filter->data_inputs[i]);
+
+		any_input |= available;
+		all_inputs &= available;
+	}
+	if (filter->n_data_inputs == 0 ||
+	    ((filter->flags & PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS)
+		? !any_input : !all_inputs))
+		return;
+	schedule_fifo_process(filter);
+}
+
 static void dequeue_parameter(struct ndarray_port *port)
 {
 	struct pw_buffer *buffer = NULL, *next, *completed;
@@ -911,6 +986,7 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 {
 	struct pw_ndarray_filter *filter = data;
 	bool ready = true, any_input = false;
+	bool fifo_inputs = filter->flags & PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS;
 	uint32_t i, region = 0;
 	int res;
 
@@ -927,17 +1003,22 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 			dequeue_parameter(port);
 			continue;
 		}
-		while ((next = pw_filter_dequeue_buffer(
-				port->filter_port)) != NULL) {
-			if (buffer != NULL)
-				pw_filter_queue_buffer(port->filter_port, buffer);
-			buffer = next;
-			available = !((filter->flags &
-				PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS) &&
-				data_buffer_absent(next));
+		if (fifo_inputs) {
+			available = dequeue_fifo_input(filter, port);
+			buffer = filter->input_buffers[port->data_index];
+		} else {
+			while ((next = pw_filter_dequeue_buffer(
+					port->filter_port)) != NULL) {
+				if (buffer != NULL)
+					pw_filter_queue_buffer(port->filter_port, buffer);
+				buffer = next;
+				available = !((filter->flags &
+					PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS) &&
+					data_buffer_absent(next));
+			}
+			filter->input_buffers[port->data_index] = buffer;
+			filter->input_available[port->data_index] = available;
 		}
-		filter->input_buffers[port->data_index] = buffer;
-		filter->input_available[port->data_index] = available;
 		if (available)
 			any_input = true;
 		else if (!(filter->flags &
@@ -956,8 +1037,11 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 	if ((filter->flags & PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS) &&
 	    filter->n_data_inputs > 0 && !any_input)
 		ready = false;
-	if (!ready)
-		goto done;
+	if (!ready) {
+		if (!fifo_inputs)
+			recycle_inputs(filter);
+		return;
+	}
 
 	for (i = 0; i < filter->n_data_inputs; i++, region++) {
 		if (!filter->input_available[i]) {
@@ -1009,12 +1093,14 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 				filter->output_buffers[i]);
 		filter->output_buffers[i] = NULL;
 	}
-	goto done;
+	recycle_inputs(filter);
+	if (fifo_inputs)
+		schedule_fifo_backlog(filter);
+	return;
 
 error:
 	clear_output_chunks(filter);
 	signal_process_error(filter, res);
-done:
 	recycle_inputs(filter);
 }
 
@@ -1457,11 +1543,96 @@ static void filter_destroyed(void *data)
 	filter->connected = false;
 }
 
+static bool invalidate_retained_buffer(struct pw_ndarray_filter *filter,
+		const struct ndarray_port *port, struct pw_buffer *buffer)
+{
+	if (port->direction == SPA_DIRECTION_INPUT &&
+	    !(port->flags & PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER)) {
+		uint32_t index = port->data_index;
+
+		if (filter->input_buffers[index] == buffer) {
+			filter->input_buffers[index] = NULL;
+			filter->input_available[index] = false;
+			return true;
+		}
+	} else if (port->direction == SPA_DIRECTION_OUTPUT) {
+		uint32_t index = port->index;
+
+		if (filter->output_buffers[index] == buffer) {
+			filter->output_buffers[index] = NULL;
+			return true;
+		}
+	}
+	return false;
+}
+
+struct retained_buffer_removal {
+	struct pw_ndarray_filter *filter;
+	const struct ndarray_port *port;
+	struct pw_buffer *buffer;
+	bool invalidated;
+	bool was_prepared;
+};
+
+static int invalidate_retained_buffer_on_data_loop(
+		struct spa_loop *loop SPA_UNUSED, bool async SPA_UNUSED,
+		uint32_t seq SPA_UNUSED, const void *data SPA_UNUSED,
+		size_t size SPA_UNUSED, void *user_data)
+{
+	struct retained_buffer_removal *removal = user_data;
+
+	removal->invalidated = invalidate_retained_buffer(removal->filter,
+			removal->port, removal->buffer);
+	if (removal->invalidated)
+		removal->was_prepared = atomic_exchange_explicit(
+				&removal->filter->prepared, false,
+				memory_order_acq_rel);
+	return 0;
+}
+
+static void filter_remove_buffer(void *data, void *port_data,
+		struct pw_buffer *buffer)
+{
+	struct pw_ndarray_filter *filter = data;
+	struct port_data *data_port = port_data;
+	struct retained_buffer_removal removal;
+	struct pw_loop *data_loop;
+	int res;
+
+	if (data_port == NULL || data_port->port == NULL || buffer == NULL ||
+	    atomic_load_explicit(&filter->destroying, memory_order_acquire))
+		return;
+	removal = (struct retained_buffer_removal) {
+		.filter = filter,
+		.port = data_port->port,
+		.buffer = buffer,
+	};
+	data_loop = filter->filter == NULL ? NULL :
+		pw_filter_get_data_loop(filter->filter);
+	if (data_loop == NULL)
+		invalidate_retained_buffer_on_data_loop(NULL, false, 0,
+				NULL, 0, &removal);
+	else if ((res = pw_loop_locked(data_loop,
+			invalidate_retained_buffer_on_data_loop, 0,
+			NULL, 0, &removal)) < 0) {
+		fail_on_main_loop(filter, res,
+				"can't synchronize ndarray buffer removal");
+		return;
+	}
+	if (!removal.invalidated)
+		return;
+	if (removal.was_prepared && filter->events.deactivate != NULL)
+		(void)filter->events.deactivate(filter->user_data);
+	fail_on_main_loop(filter, -EPIPE,
+			"retained ndarray buffer removed before processing completed");
+}
+
 static const struct pw_filter_events filter_events = {
 	PW_VERSION_FILTER_EVENTS,
 	.destroy = filter_destroyed,
 	.state_changed = filter_state_changed,
 	.param_changed = filter_param_changed,
+	.remove_buffer = filter_remove_buffer,
 	.process = process,
 };
 
@@ -1498,6 +1669,9 @@ static void free_filter(struct pw_ndarray_filter *filter)
 	if (filter->error_event != NULL && filter->main_loop != NULL)
 		pw_loop_destroy_source(pw_main_loop_get_loop(filter->main_loop),
 				filter->error_event);
+	if (filter->fifo_process_event != NULL && filter->main_loop != NULL)
+		pw_loop_destroy_source(pw_main_loop_get_loop(filter->main_loop),
+				filter->fifo_process_event);
 	if (filter->properties_event != NULL && filter->main_loop != NULL)
 		pw_loop_destroy_source(pw_main_loop_get_loop(filter->main_loop),
 				filter->properties_event);
@@ -1543,6 +1717,7 @@ int pw_ndarray_filter_new(const struct pw_ndarray_filter_config *config,
 	atomic_init(&filter->error, 0);
 	atomic_init(&filter->prepared, false);
 	atomic_init(&filter->destroying, false);
+	atomic_init(&filter->fifo_process_scheduled, false);
 	atomic_init(&filter->properties_pending, false);
 	if ((res = copy_config(filter, config)) < 0)
 		goto error;
@@ -1559,6 +1734,15 @@ int pw_ndarray_filter_new(const struct pw_ndarray_filter_config *config,
 	if (filter->error_event == NULL) {
 		res = errno != 0 ? -errno : -ENOMEM;
 		goto error;
+	}
+	if (filter->flags & PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS) {
+		filter->fifo_process_event = pw_loop_add_event(
+				pw_main_loop_get_loop(filter->main_loop),
+				fifo_process_event, filter);
+		if (filter->fifo_process_event == NULL) {
+			res = errno != 0 ? -errno : -ENOMEM;
+			goto error;
+		}
 	}
 	if (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES) {
 		filter->properties_event = pw_loop_add_event(
