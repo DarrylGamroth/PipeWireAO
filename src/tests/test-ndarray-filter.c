@@ -185,6 +185,7 @@ static void test_valid_config(void)
 	spa_assert_se(PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL == (1u << 2));
 	spa_assert_se(PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES == (1u << 3));
 	spa_assert_se(PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL == (1u << 4));
+	spa_assert_se(PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS == (1u << 5));
 
 	res = pw_ndarray_filter_new(&config, &filter);
 	spa_assert_se(res == 0);
@@ -224,6 +225,11 @@ static void test_valid_config(void)
 	spa_assert_se(pw_ndarray_filter_new(&config, &filter) == 0);
 	spa_assert_se(filter != NULL);
 	pw_ndarray_filter_destroy(filter);
+	config.flags = PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS;
+	filter = NULL;
+	spa_assert_se(pw_ndarray_filter_new(&config, &filter) == 0);
+	spa_assert_se(filter != NULL);
+	pw_ndarray_filter_destroy(filter);
 	config.flags = saved_flags;
 }
 
@@ -246,7 +252,7 @@ static void test_config_validation(void)
 	config.version++;
 	expect_new_error(-EINVAL);
 	config = saved_config;
-	config.flags = (PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL << 1);
+	config.flags = (PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS << 1);
 	expect_new_error(-EINVAL);
 	config = saved_config;
 	config.node_name = "";
