@@ -83,6 +83,19 @@ enum pw_ndarray_filter_flags {
 	 * is stopped and no run-control transition is pending.
 	 */
 	PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL = (1u << 4),
+	/**
+	 * Admit frame-data inputs in FIFO order without helper-side drops.
+	 *
+	 * Each valid dequeued input is retained until it has been presented to the
+	 * process callback exactly once or processing terminates. Missing peer
+	 * inputs or output buffers therefore apply bounded back pressure through
+	 * the negotiated PipeWire buffer pools. After a callback, already queued
+	 * input requests another graph cycle. The graph driver must service
+	 * PipeWire RequestProcess commands, or provide its next scheduled cycle,
+	 * for that input to make progress without another arrival. Leave this unset
+	 * for the ordinary PipeWire drain-to-latest policy.
+	 */
+	PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS = (1u << 5),
 };
 
 /** Static ndarray-filter Port roles. */
