@@ -66,7 +66,7 @@ def link_nodes(link, environment, source, sink):
 
 
 def main():
-    if len(sys.argv) != 5:
+    if len(sys.argv) not in (5, 6):
         return 2
     paths = {
         "daemon": Path(sys.argv[1]).resolve(),
@@ -118,8 +118,13 @@ def main():
             5,
             "daemon socket",
         )
+        filter_command = [str(paths["filter"])]
+        if len(sys.argv) == 6:
+            if sys.argv[5] != "--fifo-inputs":
+                return 2
+            filter_command.append("--fifo-inputs")
         filter_process = subprocess.Popen(
-            [str(paths["filter"])],
+            filter_command,
             env=environment,
             text=True,
             stdout=handles["filter"],

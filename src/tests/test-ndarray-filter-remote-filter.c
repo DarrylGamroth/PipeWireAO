@@ -161,8 +161,12 @@ int main(int argc, char *argv[])
 	bool stop_thread_started = false;
 	int result, status = 1;
 
-	(void)argc;
-	(void)argv;
+	if (argc > 2 || (argc == 2 && !spa_streq(argv[1], "--fifo-inputs"))) {
+		fprintf(stderr, "usage: %s [--fifo-inputs]\n", argv[0]);
+		return 2;
+	}
+	if (argc == 2)
+		config.flags |= PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS;
 	atomic_init(&data.callbacks, 0);
 	atomic_init(&data.retained, false);
 	sigemptyset(&data.stop_signals);
