@@ -397,12 +397,11 @@ Two bounded support-surface decisions are worth making before freezing more ABI:
   explicitly internal. Plugin descriptor/executor interfaces can remain public
   without promising an independently packaged host library. This is an observed
   packaging ambiguity, not proof that the current module workflow is broken.
-- `spa_ringbuffer_shared` has no in-tree production caller after the earlier
-  transport was removed; only declarations and tests remain. It still supplies
-  a real cache-line-isolated SPSC primitive and is emitted by libspa. Check
-  downstream consumers before deleting a public addition. If no consumer or
-  support commitment remains, retire this unused transport surface rather than
-  inventing a new caller. Preserve `SPA_CACHE_LINE_SIZE`, which the executor uses.
+- The unused `spa_ringbuffer_shared` public surface was retired after the
+  review. Its former transport consumer had already been removed, and no caller
+  was found in PipeWireAO or the inspected sibling repositories. The upstream
+  `spa_ringbuffer` ABI remains unchanged. `SPA_CACHE_LINE_SIZE` remains because
+  the ndarray executor uses it for its private worker layout.
 
 The two adapters have related but distinct responsibilities: a scientific owner
 callback/owned main loop versus an in-process composite plugin graph. Their
