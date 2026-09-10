@@ -18,7 +18,6 @@ verified_revision = "ABI-v7 retained-registry test against d63bd9e08 plus the te
 verified_environment = "C11 and Rust 1.97.1 on Linux x86_64; retained C plugin repeated under ASan, UBSan, and LeakSanitizer"
 verified_surfaces = ["C", "Rust"]
 verified_obligations = ["ABI-v7 C/Rust layout", "ABI loader rejection", "original descriptor-prefix loading", "optional appended lifecycle field", "descriptor lifetime", "loader rejection", "declared process-lifetime retention"]
-remaining_gaps = ["External generated plugins that targeted the superseded ABI-v8 experiment must be regenerated against ABI v7."]
 
 [[requirements]]
 id = "FGN-CONFIG-001"
@@ -31,11 +30,12 @@ closure_obligations = ["object admission", "relaxed SPA parsing", "standard JSON
 implementation_state = "implemented"
 implementation_links = ["spa/plugins/filter-graph/filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-algorithms/src/declaration.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs", "../calculon-algorithms/crates/calculon-fgn/src/unary.rs", "../calculon-algorithms/crates/calculon-fgn/src/source.rs", "../calculon-algorithms/crates/calculon-fgn/src/declaration.rs"]
 evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py"]
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py", "docs/review/graph-admission.c", "docs/REVIEW.md"]
 verified_revision = "FGN and Calculon working trees reviewed 2026-08-25"
 verified_environment = "C11, Rust 1.97.1, and live PipeWireAO on Linux x86_64"
 verified_surfaces = ["C graph host", "C plugin", "Rust plugin", "Calculon Rust"]
 verified_obligations = ["object admission", "relaxed SPA parsing", "standard JSON canonicalization", "pre-instantiation delivery", "update-class separation"]
+remaining_gaps = ["The C graph host accepts malformed node/link array tails, unknown worker keys after a valid helpers field, and trailing top-level values; AO-REV-002 records the executable reproduction and required rejection coverage."]
 
 [[requirements]]
 id = "FGN-FORMAT-001"
@@ -47,13 +47,12 @@ claimed_surfaces = ["C graph host", "C plugin", "Rust plugin", "PipeWire module"
 closure_obligations = ["exact structural fields", "exact schema match", "schema-owned scientific interpretation", "schema lifetime", "SPA schema projection", "duplicate schema rejection", "ABI layout"]
 implementation_state = "implemented"
 implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "spa/plugins/filter-graph/plugin_ndarray_example.c", "spa/plugins/filter-graph/plugin_ndarray_example.rs", "src/modules/module-ndarray-filter-chain.c", "src/pipewire/ndarray-filter.c", "spa/include/spa/param/format.h"]
-evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "src/tests/test-ndarray-filter.c", "test/test-spa-format.c"]
-verified_revision = "FGN ABI-v7 schema-authoritative working tree, 2026-09-01"
-verified_environment = "C11 and Rust 1.97.1 on Linux x86_64"
+evidence_state = "validated"
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "src/tests/test-ndarray-filter.c", "test/test-spa-format.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration_graph.c", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py", "../pipewireao-rtc/tests/live_private_core.rs"]
+verified_revision = "FGN and generated Calculon ABI-v7 schema-authoritative working trees, 2026-09-03"
+verified_environment = "C11 and Rust 1.97.1 with a private live PipeWireAO core on Linux x86_64"
 verified_surfaces = ["C graph host", "C plugin", "Rust plugin", "PipeWire module", "standalone ndarray filter"]
 verified_obligations = ["ABI-v7 C/Rust layout", "exact rate and schema comparison", "schema-authoritative scientific identity", "conditional-output flag projection", "otherwise identical schema mismatch rejection", "SPA schema projection and validation"]
-remaining_gaps = ["External generated Calculon plugins that targeted the superseded ABI-v8 experiment must be regenerated against ABI v7. A live PipeWire client has not yet negotiated a schema-authoritative FGN module port."]
 
 [[requirements]]
 id = "FGN-LIFE-001"
@@ -66,12 +65,12 @@ closure_obligations = ["callback serialization", "borrowed lifetimes", "release/
 implementation_state = "implemented"
 implementation_links = ["spa/include/spa/filter-graph/ndarray-plugin.h", "spa/include/spa/filter-graph/filter-graph-ndarray.h", "spa/plugins/filter-graph/filter-graph-ndarray.c", "src/modules/module-ndarray-filter-chain.c", "../calculon-algorithms/crates/calculon-fgn/src/publication.rs", "../calculon-algorithms/crates/calculon-fgn/src/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/src/unary.rs", "../calculon-algorithms/crates/calculon-fgn/src/source.rs", "../calculon-algorithms/crates/calculon-fgn/src/declaration.rs", "../calculon-algorithms/crates/calculon-fgn/src/algorithm.rs", "../calculon-algorithms/julia/CalculonFGN/src/CalculonFGN.jl"]
 evidence_state = "partial"
-evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "src/tests/test-ndarray-filter-chain-props.c", "src/tests/test-ndarray-filter-chain-props.py", "../calculon-algorithms/crates/calculon-fgn/tests/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py", "../calculon-algorithms/scripts/test_julia_fgn_executor.py"]
+evidence_links = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "src/tests/test-ndarray-filter-chain-props.c", "src/tests/test-ndarray-filter-chain-props.py", "../calculon-algorithms/crates/calculon-fgn/tests/parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/property_parameter.rs", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py", "../calculon-algorithms/scripts/test_julia_fgn_executor.py", "docs/review/parameter-removal.c", "docs/REVIEW.md"]
 verified_revision = "Live teardown against d63bd9e08 plus the test change, 2026-09-08"
 verified_environment = "Live C example with eventfd loops, GCC 14.2.0 on Linux x86_64; 20 repeated runs, ASan+UBSan, and a missing-event-removal negative control"
 verified_surfaces = ["PipeWire module", "C plugin"]
 verified_obligations = ["shutdown with a pending data-loop main-event notification"]
-remaining_gaps = ["The host lifecycle exists, but no generated Julia plugin callback table uses it yet."]
+remaining_gaps = ["The host lifecycle exists, but no generated Julia plugin callback table uses it yet.", "The standalone helper does not invalidate a retained Parameter Port buffer on remove, and the filter-chain module lacks equivalent removal handling for retained parameters and conditional outputs; AO-REV-001 records the executable lifecycle model and required live coverage."]
 
 [[requirements]]
 id = "FGN-BUF-001"
