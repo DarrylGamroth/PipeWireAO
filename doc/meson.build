@@ -78,6 +78,7 @@ extra_docs = [
   'dox/internals/filter-graph-ndarray.md',
   'dox/internals/pipewireao-rtc-integration.md',
   'dox/internals/acquisition-metadata.md',
+  'dox/internals/simple-multirate-ndarrays.md',
   'dox/internals/driver.dox',
   'dox/internals/protocol.dox',
   'dox/internals/pulseaudio.dox',

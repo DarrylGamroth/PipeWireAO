@@ -22,6 +22,7 @@
 - \subpage page_filter_graph_ndarray
 - \subpage page_pipewireao_rtc_integration
 - \subpage page_acquisition_metadata
+- \subpage page_simple_multirate_ndarrays
 - \subpage page_driver
 - \subpage page_latency
 - \subpage page_tag
