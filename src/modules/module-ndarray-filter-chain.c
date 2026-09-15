@@ -778,11 +778,74 @@ static void filter_destroyed(void *data)
 	impl->filter = NULL;
 }
 
+static bool invalidate_retained_output_buffer(struct impl *impl,
+		struct port *port, struct pw_buffer *buffer)
+{
+	if (port == NULL || port->impl != impl ||
+	    port->direction != SPA_DIRECTION_OUTPUT ||
+	    port->index >= impl->n_outputs)
+		return false;
+	if (impl->output_buffers[port->index] != buffer)
+		return false;
+	impl->output_buffers[port->index] = NULL;
+	return true;
+}
+
+struct retained_output_removal {
+	struct impl *impl;
+	struct port *port;
+	struct pw_buffer *buffer;
+};
+
+static int invalidate_retained_output_on_data_loop(
+		struct spa_loop *loop SPA_UNUSED, bool async SPA_UNUSED,
+		uint32_t seq SPA_UNUSED, const void *data SPA_UNUSED,
+		size_t size SPA_UNUSED, void *user_data)
+{
+	struct retained_output_removal *removal = user_data;
+
+	(void)invalidate_retained_output_buffer(removal->impl, removal->port,
+			removal->buffer);
+	return 0;
+}
+
+static void filter_remove_buffer(void *data, void *port_data,
+		struct pw_buffer *buffer)
+{
+	struct impl *impl = data;
+	struct port *port = port_data;
+	struct retained_output_removal removal;
+	struct pw_loop *data_loop;
+	int res;
+
+	if (port == NULL || buffer == NULL ||
+	    atomic_load_explicit(&impl->destroying, memory_order_acquire))
+		return;
+	removal = (struct retained_output_removal) {
+		.impl = impl,
+		.port = port,
+		.buffer = buffer,
+	};
+	data_loop = impl->filter == NULL ? NULL :
+		pw_filter_get_data_loop(impl->filter);
+	if (data_loop == NULL)
+		invalidate_retained_output_on_data_loop(NULL, false, 0,
+				NULL, 0, &removal);
+	else if ((res = pw_loop_locked(data_loop,
+			invalidate_retained_output_on_data_loop, 0,
+			NULL, 0, &removal)) < 0) {
+		pw_filter_set_error(impl->filter, res,
+				"can't synchronize retained ndarray output removal: %s",
+				spa_strerror(res));
+	}
+}
+
 static const struct pw_filter_events filter_events = {
 	PW_VERSION_FILTER_EVENTS,
 	.destroy = filter_destroyed,
 	.state_changed = filter_state_changed,
 	.param_changed = filter_param_changed,
+	.remove_buffer = filter_remove_buffer,
 	.process = process,
 };
 
