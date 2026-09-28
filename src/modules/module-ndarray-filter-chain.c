@@ -593,12 +593,23 @@ static bool feedback_output_private(const struct impl *impl, uint32_t output)
 
 static int commit_feedback_bridges(struct impl *impl)
 {
+	bool absent = false, present = false;
 	uint32_t i;
 
-	for (i = 0; i < impl->n_feedback_bridges; i++)
-		if (impl->feedback_bridges[i].output.chunk.size !=
-		    impl->feedback_bridges[i].output.size)
+	for (i = 0; i < impl->n_feedback_bridges; i++) {
+		const struct feedback_bridge *bridge = &impl->feedback_bridges[i];
+
+		if (bridge->output.chunk.size == 0)
+			absent = true;
+		else if (bridge->output.chunk.size == bridge->output.size)
+			present = true;
+		else
 			return -ENODATA;
+	}
+	if (absent && present)
+		return -ENODATA;
+	if (absent)
+		return 0;
 	for (i = 0; i < impl->n_feedback_bridges; i++) {
 		struct feedback_bridge *bridge = &impl->feedback_bridges[i];
 

@@ -219,6 +219,17 @@ ndarray_filter_chain_buffer_removal = executable(
   'test-ndarray-filter-chain-buffer-removal.c',
   dependencies: [pipewire_dep],
 )
+ndarray_filter_chain_feedback = executable(
+  'pw-test-ndarray-filter-chain-feedback',
+  'test-ndarray-filter-chain-feedback.c',
+  include_directories : [configinc],
+  dependencies : [spa_dep, dl_lib, mathlib, pipewire_dep, pthread_lib],
+  link_with : ndarray_filter_graph,
+)
+test(
+  'pw-test-ndarray-filter-chain-feedback',
+  ndarray_filter_chain_feedback,
+)
 test(
   'pw-test-ndarray-filter-chain-props',
   find_program('python3'),
