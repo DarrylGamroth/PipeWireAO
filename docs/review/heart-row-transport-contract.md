@@ -149,9 +149,10 @@ consumer and every active driver target have reached `FINISHED`; the tee's
 rejects an invalid or duplicate ID and publishes the next row only after the
 exact ID is returned.
 
-The driver data loop scans active targets after graph completion. Port and mix
-membership in the return scan still needs the lifetime repair described in
-`row-return-remediation.md` (RRF-002).
+The driver data loop scans its own active output ports and their RT mix lists
+after graph completion. The consumer return publisher scans its own RT mix
+list. The fixed-graph list lifetime repair and its remaining live
+reconfiguration limits are recorded in `row-return-remediation.md` (RRF-002).
 A pending release bit remains set through the entire scan, so a filter output
 return on another loop cannot request a new source cycle during release. The
 filter's opt-in output return hook raises `RequestProcess`; it sets a pending

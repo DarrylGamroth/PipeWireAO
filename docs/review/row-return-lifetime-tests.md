@@ -30,6 +30,8 @@ The test was compiled at `-O0` against the matching
 `pipewire-row-return-remediation/build-row-remediation` generated headers and
 library. The Meson targets are `pw-test-row-return-mix-removal` and
 `pw-test-row-return-io-replacement`.
+Both pass on the corrected branch after the control thread waits for the
+consumer loop before clearing an active mix or replacing its IO pointers.
 
 ## Driver scan of an unrelated target port
 
@@ -55,6 +57,8 @@ output mixes: in that case the unrelated target port is not selected by the
 driver and removal is allowed after the scan completes. This probe covers
 the borrowed-row scan; it does not run `flush_reliable_input_returns()` or
 destroy a link.
+It passes on the corrected branch, where the driver scans its own output
+membership and each output port's private RT mix list.
 
 The consumer probes use actual PipeWire data-loop threads and the production
 publisher, release, and IO replacement methods. Their driver loop is running
@@ -62,3 +66,7 @@ but does not execute a driver scan. None of these fixtures constructs a full
 link or exported client transaction. Link destruction, Format, buffer
 replacement, input-port addition, and exported detach acknowledgment remain
 to be exercised.
+
+All three lifetime targets and the three existing transport targets passed
+in `build-row-remediation` with GCC 14.2.0, `debugoptimized`, after the local
+and exported return paths were represented separately in the mix fixture.

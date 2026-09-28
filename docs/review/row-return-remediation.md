@@ -33,53 +33,54 @@ retained-row retry. Multi-output row sources are outside the qualified
 topology; they need an explicit row-output marker or setup rejection before
 the core contract can be generalized.
 
-Verification: `meson test -C build-row-remediation
-pw-test-row-transport-order pw-test-row-transport-mix
-pw-test-filter-output-return --print-errorlogs` passed 3/3 with GCC 14.2.0,
-`debugoptimized` and `-O2`. The baseline failure was observed before changing
-production source. No latency measurement or sanitizer run is claimed.
+The baseline failure was observed before changing production source. The six
+focused tests listed below pass with GCC 14.2.0 in the `debugoptimized`
+build. No sanitizer result is claimed.
 
 ## RRF-002: list membership and lifetime
 
-The driver still scans `target->node->input_ports` and each port's
-`mix_list` from its data loop. The target port list is mutated by the control
-thread in `pw_impl_port_add()` and `pw_impl_port_remove()`. The consumer's
-`pw_impl_port_publish_row_return()` also scans the control-thread `mix_list`
-from its data loop; `pw_impl_port_init_mix()` and
-`pw_impl_port_release_mix()` mutate it without that loop's exclusion. These
-are unsynchronized list and object-lifetime accesses. RRF-002 remains open.
+The consumer publisher now reads its own private active RT mix list. Its
+`port_set_io()` updates IO pointers and RT membership on the owning data loop,
+and `pw_impl_port_release_mix()` waits for that loop before removing the mix
+from the control list. The driver scans its own active output ports and each
+output port's private RT mix list. It no longer traverses a target node's
+control-thread `input_ports` list. Normal link destruction deactivates the
+source output mix and waits for its data loop before clearing reciprocal peer
+pointers.
 
-The existing `rt.input_mix`, `rt.output_mix`, and private `rt.mix_list` are
-updated through `pw_loop_locked()`. A safe driver scan could start from its
-own output ports and active output mixes, and the consumer publisher could use
-its own active RT mix list. That substitution needs a lifetime protocol.
-`pw_impl_link_destroy()` calls `pw_impl_link_deactivate()` before clearing
-`mix->peer`; deactivation removes the default tee's output mix synchronously
-under the source loop lock. This path gives the source reader a quiescence
-point before peer clearing. The earlier note in this branch incorrectly put
-peer clearing first.
+Ordinary local input mixes do not set `row_transport`; the driver reads their
+consumer IO after graph completion. Exported-client server mixes set
+`row_transport` at mix initialization; the driver reads returned IDs through
+the shared link IO. The server node has `remote=true`, whereas the actual
+client node has `exported=true`. The focused fixture represents them as
+separate nodes. The driver uses its own output mix's IO pointer, which link
+activation sets to the same shared storage as the input mix. The independent
+review found no further concrete defect in this fixed-graph steady-state
+path.
 
-Other mutations bypass that ordering. Non-NULL `impl-port.c:port_set_io()`
-replacement assigns `mix->io[]` before `pw_loop_locked(do_add_mix)`; when the
-mix is already active, the locked callback does not remove it first.
-`pw_impl_port_set_param(Format)`, `pw_impl_port_use_buffers()`, and
-`pw_impl_port_set_mix()` can change a target's mixer or buffers without first
-removing the corresponding active source output mix. The driver would retain
-a cross-loop peer pointer during those changes. The source-side mix must be
-removed and its reader quiesced before target mutation, followed by consumer
-loop quiescence. Neither loop lock should be held while waiting for the other.
+Format changes, buffer replacement, and mixer replacement while a link is
+active remain unqualified. The tests do not establish that an old exported
+client has acknowledged detach before its shared IO or buffer generation is
+reused. These cases need a defined quiescence and generation contract before
+claiming general live reconfiguration safety.
 
-The exported client adds a protocol boundary. Server
-`client-node.c:impl_mix_port_set_io()` updates the server mix pointer and
-`do_port_set_io()` enqueues a native `port_set_io` message. Client
-`remote-node.c:client_node_port_set_io()` applies it later. Server-side loop
-quiescence does not establish that the client stopped using the old shared IO
-or buffer generation. `spa_node_sync()` can produce a native ping/pong, but
-using that result to gate generation reuse requires an asynchronous detach
-transaction and an explicit failure path if the client disappears. A held
-loan must be returned by exact ID or revoked only after both loops and the
-client have quiesced. This transaction is outside the narrow list-scan edit;
-no partial RT-list swap was made.
+Fail-before evidence for all three list/IO races is in
+`row-return-lifetime-tests.md`. The corrected branch passes the six Meson
+targets `pw-test-row-return-mix-removal`,
+`pw-test-row-return-io-replacement`,
+`pw-test-row-return-driver-lifetime`, `pw-test-row-transport-order`,
+`pw-test-row-transport-mix`, and `pw-test-filter-output-return`.
+
+A real exported Rust FGN Copper replay against this core delivered all
+2,048 WFS datagrams, published all 2,048 row blocks, and emitted 1,024 DM
+commands with zero source drops or buffer starvations at 474 Hz and 2,000 µs
+readout. Its command trajectory differed from the complete-frame numerical
+reference by at most 3.73 × 10⁻⁸ µm. The raw run is
+`/home/dgamroth/.cache/copper-row-remediation-rust-1024f-20260928/`;
+its WFS table and packet capture are gzip archived. Its terminal-packet-to-DM
+p50/p99 was 197/348 µs, close to the prior unmodified-core distribution.
+This finite replay qualifies exact delivery at that spacing, not dynamic
+reconfiguration or a worst-case deadline.
 
 Deterministic validation plan:
 
