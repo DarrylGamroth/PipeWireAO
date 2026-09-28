@@ -1502,7 +1502,8 @@ static int connect_filter(struct impl *impl)
 		params[index] = SPA_PTROFF(builder.b.data, offsets[index],
 				const struct spa_pod);
 	res = pw_filter_connect(impl->filter, PW_FILTER_FLAG_RT_PROCESS |
-			(impl->run_control ? PW_FILTER_FLAG_INACTIVE : 0),
+			(impl->run_control ? PW_FILTER_FLAG_INACTIVE : 0) |
+			(impl->fifo_inputs ? PW_FILTER_FLAG_OUTPUT_RETURN_RETRY : 0),
 			params, n_params);
 done:
 	free(params);
