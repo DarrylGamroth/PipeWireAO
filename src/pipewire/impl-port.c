@@ -6,6 +6,10 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <float.h>
+#include <stdatomic.h>
+#include <stdio.h>
+#include <time.h>
+#include <unistd.h>
 
 #include <spa/pod/parser.h>
 #include <spa/param/audio/format-utils.h>
@@ -28,9 +32,85 @@
 PW_LOG_TOPIC_EXTERN(log_port);
 #define PW_LOG_TOPIC_DEFAULT log_port
 
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+
+#define PORT_HANDOFF_TRACE_CAPACITY 32768u
+
+struct port_handoff_record {
+	uint64_t monotonic_ns;
+	uint32_t cycle;
+	uint32_t node_id;
+	uint32_t port_id;
+	uint32_t mix_port_id;
+	uint32_t io_buffer_id;
+	uint32_t mix_buffer_id;
+	int32_t io_status;
+	int32_t mix_status;
+	char event;
+	char direction;
+};
+
+struct port_handoff_trace {
+	struct port_handoff_record *records;
+	char *path;
+	uint32_t used;
+	uint32_t omitted;
+	bool initialized;
+};
+
+static _Atomic uint32_t next_port_handoff_trace_id;
+
+static void port_handoff_prefault(void *memory, size_t bytes)
+{
+	volatile unsigned char *pages = memory;
+	long page_size = sysconf(_SC_PAGESIZE);
+	size_t stride = page_size > 0 ? (size_t)page_size : 4096u;
+
+	for (size_t i = 0; i < bytes; i += stride)
+		pages[i] = 0;
+	if (bytes != 0)
+		pages[bytes - 1] = 0;
+}
+
+static int port_handoff_trace_init(struct port_handoff_trace *trace)
+{
+	const char *directory = getenv("PW_PORT_HANDOFF_TRACE_DIR");
+	size_t length, bytes;
+	uint32_t id;
+
+	if (directory == NULL || directory[0] == '\0')
+		return 0;
+	length = strlen(directory);
+	if (length > SIZE_MAX - 64u)
+		return -ENAMETOOLONG;
+	bytes = PORT_HANDOFF_TRACE_CAPACITY * sizeof(*trace->records);
+	trace->path = malloc(length + 64u);
+	trace->records = malloc(bytes);
+	if (trace->path == NULL || trace->records == NULL)
+		return -ENOMEM;
+	port_handoff_prefault(trace->records, bytes);
+	id = atomic_fetch_add_explicit(&next_port_handoff_trace_id, 1,
+			memory_order_relaxed);
+	snprintf(trace->path, length + 64u, "%s/port-handoff-%ld-%u.csv",
+			directory, (long)getpid(), id);
+	trace->initialized = true;
+	return 0;
+}
+
+static void port_handoff_trace_clear(struct port_handoff_trace *trace)
+{
+	free(trace->records);
+	free(trace->path);
+}
+
+#endif
+
 /** \cond */
 struct impl {
 	struct pw_impl_port this;
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+	struct port_handoff_trace handoff_trace;
+#endif
 	struct spa_node mix_node;	/**< mix node implementation */
 	struct spa_hook_list mix_hooks;
 
@@ -45,6 +125,82 @@ struct impl {
 
 	unsigned int cache_params:1;
 };
+
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+
+static void port_handoff_trace_add(struct impl *impl, char event,
+		const struct pw_impl_port_mix *mix, uint32_t cycle)
+{
+	struct port_handoff_trace *trace = &impl->handoff_trace;
+	const struct pw_impl_port *port = &impl->this;
+	const struct spa_io_buffers *io = &port->rt.io;
+	const struct spa_io_buffers *mio = mix->io[cycle];
+	struct timespec now;
+
+	if (!trace->initialized)
+		return;
+	if (trace->used == PORT_HANDOFF_TRACE_CAPACITY) {
+		trace->omitted++;
+		return;
+	}
+	if (clock_gettime(CLOCK_MONOTONIC, &now) < 0) {
+		trace->omitted++;
+		return;
+	}
+	trace->records[trace->used++] = (struct port_handoff_record) {
+		.monotonic_ns = (uint64_t)now.tv_sec * 1000000000u + now.tv_nsec,
+		.cycle = cycle,
+		.node_id = port->node != NULL ? port->node->info.id : UINT32_MAX,
+		.port_id = port->port_id,
+		.mix_port_id = mix->port.port_id,
+		.io_buffer_id = io->buffer_id,
+		.mix_buffer_id = mio->buffer_id,
+		.io_status = io->status,
+		.mix_status = mio->status,
+		.event = event,
+		.direction = port->direction == PW_DIRECTION_OUTPUT ? 'O' : 'I',
+	};
+}
+
+static void port_handoff_trace_dump(struct port_handoff_trace *trace)
+{
+	FILE *output;
+	uint32_t i;
+
+	if (!trace->initialized)
+		return;
+	output = fopen(trace->path, "w");
+	if (output == NULL) {
+		fprintf(stderr, "cannot write port handoff trace %s: %s\n",
+				trace->path, strerror(errno));
+		return;
+	}
+	fprintf(output, "# capacity=%u used=%u omitted=%u\n",
+			PORT_HANDOFF_TRACE_CAPACITY, trace->used, trace->omitted);
+	fputs("event,direction,monotonic_ns,cycle,node_id,port_id,mix_port_id,"
+			"io_buffer_id,io_status,mix_buffer_id,mix_status\n", output);
+	for (i = 0; i < trace->used; i++) {
+		const struct port_handoff_record *record = &trace->records[i];
+
+		fprintf(output, "%c,%c,%llu,%u,%u,%u,%u,%u,%d,%u,%d\n",
+			record->event, record->direction,
+			(unsigned long long)record->monotonic_ns,
+			record->cycle, record->node_id, record->port_id,
+			record->mix_port_id, record->io_buffer_id,
+			record->io_status, record->mix_buffer_id,
+			record->mix_status);
+	}
+	fclose(output);
+}
+
+#else
+
+#define port_handoff_trace_init(...) (0)
+#define port_handoff_trace_clear(...) do {} while (0)
+#define port_handoff_trace_add(...) do {} while (0)
+#define port_handoff_trace_dump(...) do {} while (0)
+
+#endif
 
 static const char * const global_keys[] = {
 	PW_KEY_OBJECT_PATH,
@@ -311,6 +467,7 @@ static int tee_process(void *object)
 	spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
 		pw_log_trace_fp("%p: port %d %p->%p id:%d", this,
 				mix->port.port_id, io, mix->io[cycle], mix->io[cycle]->buffer_id);
+		port_handoff_trace_add(impl, 'T', mix, cycle);
 		*mix->io[cycle] = *io;
 	}
 	io->status = SPA_STATUS_NEED_DATA;
@@ -340,6 +497,7 @@ static int tee_process_reliable(void *object)
 			if (mio->status != SPA_STATUS_HAVE_DATA &&
 			    !(mix->peer != NULL && mix->peer->row_transport &&
 			      mix->peer->row_borrowed)) {
+				port_handoff_trace_add(impl, 'T', mix, cycle);
 				io->buffer_id = mio->buffer_id;
 				io->status = SPA_STATUS_NEED_DATA;
 				mio->buffer_id = buffer_id;
@@ -350,6 +508,7 @@ static int tee_process_reliable(void *object)
 				}
 				break;
 			}
+			port_handoff_trace_add(impl, 'B', mix, cycle);
 		}
 	}
         return SPA_STATUS_HAVE_DATA | SPA_STATUS_NEED_DATA;
@@ -402,6 +561,7 @@ static int schedule_mix_input(void *object)
 		pw_log_trace_fp("%p: mix input %d %p->%p status:%d id:%d cycle:%d", this,
 				mix->port.port_id, mix->io[cycle], io,
 				mix->io[cycle]->status, mix->io[cycle]->buffer_id, cycle);
+		port_handoff_trace_add(impl, 'M', mix, cycle);
 		*io = *mix->io[cycle];
 		mix->io[cycle]->status = SPA_STATUS_NEED_DATA;
 		if (reliable)
@@ -1151,6 +1311,9 @@ struct pw_impl_port *pw_context_create_port(
 	impl = calloc(1, sizeof(struct impl) + user_data_size);
 	if (impl == NULL)
 		return NULL;
+	res = port_handoff_trace_init(&impl->handoff_trace);
+	if (res < 0)
+		goto error_no_mem;
 
 	spa_list_init(&impl->param_list);
 	spa_list_init(&impl->pending_list);
@@ -1227,6 +1390,7 @@ struct pw_impl_port *pw_context_create_port(
 
 error_no_mem:
 	pw_log_warn("%p: new failed", impl);
+	port_handoff_trace_clear(&impl->handoff_trace);
 	free(impl);
 	errno = -res;
 	return NULL;
@@ -1801,6 +1965,8 @@ void pw_impl_port_destroy(struct pw_impl_port *port)
 	pw_map_clear(&port->mix_port_map);
 
 	pw_properties_free(port->properties);
+	port_handoff_trace_dump(&impl->handoff_trace);
+	port_handoff_trace_clear(&impl->handoff_trace);
 
 	free(port);
 }

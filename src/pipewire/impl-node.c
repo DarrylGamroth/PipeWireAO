@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <time.h>
+#include <stdatomic.h>
 #include <malloc.h>
 #include <limits.h>
 
@@ -33,9 +34,38 @@ PW_LOG_TOPIC_EXTERN(log_node);
 
 #define MAX_COMMAND	(64*1024u)
 
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+
+#define NODE_READY_TRACE_CAPACITY 32768u
+
+struct node_ready_record {
+	uint64_t monotonic_ns;
+	uint64_t cycle;
+	uint32_t node_id;
+	uint32_t target_id;
+	int32_t status;
+	int32_t pending;
+	int32_t required;
+	char event;
+};
+
+struct node_ready_trace {
+	struct node_ready_record *records;
+	char *path;
+	uint32_t used;
+	uint32_t omitted;
+};
+
+static _Atomic uint32_t next_node_ready_trace_id;
+
+#endif
+
 /** \cond */
 struct impl {
 	struct pw_impl_node this;
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+	struct node_ready_trace ready_trace;
+#endif
 
 	enum pw_node_state pending_state;
 	uint32_t pending_id;
@@ -56,6 +86,105 @@ struct impl {
 	char *link_group;
 	char *sync_group;
 };
+
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+
+static int node_ready_trace_init(struct node_ready_trace *trace)
+{
+	const char *directory = getenv("PW_NODE_READY_TRACE_DIR");
+	size_t length, bytes, i, stride;
+	long page_size;
+
+	if (directory == NULL || directory[0] == '\0')
+		return 0;
+	length = strlen(directory);
+	if (length > SIZE_MAX - 64u)
+		return -ENAMETOOLONG;
+	bytes = NODE_READY_TRACE_CAPACITY * sizeof(*trace->records);
+	trace->path = malloc(length + 64u);
+	trace->records = malloc(bytes);
+	if (trace->path == NULL || trace->records == NULL)
+		return -ENOMEM;
+	page_size = sysconf(_SC_PAGESIZE);
+	stride = page_size > 0 ? (size_t)page_size : 4096u;
+	for (i = 0; i < bytes; i += stride)
+		((volatile unsigned char *)trace->records)[i] = 0;
+	((volatile unsigned char *)trace->records)[bytes - 1] = 0;
+	snprintf(trace->path, length + 64u, "%s/node-ready-%ld-%u.csv",
+			directory, (long)getpid(),
+			atomic_fetch_add_explicit(&next_node_ready_trace_id, 1,
+				memory_order_relaxed));
+	return 0;
+}
+
+static void node_ready_trace_add(struct pw_impl_node *node, char event,
+		uint32_t target_id, int32_t status, int32_t pending, int32_t required)
+{
+	struct impl *impl = SPA_CONTAINER_OF(node, struct impl, this);
+	struct node_ready_trace *trace = &impl->ready_trace;
+	struct timespec now;
+	struct pw_impl_node *driver;
+
+	if (trace->records == NULL)
+		return;
+	if (trace->used == NODE_READY_TRACE_CAPACITY ||
+	    clock_gettime(CLOCK_MONOTONIC, &now) < 0) {
+		trace->omitted++;
+		return;
+	}
+	driver = node->driver_node;
+	trace->records[trace->used++] = (struct node_ready_record) {
+		.monotonic_ns = (uint64_t)now.tv_sec * 1000000000u + now.tv_nsec,
+		.cycle = driver != NULL ? driver->rt.target.activation->position.clock.cycle : 0,
+		.node_id = node->info.id,
+		.target_id = target_id,
+		.status = status,
+		.pending = pending,
+		.required = required,
+		.event = event,
+	};
+}
+
+static void node_ready_trace_clear(struct node_ready_trace *trace)
+{
+	free(trace->records);
+	free(trace->path);
+}
+
+static void node_ready_trace_dump(struct pw_impl_node *node)
+{
+	struct impl *impl = SPA_CONTAINER_OF(node, struct impl, this);
+	struct node_ready_trace *trace = &impl->ready_trace;
+	FILE *output;
+	uint32_t i;
+
+	if (trace->records == NULL)
+		return;
+	output = fopen(trace->path, "w");
+	if (output == NULL)
+		return;
+	fprintf(output, "# node=%s id=%u capacity=%u used=%u omitted=%u\n",
+			node->name, node->info.id, NODE_READY_TRACE_CAPACITY,
+			trace->used, trace->omitted);
+	fputs("event,monotonic_ns,cycle,node_id,target_id,status,pending,required\n", output);
+	for (i = 0; i < trace->used; i++) {
+		const struct node_ready_record *r = &trace->records[i];
+		fprintf(output, "%c,%llu,%llu,%u,%u,%d,%d,%d\n", r->event,
+				(unsigned long long)r->monotonic_ns,
+				(unsigned long long)r->cycle, r->node_id,
+				r->target_id, r->status, r->pending, r->required);
+	}
+	fclose(output);
+}
+
+#else
+
+#define node_ready_trace_init(...) (0)
+#define node_ready_trace_add(...) do {} while (0)
+#define node_ready_trace_clear(...) do {} while (0)
+#define node_ready_trace_dump(...) do {} while (0)
+
+#endif
 
 static const char * const global_keys[] = {
 	PW_KEY_OBJECT_PATH,
@@ -1781,6 +1910,9 @@ static inline int process_node(void *data, uint64_t nsec)
 				PW_NODE_ACTIVATION_TRIGGERED,
 				PW_NODE_ACTIVATION_AWAKE))
 		return 0;
+	node_ready_trace_add(this, 'P', SPA_ID_INVALID,
+			PW_NODE_ACTIVATION_AWAKE, a->state[0].pending,
+			a->state[0].required);
 
 	a->awake_time = nsec;
 	pw_log_trace_fp("%p: %s-%d process remote:%u exported:%u %"PRIu64" %"PRIu64,
@@ -1848,6 +1980,9 @@ static inline int process_node(void *data, uint64_t nsec)
 				PW_NODE_ACTIVATION_AWAKE,
 				PW_NODE_ACTIVATION_FINISHED);
 	a->finish_time = nsec;
+	node_ready_trace_add(this, 'F', SPA_ID_INVALID,
+			SPA_ATOMIC_LOAD(a->status), a->state[0].pending,
+			a->state[0].required);
 
 	pw_log_trace_fp("%p: finished status:%d %"PRIu64" was_awake:%d",
 			this, status, nsec, was_awake);
@@ -2024,6 +2159,8 @@ struct pw_impl_node *pw_context_create_node(struct pw_context *context,
 	}
 	this->source.fd = -1;
 	this->poll_error_source.fd = -1;
+	if ((res = node_ready_trace_init(&impl->ready_trace)) < 0)
+		goto error_clean;
 	if (properties == NULL)
 		properties = pw_properties_new(NULL, NULL);
 	if (properties == NULL) {
@@ -2121,6 +2258,7 @@ struct pw_impl_node *pw_context_create_node(struct pw_context *context,
 	return this;
 
 error_clean:
+	node_ready_trace_clear(&impl->ready_trace);
 	if (this->activation)
 		pw_memblock_unref(this->activation);
 	if (this->source.fd != -1)
@@ -2532,6 +2670,8 @@ static int node_ready(void *data, int status)
 			return -EBUSY;
 	}
 	node->rt.reliable_retry_dispatched = false;
+	node_ready_trace_add(node, 'R', SPA_ID_INVALID,
+			SPA_ATOMIC_LOAD(a->status), state->pending, state->required);
 	nsec = get_time_ns(data_system);
 
 	while (true) {
@@ -2573,6 +2713,8 @@ again:
 
 		ta->driver_id = driver->info.id;
 retry_status:
+		node_ready_trace_add(node, 'S', id, SPA_ATOMIC_LOAD(ta->status),
+				ta->state[0].pending, ta->state[0].required);
 		pw_node_activation_state_reset(&ta->state[0]);
 
 		if (ta->active_driver_id != ta->driver_id) {
@@ -2656,6 +2798,8 @@ retry_status:
 
 	/* now signal all the nodes we drive */
 	trigger_targets(node, status, nsec);
+	node_ready_trace_add(node, 'E', SPA_ID_INVALID,
+			SPA_ATOMIC_LOAD(a->status), state->pending, state->required);
 	return 0;
 }
 
@@ -2934,6 +3078,7 @@ void pw_impl_node_destroy(struct pw_impl_node *node)
 	pw_properties_free(node->properties);
 	spa_clear_ptr(impl->pending_request_process, free);
 
+	node_ready_trace_dump(node);
 	clear_info(node);
 
 	spa_system_close(node->rt.target.system, node->source.fd);
@@ -2941,6 +3086,7 @@ void pw_impl_node_destroy(struct pw_impl_node *node)
 	if (node->data_loop)
 		pw_context_release_loop(context, node->data_loop);
 
+	node_ready_trace_clear(&impl->ready_trace);
 	free(impl->group);
 	free(impl->link_group);
 	free(impl->sync_group);
