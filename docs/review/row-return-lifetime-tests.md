@@ -31,8 +31,34 @@ The test was compiled at `-O0` against the matching
 library. The Meson targets are `pw-test-row-return-mix-removal` and
 `pw-test-row-return-io-replacement`.
 
-These probes use actual PipeWire data-loop threads and the production publisher,
-release, and IO replacement methods. The driver loop is running but does not
-execute a driver scan. The fixture does not construct a full link or exported
-client transaction. Link destruction, Format, buffer replacement, input-port
-addition, and exported detach acknowledgment remain to be exercised.
+## Driver scan of an unrelated target port
+
+`pw-test-row-return-driver-lifetime` runs the production
+`driver_has_borrowed_row()` on a PipeWire driver data loop. The target has a
+row input and an unrelated input; a source output mix remains active for the
+row input. The iterator hook pauses the driver immediately after it selects
+the unrelated input. A control thread calls the production
+`pw_impl_port_remove()` for that input. That routine excludes the target's
+data loop, then removes the control-list entry. The port storage is retained
+until the driver completes.
+
+On the same baseline, at both `-O0` and `-O2`, removal completes while the
+driver remains paused:
+
+```text
+'!removed_while_selected' failed at src/tests/test-row-return-driver-lifetime.c:159 main()
+Exit status: 134
+```
+
+The test also accepts a driver implementation that scans only its own active
+output mixes: in that case the unrelated target port is not selected by the
+driver and removal is allowed after the scan completes. This probe covers
+the borrowed-row scan; it does not run `flush_reliable_input_returns()` or
+destroy a link.
+
+The consumer probes use actual PipeWire data-loop threads and the production
+publisher, release, and IO replacement methods. Their driver loop is running
+but does not execute a driver scan. None of these fixtures constructs a full
+link or exported client transaction. Link destruction, Format, buffer
+replacement, input-port addition, and exported detach acknowledgment remain
+to be exercised.

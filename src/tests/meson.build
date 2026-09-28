@@ -77,6 +77,21 @@ test('pw-test-row-return-io-replacement', row_return_lifetime,
   depends : [spa_support_lib],
   env : ['PIPEWIREAO_SPA_PLUGIN_DIR=@0@'.format(spa_dep.get_variable('plugindir'))])
 
+row_return_driver_port = static_library('pw-test-row-return-driver-port',
+  'test-row-return-driver-port.c',
+  dependencies : [pipewire_dep],
+  include_directories : [includes_inc],
+  c_args : ['-ffunction-sections', '-fdata-sections'])
+test('pw-test-row-return-driver-lifetime',
+  executable('pw-test-row-return-driver-lifetime',
+    'test-row-return-driver-lifetime.c',
+    link_with : row_return_driver_port,
+    dependencies : [pipewire_dep, pthread_lib],
+    include_directories : [includes_inc],
+    c_args : ['-ffunction-sections', '-fdata-sections', '-fwhole-program'],
+    link_args : ['-Wl,--gc-sections']),
+  depends : [spa_support_lib])
+
 polling_remote_client = executable(
   'pw-test-polling-remote-client',
   'test-polling-remote-client.c',
