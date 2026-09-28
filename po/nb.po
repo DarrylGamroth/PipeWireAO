@@ -1,35 +1,25 @@
-# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
-# This file is distributed under the same license as the PACKAGE package.
-# Karl Ove Hufthammer <karl@huftis.org>, 2017.
-# Nicolai Syvertsen <saivert@saivert.com> 2021.
+# Norwegian Bokmål translation for PipeWire.
+# Copyright (C) 2026 PipeWire's COPYRIGHT HOLDER
+# This file is distributed under the same license as the PipeWire package.
 # Roy-Magne Mo <rmo@sunnmore.net>, 2026.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: \n"
+"Project-Id-Version: pipewire\n"
 "Report-Msgid-Bugs-To: https://gitlab.freedesktop.org/pipewire/pipewire/-/"
 "issues\n"
 "POT-Creation-Date: 2026-06-24 16:59+0000\n"
-"PO-Revision-Date: 2026-09-23 20:00+0200\n"
+"PO-Revision-Date: 2026-09-23 21:00+0200\n"
 "Last-Translator: Roy-Magne Mo <rmo@sunnmore.net>\n"
-"Language-Team: Norwegian Nynorsk <https://translate.fedoraproject.org/"
-"projects/pipewire/pipewire/nn/>\n"
-"Language: nn\n"
+"Language-Team: Norwegian Bokmål <i18n-nb@lister.ping.uio.no>\n"
+"Language: nb\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 4.4.2\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 #: src/daemon/pipewire.c:29
 #, c-format
-#| msgid ""
-#| "%s [options] [command]\n"
-#| "  -h, --help                            Show this help\n"
-#| "      --version                         Show version\n"
-#| "  -d, --daemon                          Start as daemon (Default false)\n"
-#| "  -r, --remote                          Remote daemon name\n"
-#| "\n"
 msgid ""
 "%s [options]\n"
 "  -h, --help                            Show this help\n"
@@ -38,20 +28,20 @@ msgid ""
 "  -c, --config                          Load config (Default %s)\n"
 "  -P  --properties                      Set context properties\n"
 msgstr ""
-"%s [val]\n"
+"%s [valg]\n"
 "  -h, --help                            Vis denne hjelpeteksten\n"
-"  -v, --verbose                         Auk detaljnivået med eitt steg\n"
+"  -v, --verbose                         Øk detaljnivået med ett trinn\n"
 "      --version                         Vis versjonen\n"
 "  -c, --config                          Last inn oppsett (standard %s)\n"
-"  -P  --properties                      Set kontekst-eigenskapar\n"
+"  -P  --properties                      Sett kontekstegenskaper\n"
 
 #: src/daemon/pipewire.desktop.in:3
 msgid "PipeWire Media System"
-msgstr "PipeWire mediasystem"
+msgstr "PipeWire-mediesystem"
 
 #: src/daemon/pipewire.desktop.in:4
 msgid "Start the PipeWire Media System"
-msgstr "Start opp PipeWire mediasystem"
+msgstr "Start PipeWire-mediesystemet"
 
 #: src/modules/module-protocol-pulse/modules/module-tunnel-sink.c:164
 #: src/modules/module-protocol-pulse/modules/module-tunnel-source.c:164
@@ -60,9 +50,8 @@ msgid "Tunnel to %s%s%s"
 msgstr "Tunnel til %s%s%s"
 
 #: src/modules/module-fallback-sink.c:40
-#| msgid "Game Output"
 msgid "Dummy Output"
-msgstr "Dummy-utlyd"
+msgstr "Dummy-utgang"
 
 #: src/modules/module-pulse-tunnel.c:761
 #, c-format
@@ -71,7 +60,7 @@ msgstr "Tunnel for %s@%s"
 
 #: src/modules/module-zeroconf-discover.c:309
 msgid "Unknown device"
-msgstr "Ukjend eining"
+msgstr "Ukjent enhet"
 
 #: src/modules/module-zeroconf-discover.c:321
 #, c-format
@@ -86,17 +75,17 @@ msgstr "%s på %s"
 #: src/tools/pw-cat.c:270
 #, c-format
 msgid "Supported formats:\n"
-msgstr "Støtta format:\n"
+msgstr "Støttede formater:\n"
 
 #: src/tools/pw-cat.c:755
 #, c-format
 msgid "Supported channel layouts:\n"
-msgstr "Støtta kanaloppsett:\n"
+msgstr "Støttede kanaloppsett:\n"
 
 #: src/tools/pw-cat.c:765
 #, c-format
 msgid "Supported channel layout aliases:\n"
-msgstr "Støtta kanaloppsett-alias:\n"
+msgstr "Støttede alias for kanaloppsett:\n"
 
 #: src/tools/pw-cat.c:767
 #, c-format
@@ -106,16 +95,10 @@ msgstr "    %s -> %s\n"
 #: src/tools/pw-cat.c:772
 #, c-format
 msgid "Supported channel names:\n"
-msgstr "Støtta kanalnamn:\n"
+msgstr "Støttede kanalnavn:\n"
 
 #: src/tools/pw-cat.c:1184
 #, c-format
-#| msgid ""
-#| "%s [options] <file>\n"
-#| "  -h, --help                            Show this help\n"
-#| "      --version                         Show version\n"
-#| "  -v, --verbose                         Enable verbose operations\n"
-#| "\n"
 msgid ""
 "%s [options] [<file>|-]\n"
 "  -h, --help                            Show this help\n"
@@ -123,7 +106,7 @@ msgid ""
 "  -v, --verbose                         Enable verbose operations\n"
 "\n"
 msgstr ""
-"%s [val] [<fil>|-]\n"
+"%s [valg] [<fil>|-]\n"
 "  -h, --help                            Vis denne hjelpeteksten\n"
 "      --version                         Vis versjonen\n"
 "  -v, --verbose                         Slå på detaljert utdata\n"
@@ -131,21 +114,6 @@ msgstr ""
 
 #: src/tools/pw-cat.c:1191
 #, c-format
-#| msgid ""
-#| "  -R, --remote                          Remote daemon name\n"
-#| "      --media-type                      Set media type (default %s)\n"
-#| "      --media-category                  Set media category (default %s)\n"
-#| "      --media-role                      Set media role (default %s)\n"
-#| "      --target                          Set node target (default %s)\n"
-#| "                                          0 means don't link\n"
-#| "      --latency                         Set node latency (default %s)\n"
-#| "                                          Xunit (unit = s, ms, us, ns)\n"
-#| "                                          or direct samples (256)\n"
-#| "                                          the rate is the one of the "
-#| "source file\n"
-#| "      --list-targets                    List available targets for --"
-#| "target\n"
-#| "\n"
 msgid ""
 "  -R, --remote                          Remote daemon name\n"
 "      --media-type                      Set media type (default %s)\n"
@@ -164,39 +132,22 @@ msgid ""
 "  -P  --properties                      Set node properties\n"
 "\n"
 msgstr ""
-"  -R, --remote                          Namn på fjerntenesta\n"
-"      --media-type                      Set medietype (standard %s)\n"
-"      --media-category                  Set mediekategori (standard %s)\n"
-"      --media-role                      Set medierolle (standard %s)\n"
-"      --target                          Set serienummer eller namn på målnoden (standard %s)\n"
-"                                          0 tyder: ikkje kople\n"
-"  -C  --monitor                         Ta opp monitorportar (i opptaksmodus)\n"
-"      --latency                         Set latens for noden (standard %s)\n"
-"                                          Xunit (eining = s, ms, us, ns)\n"
-"                                          eller samplar direkte (256)\n"
-"                                          raten er den same som i kjeldefila\n"
-"  -P  --properties                      Set nodeeigenskapar\n"
+"  -R, --remote                          Navn på fjerntjenesten\n"
+"      --media-type                      Sett medietype (standard %s)\n"
+"      --media-category                  Sett mediekategori (standard %s)\n"
+"      --media-role                      Sett medierolle (standard %s)\n"
+"      --target                          Sett serienummer eller navn på målnoden (standard %s)\n"
+"                                          0 betyr: ikke koble\n"
+"  -C  --monitor                         Ta opp monitorporter (i opptaksmodus)\n"
+"      --latency                         Sett latens for noden (standard %s)\n"
+"                                          Xunit (enhet = s, ms, us, ns)\n"
+"                                          eller sampler direkte (256)\n"
+"                                          raten er den samme som i kildefilen\n"
+"  -P  --properties                      Sett nodeegenskaper\n"
 "\n"
 
 #: src/tools/pw-cat.c:1210
 #, c-format
-#| msgid ""
-#| "      --rate                            Sample rate (req. for rec) "
-#| "(default %u)\n"
-#| "      --channels                        Number of channels (req. for rec) "
-#| "(default %u)\n"
-#| "      --channel-map                     Channel map\n"
-#| "                                            one of: \"stereo\", "
-#| "\"surround-51\",... or\n"
-#| "                                            comma separated list of "
-#| "channel names: eg. \"FL,FR\"\n"
-#| "      --format                          Sample format %s (req. for rec) "
-#| "(default %s)\n"
-#| "      --volume                          Stream volume 0-1.0 (default "
-#| "%.3f)\n"
-#| "  -q  --quality                         Resampler quality (0 - 15) "
-#| "(default %d)\n"
-#| "\n"
 msgid ""
 "      --rate                            Sample rate (default %u)\n"
 "      --channels                        Number of channels (default %u)\n"
@@ -222,29 +173,24 @@ msgid ""
 "\n"
 msgstr ""
 "      --rate                            Samplerate (standard %u)\n"
-"      --channels                        Tal på kanalar (standard %u)\n"
+"      --channels                        Antall kanaler (standard %u)\n"
 "      --channel-map                     Kanalkart\n"
-"                                            eit kanaloppsett: \"Stereo\", \"5.1\",... eller\n"
-"                                            kommaseparert liste med kanalnamn: t.d. \"FL,FR\"\n"
-"      --list-layouts                    List opp støtta kanaloppsett\n"
-"      --list-channel-names              List opp støtta kanalkart\n"
+"                                            et kanaloppsett: \"Stereo\", \"5.1\",... eller\n"
+"                                            kommaseparert liste med kanalnavn: f.eks. \"FL,FR\"\n"
+"      --list-layouts                    List opp støttede kanaloppsett\n"
+"      --list-channel-names              List opp støttede kanalkart\n"
 "      --format                          Sampleformat (standard %s)\n"
-"      --list-formats                    List opp støtta sampleformat\n"
-"      --container                       Konteinarformat\n"
-"      --list-containers                 List opp støtta konteinarar og filendingar\n"
-"      --volume                          Straumvolum 0-1.0 (standard %.3f)\n"
+"      --list-formats                    List opp støttede sampleformater\n"
+"      --container                       Containerformat\n"
+"      --list-containers                 List opp støttede containere og filendelser\n"
+"      --volume                          Strømvolum 0-1.0 (standard %.3f)\n"
 "  -q  --quality                         Kvalitet for omsampling (0 - 15) (standard %d)\n"
 "  -a, --raw                             RAW-modus\n"
-"  -M, --force-midi                      Tving midi-format, ein av \"none\", \"midi\" eller \"ump\" (standard none)\n"
-"  -n, --sample-count COUNT              Stopp etter COUNT samplar\n"
+"  -M, --force-midi                      Tving midi-format, en av \"none\", \"midi\" eller \"ump\" (standard none)\n"
+"  -n, --sample-count COUNT              Stopp etter COUNT sampler\n"
 "\n"
 
 #: src/tools/pw-cat.c:1235
-#| msgid ""
-#| "  -p, --playback                        Playback mode\n"
-#| "  -r, --record                          Recording mode\n"
-#| "  -m, --midi                            Midi mode\n"
-#| "\n"
 msgid ""
 "  -p, --playback                        Playback mode\n"
 "  -r, --record                          Recording mode\n"
@@ -255,11 +201,11 @@ msgid ""
 "  -c, --midi-clip                       MIDI clip mode\n"
 "\n"
 msgstr ""
-"  -p, --playback                        Avspelingsmodus\n"
+"  -p, --playback                        Avspillingsmodus\n"
 "  -r, --record                          Opptaksmodus\n"
 "  -m, --midi                            MIDI-modus\n"
 "  -d, --dsd                             DSD-modus\n"
-"  -o, --encoded                         Koda modus\n"
+"  -o, --encoded                         Kodet modus\n"
 "  -s, --sysex                           SysEx-modus\n"
 "  -c, --midi-clip                       MIDI-klipp-modus\n"
 "\n"
@@ -267,17 +213,10 @@ msgstr ""
 #: src/tools/pw-cat.c:1870
 #, c-format
 msgid "Supported containers and extensions:\n"
-msgstr "Støtta konteinarar og utvidingar:\n"
+msgstr "Støttede containere og filendelser:\n"
 
 #: src/tools/pw-cli.c:2403
 #, c-format
-#| msgid ""
-#| "%s [options] [command]\n"
-#| "  -h, --help                            Show this help\n"
-#| "      --version                         Show version\n"
-#| "  -d, --daemon                          Start as daemon (Default false)\n"
-#| "  -r, --remote                          Remote daemon name\n"
-#| "\n"
 msgid ""
 "%s [options] [command]\n"
 "  -h, --help                            Show this help\n"
@@ -287,17 +226,17 @@ msgid ""
 "  -m, --monitor                         Monitor activity\n"
 "\n"
 msgstr ""
-"%s [val] [kommando]\n"
+"%s [valg] [kommando]\n"
 "  -h, --help                            Vis denne hjelpeteksten\n"
 "      --version                         Vis versjonen\n"
-"  -d, --daemon                          Start som teneste (standard false)\n"
-"  -r, --remote                          Namn på fjerntenesta\n"
-"  -m, --monitor                         Overvak aktivitet\n"
+"  -d, --daemon                          Start som tjeneste (standard false)\n"
+"  -r, --remote                          Navn på fjerntjenesten\n"
+"  -m, --monitor                         Overvåk aktivitet\n"
 "\n"
 
 #: spa/plugins/alsa/acp/acp.c:363
 msgid "Pro Audio"
-msgstr "Profflyd"
+msgstr "Profesjonell lyd"
 
 #: spa/plugins/alsa/acp/acp.c:538 spa/plugins/alsa/acp/alsa-mixer.c:4700
 #: spa/plugins/bluez5/bluez5-device.c:2163
@@ -311,11 +250,11 @@ msgstr "%s [ALSA UCM-feil]"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2722
 msgid "Input"
-msgstr "Lyd inn"
+msgstr "Inngang"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2723
 msgid "Docking Station Input"
-msgstr "Lyd inn frå dokkingstasjon"
+msgstr "Inngang på dokkingstasjon"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2724
 msgid "Docking Station Microphone"
@@ -344,7 +283,7 @@ msgstr "Frontmikrofon"
 #: spa/plugins/alsa/acp/alsa-mixer.c:2729
 #: spa/plugins/alsa/acp/alsa-mixer.c:2813
 msgid "Rear Microphone"
-msgstr "Bakmikrofon"
+msgstr "Bakre mikrofon"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2730
 msgid "External Microphone"
@@ -367,40 +306,40 @@ msgstr "Video"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2734
 msgid "Automatic Gain Control"
-msgstr "Automatisk lydnivåstyring (AGC)"
+msgstr "Automatisk forsterkningskontroll"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2735
 msgid "No Automatic Gain Control"
-msgstr "Inga automatisk lydnivåstyring (AGC)"
+msgstr "Ingen automatisk forsterkningskontroll"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2736
 msgid "Boost"
-msgstr "Lydforsterking"
+msgstr "Forsterkning"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2737
 msgid "No Boost"
-msgstr "Inga lydforsterking"
+msgstr "Ingen forsterkning"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2738
 msgid "Amplifier"
-msgstr "Forsterkar"
+msgstr "Forsterker"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2739
 msgid "No Amplifier"
-msgstr "Ingen forsterkar"
+msgstr "Ingen forsterker"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2740
 msgid "Bass Boost"
-msgstr "Bassforsterking"
+msgstr "Bassforsterkning"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2741
 msgid "No Bass Boost"
-msgstr "Inga bassforsterking"
+msgstr "Ingen bassforsterkning"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2742
 #: spa/plugins/bluez5/bluez5-device.c:2602
 msgid "Speaker"
-msgstr "Høgtalar"
+msgstr "Høyttaler"
 
 #. Don't call it "headset", the HF one has the mic
 #: spa/plugins/alsa/acp/alsa-mixer.c:2743
@@ -408,31 +347,31 @@ msgstr "Høgtalar"
 #: spa/plugins/bluez5/bluez5-device.c:2608
 #: spa/plugins/bluez5/bluez5-device.c:2675
 msgid "Headphones"
-msgstr "Hovudtelefonar"
+msgstr "Hodetelefoner"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2810
 msgid "Analog Input"
-msgstr "Analog innlyd"
+msgstr "Analog inngang"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2814
 msgid "Dock Microphone"
-msgstr "Mikrofon på dokkingstasjon"
+msgstr "Mikrofon på dokk"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2816
 msgid "Headset Microphone"
-msgstr "Mikrofon på hovudsett"
+msgstr "Mikrofon på hodesett"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2820
 msgid "Analog Output"
-msgstr "Analog utlyd"
+msgstr "Analog utgang"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2822
 msgid "Headphones 2"
-msgstr "Hovudtelefonar 2"
+msgstr "Hodetelefoner 2"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2823
 msgid "Headphones Mono Output"
-msgstr "Hovudtelefonar monolyd"
+msgstr "Mono-utgang for hodetelefoner"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2824
 msgid "Line Out"
@@ -440,48 +379,48 @@ msgstr "Linje ut"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2825
 msgid "Analog Mono Output"
-msgstr "Analog mono-utlyd"
+msgstr "Analog mono-utgang"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2826
 msgid "Speakers"
-msgstr "Høgtalarar"
+msgstr "Høyttalere"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2827
 msgid "HDMI / DisplayPort"
-msgstr "HDMI/DisplayPort"
+msgstr "HDMI / DisplayPort"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2828
 msgid "Digital Output (S/PDIF)"
-msgstr "Digital utlyd (S/PDIF)"
+msgstr "Digital utgang (S/PDIF)"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2829
 msgid "Digital Input (S/PDIF)"
-msgstr "Digital innlyd (S/PDIF)"
+msgstr "Digital inngang (S/PDIF)"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2830
 msgid "Multichannel Input"
-msgstr "Multikanals innlyd"
+msgstr "Flerkanalsinngang"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2831
 msgid "Multichannel Output"
-msgstr "Multikanals utlyd"
+msgstr "Flerkanalsutgang"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2832
 msgid "Game Output"
-msgstr "Spellyd"
+msgstr "Spillutgang"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2833
 #: spa/plugins/alsa/acp/alsa-mixer.c:2834
 msgid "Chat Output"
-msgstr "Nettprat utlyd"
+msgstr "Samtaleutgang"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2835
 msgid "Chat Input"
-msgstr "Nettprat innlyd"
+msgstr "Samtaleinngang"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:2836
 msgid "Virtual Surround 7.1"
-msgstr "Virtuell kringlyd 7.1"
+msgstr "Virtuell kringlyd 7.1"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:4523
 msgid "Analog Mono"
@@ -493,7 +432,7 @@ msgstr "Analog mono (venstre)"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:4525
 msgid "Analog Mono (Right)"
-msgstr "Analog mono (høgre)"
+msgstr "Analog mono (høyre)"
 
 #. Note: Not translated to "Analog Stereo Input", because the source
 #. * name gets "Input" appended to it automatically, so adding "Input"
@@ -518,17 +457,17 @@ msgstr "Stereo"
 #: spa/plugins/alsa/acp/alsa-mixer.c:4694
 #: spa/plugins/bluez5/bluez5-device.c:2584
 msgid "Headset"
-msgstr "Hovudsett"
+msgstr "Hodesett"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:4537
 #: spa/plugins/alsa/acp/alsa-mixer.c:4695
 msgid "Speakerphone"
-msgstr "Høgtalartelefon"
+msgstr "Høyttalertelefon"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:4538
 #: spa/plugins/alsa/acp/alsa-mixer.c:4539
 msgid "Multichannel"
-msgstr "Multikanals"
+msgstr "Flerkanal"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:4540
 msgid "Analog Surround 2.1"
@@ -600,11 +539,11 @@ msgstr "Digital kringlyd 5.1 (HDMI)"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:4557
 msgid "Chat"
-msgstr "Nettprat"
+msgstr "Samtale"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:4558
 msgid "Game"
-msgstr "Spel"
+msgstr "Spill"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:4692
 msgid "Analog Mono Duplex"
@@ -616,11 +555,11 @@ msgstr "Analog stereo dupleks"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:4696
 msgid "Digital Stereo Duplex (IEC958)"
-msgstr "Digital stereo duplex (IEC958)"
+msgstr "Digital stereo dupleks (IEC958)"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:4697
 msgid "Multichannel Duplex"
-msgstr "Multikanals dupleks"
+msgstr "Flerkanal dupleks"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:4698
 msgid "Stereo Duplex"
@@ -628,17 +567,17 @@ msgstr "Stereo dupleks"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:4699
 msgid "Mono Chat + 7.1 Surround"
-msgstr "Mono-nettprat + 7.1-kringlyd"
+msgstr "Mono-samtale + 7.1-kringlyd"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:4800
 #, c-format
 msgid "%s Output"
-msgstr "%s utlyd"
+msgstr "%s-utgang"
 
 #: spa/plugins/alsa/acp/alsa-mixer.c:4808
 #, c-format
 msgid "%s Input"
-msgstr "%s innlyd"
+msgstr "%s-inngang"
 
 #: spa/plugins/alsa/acp/alsa-util.c:1233 spa/plugins/alsa/acp/alsa-util.c:1327
 #, c-format
@@ -653,13 +592,11 @@ msgid_plural ""
 "Most likely this is a bug in the ALSA driver '%s'. Please report this issue "
 "to the ALSA developers."
 msgstr[0] ""
-"snd_pcm_avail() gav ein verdi som er uvanleg stor: %lu byte (%lu ms).\n"
-"Dette kjem truleg av ein feil i ALSA-drivaren «%s». Meld frå om problemet "
-"til ALSA-utviklarane."
+"snd_pcm_avail() returnerte en eksepsjonelt stor verdi: %lu byte (%lu ms).\n"
+"Sannsynligvis er dette en feil i ALSA-driveren '%s'. Vennligst rapporter dette problemet til ALSA-utviklerne."
 msgstr[1] ""
-"snd_pcm_avail() gav ein verdi som er uvanleg stor: %lu byte (%lu ms).\n"
-"Dette kjem truleg av ein feil i ALSA-drivaren «%s». Meld frå om problemet "
-"til ALSA-utviklarane."
+"snd_pcm_avail() returnerte en unormalt stor verdi: %lu bytes (%lu ms).\n"
+"Sannsynligvis er dette en feil i ALSA-driveren «%s». Vennligst rapporter dette til ALSA-utviklerne."
 
 #: spa/plugins/alsa/acp/alsa-util.c:1299
 #, c-format
@@ -674,13 +611,11 @@ msgid_plural ""
 "Most likely this is a bug in the ALSA driver '%s'. Please report this issue "
 "to the ALSA developers."
 msgstr[0] ""
-"snd_pcm_delay() gav ein verdi som er uvanleg stor: %li byte (%s%lu ms).\n"
-"Dette kjem truleg av ein feil i ALSA-drivaren «%s». Meld frå om problemet "
-"til ALSA-utviklarane."
+"snd_pcm_delay() returnerte en eksepsjonelt stor verdi: %li byte (%s%lu ms).\n"
+"Sannsynligvis er dette en feil i ALSA-driveren '%s'. Vennligst rapporter dette til ALSA-utviklerne."
 msgstr[1] ""
-"snd_pcm_delay() gav ein verdi som er uvanleg stor: %li byte (%s%lu ms).\n"
-"Dette kjem truleg av ein feil i ALSA-drivaren «%s». Meld frå om problemet "
-"til ALSA-utviklarane."
+"snd_pcm_delay() returnerte en eksepsjonelt stor verdi: %li bytes (%s%lu ms).\n"
+"Sannsynligvis er dette en feil i ALSA-driveren '%s'. Rapporter gjerne denne feilen til ALSA-utviklerne."
 
 #: spa/plugins/alsa/acp/alsa-util.c:1346
 #, c-format
@@ -690,10 +625,8 @@ msgid ""
 "Most likely this is a bug in the ALSA driver '%s'. Please report this issue "
 "to the ALSA developers."
 msgstr ""
-"snd_pcm_avail_delay() gav ein merkeleg verdi: delay %lu er mindre enn "
-"avail %lu.\n"
-"Dette kjem truleg av ein feil i ALSA-drivaren «%s». Meld frå om problemet "
-"til ALSA-utviklarane."
+"snd_pcm_avail_delay() returnerte merkelige verdier: forsinkelse %lu er mindre enn tilgjengelig %lu.\n"
+"Sannsynligvis er dette en feil i ALSA-driveren '%s'. Vennligst rapporter dette til ALSA-utviklerne."
 
 #: spa/plugins/alsa/acp/alsa-util.c:1389
 #, c-format
@@ -708,13 +641,11 @@ msgid_plural ""
 "Most likely this is a bug in the ALSA driver '%s'. Please report this issue "
 "to the ALSA developers."
 msgstr[0] ""
-"snd_pcm_mmap_begin() gav ein verdi som er uvanleg stor: %lu byte (%lu ms).\n"
-"Dette kjem truleg av ein feil i ALSA-drivaren «%s». Meld frå om problemet "
-"til ALSA-utviklarane."
+"snd_pcm_mmap_begin() returnerte en eksepsjonelt stor verdi: %lu byte (%lu ms).\n"
+"Sannsynligvis er dette en feil i ALSA-driveren «%s». Vennligst rapporter problemet til ALSA-utviklerne."
 msgstr[1] ""
-"snd_pcm_mmap_begin() gav ein verdi som er uvanleg stor: %lu byte (%lu ms).\n"
-"Dette kjem truleg av ein feil i ALSA-drivaren «%s». Meld frå om problemet "
-"til ALSA-utviklarane."
+"snd_pcm_mmap_begin() returnerte en eksepsjonelt stor verdi: %lu bytes (%lu ms).\n"
+"Sannsynligvis er dette en feil i ALSA-driveren '%s'. Vennligst rapporter dette problemet til ALSA-utviklerne."
 
 #: spa/plugins/alsa/acp/channelmap.h:460
 msgid "(invalid)"
@@ -730,75 +661,69 @@ msgstr "Modem"
 
 #: spa/plugins/bluez5/bluez5-device.c:2174
 msgid "Audio Gateway (A2DP Source & HSP/HFP AG)"
-msgstr "Inngangsport for lyd (A2DP-kjelde & HSP/HFP AG)"
+msgstr "Lydport (A2DP-kilde og HSP/HFP AG)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2203
 msgid "Audio Streaming for Hearing Aids (ASHA Sink)"
-msgstr "Lydstrøyming for høyreapparat (ASHA Sink)"
+msgstr "Lydstrømming for høreapparater (ASHA Sink)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2246
 #, c-format
 msgid "High Fidelity Playback (A2DP Sink, codec %s)"
-msgstr "Avspeling med naturtru lydattgjeving (A2DP Sink, codec %s)"
+msgstr "Avspilling med høy lydkvalitet (A2DP Sink, codec %s)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2249
 #, c-format
 msgid "High Fidelity Duplex (A2DP Source/Sink, codec %s)"
-msgstr "Tovegslyd med naturtru lydattgjeving (A2DP Source/Sink, codec %s)"
+msgstr "Toveis lyd med høy lydkvalitet (A2DP Source/Sink, codec %s)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2257
 msgid "High Fidelity Playback (A2DP Sink)"
-msgstr "Avspeling med naturtru lydattgjeving (A2DP Sink)"
+msgstr "Avspilling med høy lydkvalitet (A2DP Sink)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2259
 msgid "High Fidelity Duplex (A2DP Source/Sink)"
-msgstr "Tovegslyd med naturtru lydattgjeving (A2DP Source/Sink)"
+msgstr "Toveis lyd med høy lydkvalitet (A2DP Source/Sink)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2281
 msgid "Auto: Prefer Quality (A2DP)"
-msgstr "Auto: Føretrekk kvalitet (A2DP)"
+msgstr "Auto: Foretrekk kvalitet (A2DP)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2286
 msgid "Auto: Prefer Latency (A2DP)"
-msgstr "Auto: Føretrekk låg forseinking (A2DP)"
+msgstr "Auto: Foretrekk lav forsinkelse (A2DP)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2366
 #, c-format
-#| msgid "High Fidelity Playback (A2DP Sink, codec %s)"
 msgid "High Fidelity Playback (BAP Sink, codec %s)"
-msgstr "Avspeling med naturtru lydattgjeving (BAP Sink, codec %s)"
+msgstr "Avspilling med høy lydkvalitet (BAP Sink, codec %s)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2371
 #, c-format
-#| msgid "High Fidelity Duplex (A2DP Source/Sink, codec %s)"
 msgid "High Fidelity Input (BAP Source, codec %s)"
-msgstr "Innlyd med naturtru lydattgjeving (BAP Source, codec %s)"
+msgstr "Inngang med høy lydkvalitet (BAP Source, codec %s)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2375
 #, c-format
-#| msgid "High Fidelity Duplex (A2DP Source/Sink, codec %s)"
 msgid "High Fidelity Duplex (BAP Source/Sink, codec %s)"
-msgstr "Tovegslyd med naturtru lydattgjeving (BAP Source/Sink, codec %s)"
+msgstr "Toveis lyd med høy lydkvalitet (BAP Source/Sink, codec %s)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2384
-#| msgid "High Fidelity Playback (A2DP Sink)"
 msgid "High Fidelity Playback (BAP Sink)"
-msgstr "Avspeling med naturtru lydattgjeving (BAP Sink)"
+msgstr "Avspilling med høy lydkvalitet (BAP Sink)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2388
-#| msgid "High Fidelity Duplex (A2DP Source/Sink)"
 msgid "High Fidelity Input (BAP Source)"
-msgstr "Innlyd med naturtru lydattgjeving (BAP Source)"
+msgstr "Inngang med høy lydkvalitet (BAP Source)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2391
-#| msgid "High Fidelity Duplex (A2DP Source/Sink)"
 msgid "High Fidelity Duplex (BAP Source/Sink)"
-msgstr "Tovegslyd med naturtru lydattgjeving (BAP Source/Sink)"
+msgstr "Toveis lyd med høy lydkvalitet (BAP Source/Sink)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2431
 #, c-format
 msgid "Headset Head Unit (HSP/HFP, codec %s)"
-msgstr "Hovudsett (HSP/HFP, codec %s)"
+msgstr "Hodesett (HSP/HFP, codec %s)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2585
 #: spa/plugins/bluez5/bluez5-device.c:2590
@@ -810,16 +735,15 @@ msgstr "Hovudsett (HSP/HFP, codec %s)"
 #: spa/plugins/bluez5/bluez5-device.c:2627
 #: spa/plugins/bluez5/bluez5-device.c:2633
 msgid "Handsfree"
-msgstr "Handfri"
+msgstr "Håndfri"
 
 #: spa/plugins/bluez5/bluez5-device.c:2591
-#| msgid "Handsfree"
 msgid "Handsfree (HFP)"
-msgstr "Handfri (HFP)"
+msgstr "Håndfri (HFP)"
 
 #: spa/plugins/bluez5/bluez5-device.c:2614
 msgid "Portable"
-msgstr "Portabel"
+msgstr "Bærbar"
 
 #: spa/plugins/bluez5/bluez5-device.c:2620
 msgid "Car"
@@ -835,15 +759,8 @@ msgstr "Telefon"
 
 #: spa/plugins/bluez5/bluez5-device.c:2639
 msgid "Bluetooth"
-msgstr "Blåtann"
+msgstr "Bluetooth"
 
 #: spa/plugins/bluez5/bluez5-device.c:2640
-#| msgid "Handsfree"
 msgid "Bluetooth Handsfree"
-msgstr "Blåtann (handfri)"
-
-#~ msgid "Headset Head Unit (HSP/HFP)"
-#~ msgstr "Hodesett (HSP/HFP)"
-
-#~ msgid "Headphone"
-#~ msgstr "Hovudtelefonar"
+msgstr "Bluetooth håndfri"

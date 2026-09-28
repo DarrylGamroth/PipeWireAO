@@ -648,6 +648,7 @@ struct pw_node_activation {
 #define PW_NODE_ACTIVATION_FLAG_ASYNC		(1<<1)	/* the node is async */
 #define PW_NODE_ACTIVATION_FLAG_POLLING		(1<<2)	/* the activation owner polls status;
 							 * producers must not signal its eventfd */
+#define PW_NODE_ACTIVATION_FLAG_ROW_RETURN	(1<<3)	/* wake the driver after target completion */
 	uint32_t flags;					/* extra flags */
 	struct spa_io_position position;		/* contains current position and segment info.
 							 * extra info is updated by nodes that have set
@@ -946,6 +947,8 @@ struct pw_impl_node {
 	unsigned int lazy:1;		/**< the graph is lazy scheduling */
 	unsigned int exclusive:1;	/**< ports can only be linked once */
 	unsigned int reliable:1;	/**< ports need reliable tee */
+	unsigned int row_transport:1;	/**< exact row-block return contract */
+	unsigned int row_cycle_inflight:1;	/**< row driver has started a cycle */
 	unsigned int can_suspend:1;	/**< node can suspend */
 
 #define PASSIVE_MODE_FALSE		0
@@ -1006,6 +1009,10 @@ struct pw_impl_node {
 		struct spa_list driver_link;		/* our link in driver */
 
 		struct spa_ratelimit rate_limit;
+		struct spa_source *reliable_event;
+		uint32_t reliable_release_pending;
+		uint32_t reliable_retry_pending;
+		bool reliable_retry_dispatched;	/* driver-loop owned */
 
 		bool prepared;				/**< the node was added to loop */
 	} rt;
@@ -1020,9 +1027,26 @@ struct pw_impl_node {
 	void *user_data;                /**< extra user data */
 };
 
+static inline bool pw_impl_node_reliable_cycle_complete(struct pw_impl_node *driver)
+{
+	struct pw_node_target *target;
+
+	if (driver == NULL || driver->rt.target.activation == NULL ||
+	    SPA_ATOMIC_LOAD(driver->rt.target.activation->status) !=
+	    PW_NODE_ACTIVATION_FINISHED)
+		return false;
+	spa_list_for_each(target, &driver->rt.target_list, link)
+		if (target->active && target->activation != NULL &&
+		    SPA_ATOMIC_LOAD(target->activation->status) !=
+		    PW_NODE_ACTIVATION_FINISHED)
+			return false;
+	return true;
+}
+
 struct pw_impl_port_mix {
 	struct spa_list link;
 	struct pw_impl_port *p;
+	struct pw_impl_port_mix *peer;
 	struct {
 		enum spa_direction direction;
 		uint32_t port_id;
@@ -1032,6 +1056,9 @@ struct pw_impl_port_mix {
 	uint32_t id;
 	uint32_t peer_id;
 	bool have_buffers;
+	bool row_transport;
+	bool row_borrowed;
+	uint32_t row_borrowed_id;
 
 	struct {
 		bool active;
@@ -1486,6 +1513,11 @@ void * pw_impl_port_get_user_data(struct pw_impl_port *port);
 int pw_impl_port_set_mix(struct pw_impl_port *port, struct spa_node *node, uint32_t flags);
 
 int pw_impl_port_init_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mix);
+bool pw_impl_port_has_reliable_peer(struct pw_impl_port *port);
+int pw_impl_port_reuse_reliable_input(struct pw_impl_port *port);
+int pw_impl_port_publish_row_return(struct pw_impl_port *port);
+int pw_impl_port_reuse_row_output(struct pw_impl_port *port, bool release_local);
+bool pw_impl_port_has_borrowed_row(struct pw_impl_port *port);
 int pw_impl_port_release_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mix);
 
 void pw_impl_port_update_state(struct pw_impl_port *port, enum pw_impl_port_state state, int res, char *error);

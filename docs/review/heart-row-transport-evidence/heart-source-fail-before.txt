@@ -1,0 +1,5 @@
+cwd: /home/dgamroth/workspaces/codex/pipewire/heart-row-transport-contract
+command: HEART_ROW_TRANSPORT_CONTRACT=1 build-row-contract/spa/plugins/heart/spa-heart-source-test build-row-contract/spa/plugins/heart/libspa-heart.so
+exit: -6
+output:
+'capture.ready_calls == 1' failed at ../spa/plugins/heart/test-source.c:374 exercise_row_source()

@@ -1550,6 +1550,8 @@ struct pw_impl_link *pw_context_create_link(struct pw_context *context,
 
 	if ((res = pw_impl_port_init_mix(output, &this->rt.out_mix)) < 0)
 		goto error_output_mix;
+	this->rt.out_mix.peer = &this->rt.in_mix;
+	this->rt.in_mix.peer = &this->rt.out_mix;
 	if ((res = pw_impl_port_init_mix(input, &this->rt.in_mix)) < 0)
 		goto error_input_mix;
 
@@ -1748,6 +1750,8 @@ void pw_impl_link_destroy(struct pw_impl_link *link)
 
 	try_unlink_controls(impl, link->output, link->input);
 
+	link->rt.out_mix.peer = NULL;
+	link->rt.in_mix.peer = NULL;
 	input_remove(link);
 	output_remove(link);
 

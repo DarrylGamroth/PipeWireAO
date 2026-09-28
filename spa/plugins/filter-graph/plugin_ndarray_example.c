@@ -663,7 +663,7 @@ static const struct spa_fgn_descriptor descriptor = {
 
 struct conditional_instance {
 	uint32_t shape[1];
-	struct spa_fgn_format formats[2];
+	struct spa_fgn_format formats[3];
 };
 
 static const struct spa_fgn_port_info conditional_ports[] = {
@@ -723,7 +723,7 @@ static int conditional_get_port_format(void *data, uint32_t port,
 {
 	struct conditional_instance *instance = data;
 
-	if (instance == NULL || format == NULL || port >= 2)
+	if (instance == NULL || format == NULL || port >= SPA_N_ELEMENTS(instance->formats))
 		return -EINVAL;
 	*format = &instance->formats[port];
 	return 0;
@@ -773,6 +773,72 @@ static int conditional_process(void *data,
 static const struct spa_fgn_descriptor conditional_descriptors[] = {
 	CONDITIONAL_DESCRIPTOR("defer-f32"),
 	CONDITIONAL_DESCRIPTOR("aggregate-f32"),
+};
+
+static const struct spa_fgn_port_info gated_ports[] = {
+	{ .struct_size = sizeof(struct spa_fgn_port_info), .index = 0,
+	  .direction = SPA_DIRECTION_INPUT, .name = "in" },
+	{ .struct_size = sizeof(struct spa_fgn_port_info), .index = 1,
+	  .direction = SPA_DIRECTION_INPUT, .name = "feedback" },
+	{ .struct_size = sizeof(struct spa_fgn_port_info), .index = 2,
+	  .direction = SPA_DIRECTION_OUTPUT, .name = "out" },
+};
+
+static int gated_instantiate(const struct spa_fgn_descriptor *descriptor,
+		const char *config, const struct spa_fgn_executor *executor,
+		void **result)
+{
+	struct conditional_instance *instance;
+	int res;
+
+	if ((res = conditional_instantiate(descriptor, config, executor,
+			result)) < 0)
+		return res;
+	instance = *result;
+	instance->formats[0].rate_num = 1;
+	instance->formats[0].rate_denom = 1;
+	instance->formats[1] = instance->formats[0];
+	instance->formats[2] = instance->formats[0];
+	return 0;
+}
+
+static int gated_process(void *data, const struct spa_fgn_buffer *inputs,
+		uint32_t n_inputs, struct spa_fgn_buffer *outputs,
+		uint32_t n_outputs)
+{
+	const struct spa_data *first, *second;
+	struct spa_data *output;
+	const float *a, *b;
+	float *sum;
+	uint32_t i;
+
+	if (data == NULL || inputs == NULL || outputs == NULL || n_inputs != 2 ||
+	    n_outputs != 1 || inputs[0].buffer == NULL ||
+	    inputs[1].buffer == NULL || outputs[0].buffer == NULL)
+		return -EINVAL;
+	first = &inputs[0].buffer->datas[0];
+	second = &inputs[1].buffer->datas[0];
+	output = &outputs[0].buffer->datas[0];
+	a = SPA_PTROFF(first->data, first->chunk->offset, const float);
+	b = SPA_PTROFF(second->data, second->chunk->offset, const float);
+	sum = SPA_PTROFF(output->data, output->chunk->offset, float);
+	for (i = 0; i < 4; i++)
+		sum[i] = a[i] + b[i];
+	output->chunk->size = 4 * sizeof(float);
+	copy_metadata(outputs[0].buffer, inputs[0].buffer);
+	return 0;
+}
+
+static const struct spa_fgn_descriptor gated_descriptor = {
+	.struct_size = SPA_FGN_DESCRIPTOR_ABI_V7_SIZE,
+	.version = SPA_FGN_PLUGIN_ABI_VERSION,
+	.name = "gated-add-f32",
+	.n_ports = SPA_N_ELEMENTS(gated_ports),
+	.ports = gated_ports,
+	.instantiate = gated_instantiate,
+	.cleanup = free,
+	.get_port_format = conditional_get_port_format,
+	.process = gated_process,
 };
 
 struct thread_preparation_instance {
@@ -1066,6 +1132,8 @@ static const struct spa_fgn_descriptor *find_descriptor(const char *name)
 		return &dense_descriptor;
 	if (spa_streq(name, thread_preparation_descriptor.name))
 		return &thread_preparation_descriptor;
+	if (spa_streq(name, gated_descriptor.name))
+		return &gated_descriptor;
 	for (i = 0; i < SPA_N_ELEMENTS(conditional_descriptors); i++)
 		if (spa_streq(name, conditional_descriptors[i].name))
 			return &conditional_descriptors[i];

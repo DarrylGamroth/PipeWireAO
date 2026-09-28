@@ -2298,6 +2298,26 @@ static int setup_in_convert(struct impl *this)
 	return 0;
 }
 
+static int setup_gaps(struct impl *this)
+{
+	struct dir *in = &this->dir[SPA_DIRECTION_INPUT];
+	int res;
+
+	if (this->gaps.free)
+		gaps_free(&this->gaps);
+
+	this->gaps.channels = in->format.info.raw.channels;
+	this->gaps.log = this->log;
+	this->gaps.cpu_flags = this->cpu_flags;
+	this->gaps.duration = (uint32_t)(this->props.fade_duration * in->format.info.raw.rate);
+	res = gaps_init(&this->gaps);
+
+	spa_log_debug(this->log, "%p: got gaps %d features %08x:%08x %s",
+			this, res, this->cpu_flags, this->gaps.cpu_flags,
+			this->gaps.func_name);
+	return res;
+}
+
 static void fix_volumes(struct impl *this, struct volumes *vols, uint32_t channels)
 {
 	float s;
@@ -2485,14 +2505,6 @@ static int setup_resample(struct impl *this)
 
 	if (this->resample.free)
 		resample_free(&this->resample);
-	if (this->gaps.free)
-		gaps_free(&this->gaps);
-
-	this->gaps.channels = channels;
-	this->gaps.log = this->log;
-	this->gaps.cpu_flags = this->cpu_flags;
-	this->gaps.duration = (uint32_t)(this->props.fade_duration * in->format.info.raw.rate);
-	gaps_init(&this->gaps);
 
 	this->resample.channels = channels;
 	this->resample.i_rate = in->format.info.raw.rate;
@@ -2718,6 +2730,8 @@ static int setup_convert(struct impl *this)
 		return -EINVAL;
 
 	if ((res = setup_in_convert(this)) < 0)
+		return res;
+	if ((res = setup_gaps(this)) < 0)
 		return res;
 	if ((res = setup_filter_graphs(this, true)) < 0)
 		return res;
@@ -3157,6 +3171,9 @@ static int port_set_latency(void *object,
 			this, direction, port_id, latency);
 
 	port = GET_PORT(this, direction, port_id);
+	if (port == NULL)
+		return -EINVAL;
+
 	if (latency == NULL) {
 		info = SPA_LATENCY_INFO(other);
 		have_latency = false;
@@ -3185,8 +3202,8 @@ static int port_set_latency(void *object,
 
 		if (oport != NULL)
 			port_update_latency(oport, &info, have_latency);
-	}
-	recalc_latencies(this, direction);
+	} else
+		recalc_latencies(this, direction);
 	return 0;
 }
 
@@ -4061,11 +4078,10 @@ static void recalc_stages(struct impl *this, struct stage_context *ctx)
 		if (in_need_remap)
 			add_src_remap_stage(this, ctx);
 	}
+	if (do_gap)
+		add_gap_detect_stage(this, ctx);
 
 	if (this->direction == SPA_DIRECTION_INPUT) {
-		if (do_gap)
-			add_gap_detect_stage(this, ctx);
-
 		if (SPA_FLAG_IS_SET(ctx->bits, RESAMPLE_BIT))
 			add_resample_stage(this, ctx);
 	}
@@ -4083,9 +4099,6 @@ static void recalc_stages(struct impl *this, struct stage_context *ctx)
 		add_channelmix_stage(this, ctx);
 
 	if (this->direction == SPA_DIRECTION_OUTPUT) {
-		if (do_gap)
-			add_gap_detect_stage(this, ctx);
-
 		if (SPA_FLAG_IS_SET(ctx->bits, RESAMPLE_BIT))
 			add_resample_stage(this, ctx);
 	}
@@ -4241,11 +4254,16 @@ static int impl_node_process(void *object)
 						this->recalc = true;
 					}
 				} else  {
+					struct gaps_state *gs;
+
 					max_in = SPA_MIN(max_in, size / port->stride);
 
 					remap = n_src_datas++;
 					offs += this->in_offset * port->stride;
 					src_datas[remap] = SPA_PTROFF(data, offs, void);
+
+					gs = this->gaps.states[remap];
+					gs->fading = SPA_FLAG_IS_SET(bd->chunk->flags, SPA_CHUNK_FLAG_FADE);
 
 					spa_log_trace_fp(this->log, "%p: input %d:%d:%d %d %d %d->%d", this,
 							offs, size, port->stride, this->in_offset, max_in,

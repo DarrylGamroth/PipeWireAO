@@ -172,7 +172,7 @@ include:
 .debian:
   variables:
      # Update this tag when you want to trigger a rebuild
-    BASE_TAG: '2025-08-10.0'
+    BASE_TAG: '2026-09-22.0'
     FDO_DISTRIBUTION_VERSION: 'trixie'
     FDO_DISTRIBUTION_PACKAGES: >-
       build-essential
@@ -721,7 +721,7 @@ spellcheck:
     - .on_fedora
   stage: analysis
   script:
-    - git ls-files | grep -v .gitlab-ci.yml | xargs -d '\n' sed -i 's/Pipewire/PipeWire/g'
+    - git ls-files | grep -v '.gitlab-ci.yml\|CLAUDE.md\|GEMINI.md' | xargs -d '\n' sed -i 's/Pipewire/PipeWire/g'
     - git diff --exit-code || (echo "Please fix the above spelling mistakes" && exit 1)
 
 doccheck:

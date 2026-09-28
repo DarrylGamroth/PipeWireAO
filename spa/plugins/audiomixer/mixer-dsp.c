@@ -779,9 +779,11 @@ static int do_port_set_io(struct spa_loop *loop, bool async, uint32_t seq,
 	struct port *port = info->port;
 	struct impl *impl = info->impl;
 
-	if (info->data == NULL || info->size < sizeof(struct spa_io_buffers)) {
+	if ((info->data == NULL || info->size < sizeof(struct spa_io_buffers))) {
 		port->io[0] = NULL;
 		port->io[1] = NULL;
+		if (port->removing)
+			return 0;
 		port->removing = true;
 
 		if (port->direction == SPA_DIRECTION_INPUT &&
@@ -790,6 +792,7 @@ static int do_port_set_io(struct spa_loop *loop, bool async, uint32_t seq,
 			uint32_t offs, size, order, hist;
 			float *s;
 			struct spa_data *bd = &buf->buffer->datas[0];
+			bool fading;
 
 			offs = SPA_MIN(bd->chunk->offset, bd->maxsize);
 			size = SPA_MIN(bd->maxsize - offs, bd->chunk->size);
@@ -800,15 +803,27 @@ static int do_port_set_io(struct spa_loop *loop, bool async, uint32_t seq,
 
 			s = SPA_PTROFF(bd->data, offs, float);
 
-			order = SPA_MIN(impl->n_pred_order, hist / 3);
+			/* check if the buffer was completely faded to silence */
+			fading = SPA_FLAG_IS_SET(bd->chunk->flags, SPA_CHUNK_FLAG_FADE);
+			if (fading && hist > 0)
+				fading = s[hist-1] == 0.0f;
 
-			spa_burg_pred_fit(&port->pred, s, hist,
-					impl->pred_threshold, port->state,
-					port->coef, order);
+			if (!fading) {
+				/* was not faded out, start extrapolation and
+				 * fade out */
+				order = SPA_MIN(impl->n_pred_order, hist / 3);
 
-			spa_log_info(impl->log, "fade-out %u/%u/%u %d", port->ramp_up,
-					port->ramp_down, impl->n_curve, port->pred.n_coef);
-			port->ramp_down = impl->n_curve;
+				spa_burg_pred_fit(&port->pred, s, hist,
+						impl->pred_threshold, port->state,
+						port->coef, order);
+				port->ramp_down = impl->n_curve;
+			} else {
+				/* was faded out */
+				port->ramp_down = 0;
+			}
+			spa_log_info(impl->log, "fade-out %d:%u %u/%u/%u %d", port->direction,
+					port->id, port->ramp_up, port->ramp_down, impl->n_curve,
+					port->pred.n_coef);
 		} else {
 			port->ramp_down = 0;
 		}
@@ -821,7 +836,8 @@ static int do_port_set_io(struct spa_loop *loop, bool async, uint32_t seq,
 			port->io[0] = info->data;
 			port->io[1] = info->data;
 		}
-		spa_log_info(impl->log, "fade-in %u/%u/%u", port->ramp_up, port->ramp_down, impl->n_curve);
+		spa_log_info(impl->log, "fade-in %d:%u %u/%u/%u", port->direction, port->id,
+				port->ramp_up, port->ramp_down, impl->n_curve);
 		port->removing = false;
 		port->ramp_up = 0;
 		if (port->direction == SPA_DIRECTION_INPUT && !port->active) {
@@ -984,7 +1000,12 @@ static int impl_node_process(void *object)
 					bd->chunk->flags);
 
 			if (SPA_UNLIKELY(inport->ramp_up < this->n_curve)) {
-				/* new port */
+				if (SPA_FLAG_IS_SET(bd->chunk->flags, SPA_CHUNK_FLAG_FADE) &&
+				    size > 0 && s[0] == 0.0f)
+					/* new buffer was fade in from silence, complete ramp-up */
+					inport->ramp_up = this->n_curve;
+			}
+			if (SPA_UNLIKELY(inport->ramp_up < this->n_curve)) {
 				struct ramp_info *ri = &ramps[n_ramps++];
 				ri->port = inport;
 				ri->ramp_dir = 1;

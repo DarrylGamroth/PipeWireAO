@@ -1,0 +1,4 @@
+cwd: /home/dgamroth/workspaces/codex/pipewire/heart-row-transport-contract
+command:  build-row-contract/spa/plugins/heart/spa-heart-source-test build-row-contract/spa/plugins/heart/libspa-heart.so
+exit: 0
+output:

@@ -932,6 +932,8 @@ static int client_node_port_set_mix_info(void *_data,
 		clear_mix(data, mix);
 	} else {
 		struct pw_impl_port *port;
+		const char *row_return = props == NULL ? NULL :
+			spa_dict_lookup(props, "pipewireao.row-transport-return");
 		if (mix != NULL)
 			return -EEXIST;
 		port = pw_impl_node_find_port(data->node, direction, port_id);
@@ -940,6 +942,7 @@ static int client_node_port_set_mix_info(void *_data,
 		mix = create_mix(data, port, mix_id, peer_id);
 		if (mix == NULL)
 			return -errno;
+		mix->mix.row_transport = row_return != NULL && spa_atob(row_return);
 	}
 	return 0;
 }
@@ -1186,8 +1189,10 @@ static void node_rt_complete(void *data)
 	struct pw_impl_node *node = d->node;
 	struct spa_system *data_system = d->data_system;
 
-	if (!node->driving || !pw_node_activation_has_flag(
-			node->rt.target.activation, PW_NODE_ACTIVATION_FLAG_PROFILER))
+	if (!((node->driving && pw_node_activation_has_flag(
+			node->rt.target.activation, PW_NODE_ACTIVATION_FLAG_PROFILER)) ||
+	      (!node->driving && pw_node_activation_has_flag(
+			node->rt.target.activation, PW_NODE_ACTIVATION_FLAG_ROW_RETURN))))
 		return;
 
 	if (SPA_UNLIKELY(spa_system_eventfd_write(data_system, d->rtwritefd, 1) < 0))
@@ -1213,6 +1218,7 @@ static struct pw_proxy *node_export(struct pw_core *core, void *object, bool do_
 
 	user_data_size = SPA_ROUND_UP_N(user_data_size, __alignof__(struct node_data));
 
+	pw_properties_set(node->properties, "pipewireao.row-transport-return", "true");
 	client_node = pw_core_create_object(core,
 			"client-node",
 			PW_TYPE_INTERFACE_ClientNode,

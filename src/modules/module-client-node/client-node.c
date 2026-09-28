@@ -1208,6 +1208,11 @@ static void node_on_data_fd_events(struct spa_source *source)
 		} else {
 			pw_log_trace_fp("%p: got complete", impl);
 			pw_impl_node_rt_emit_complete(node);
+			if (node->driver_node != NULL &&
+			    node->driver_node->row_transport &&
+			    node->driver_node->rt.reliable_event != NULL)
+				pw_loop_signal_event(node->driver_node->data_loop,
+					node->driver_node->rt.reliable_event);
 		}
 	}
 }
@@ -1487,6 +1492,16 @@ static int port_init_mix(void *data, struct pw_impl_port_mix *mix)
 	uint32_t idx, pos, len;
 	struct pw_memblock *area;
 	struct spa_io_async_buffers *ab;
+	struct spa_dict_item row_item = SPA_DICT_ITEM_INIT("pipewireao.row-transport-return", "true");
+	struct spa_dict row_props = SPA_DICT_INIT(&row_item, 1);
+	bool row_transport = mix->port.direction == SPA_DIRECTION_INPUT &&
+		mix->peer != NULL && mix->peer->p != NULL &&
+		mix->peer->p->node->row_transport;
+
+	if (row_transport && (impl->resource == NULL || impl->resource->version < 4 ||
+	    !pw_properties_get_bool(impl->this.node->properties,
+			"pipewireao.row-transport-return", false)))
+		return -ENOTSUP;
 
 	if ((m = create_mix(port, mix->port.port_id)) == NULL)
 		return -ENOMEM;
@@ -1519,11 +1534,13 @@ static int port_init_mix(void *data, struct pw_impl_port_mix *mix)
 
 	m->peer_id = mix->peer_id;
 	m->impl_mix_id = mix->id;
+	mix->row_transport = row_transport;
 
 	if (impl->resource && impl->resource->version >= 4)
 		pw_client_node_resource_port_set_mix_info(impl->resource,
 					 mix->port.direction, mix->p->port_id,
-					 mix->port.port_id, mix->peer_id, NULL);
+					 mix->port.port_id, mix->peer_id,
+					 row_transport ? &row_props : NULL);
 
 	pw_log_debug("%p: init mix id:%d io:%p/%p base:%p", impl,
 			mix->id, mix->io[0], mix->io[1], area->map->ptr);
