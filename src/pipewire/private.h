@@ -946,6 +946,7 @@ struct pw_impl_node {
 	unsigned int lazy:1;		/**< the graph is lazy scheduling */
 	unsigned int exclusive:1;	/**< ports can only be linked once */
 	unsigned int reliable:1;	/**< ports need reliable tee */
+	unsigned int row_transport:1;	/**< exact row-block return contract */
 	unsigned int can_suspend:1;	/**< node can suspend */
 
 #define PASSIVE_MODE_FALSE		0
@@ -1006,6 +1007,9 @@ struct pw_impl_node {
 		struct spa_list driver_link;		/* our link in driver */
 
 		struct spa_ratelimit rate_limit;
+		struct spa_source *reliable_event;
+		uint32_t reliable_release_pending;
+		uint32_t reliable_retry_pending;
 
 		bool prepared;				/**< the node was added to loop */
 	} rt;
@@ -1020,9 +1024,26 @@ struct pw_impl_node {
 	void *user_data;                /**< extra user data */
 };
 
+static inline bool pw_impl_node_reliable_cycle_complete(struct pw_impl_node *driver)
+{
+	struct pw_node_target *target;
+
+	if (driver == NULL || driver->rt.target.activation == NULL ||
+	    SPA_ATOMIC_LOAD(driver->rt.target.activation->status) !=
+	    PW_NODE_ACTIVATION_FINISHED)
+		return false;
+	spa_list_for_each(target, &driver->rt.target_list, link)
+		if (target->active && target->activation != NULL &&
+		    SPA_ATOMIC_LOAD(target->activation->status) !=
+		    PW_NODE_ACTIVATION_FINISHED)
+			return false;
+	return true;
+}
+
 struct pw_impl_port_mix {
 	struct spa_list link;
 	struct pw_impl_port *p;
+	struct pw_impl_port_mix *peer;
 	struct {
 		enum spa_direction direction;
 		uint32_t port_id;
@@ -1486,6 +1507,8 @@ void * pw_impl_port_get_user_data(struct pw_impl_port *port);
 int pw_impl_port_set_mix(struct pw_impl_port *port, struct spa_node *node, uint32_t flags);
 
 int pw_impl_port_init_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mix);
+bool pw_impl_port_has_reliable_peer(struct pw_impl_port *port);
+int pw_impl_port_reuse_reliable_input(struct pw_impl_port *port);
 int pw_impl_port_release_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mix);
 
 void pw_impl_port_update_state(struct pw_impl_port *port, enum pw_impl_port_state state, int res, char *error);

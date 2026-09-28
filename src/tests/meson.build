@@ -39,6 +39,30 @@ foreach a : test_apps
   endif
 endforeach
 
+test('pw-test-row-transport-mix',
+  executable('pw-test-row-transport-mix', 'test-row-transport-mix.c',
+    dependencies : [pipewire_dep],
+    include_directories : [includes_inc],
+    c_args : ['-ffunction-sections', '-fdata-sections'],
+    link_args : ['-Wl,--gc-sections']),
+  depends : [spa_support_lib])
+
+test('pw-test-filter-output-return',
+  executable('pw-test-filter-output-return', 'test-filter-output-return.c',
+    dependencies : [pipewire_dep],
+    include_directories : [includes_inc],
+    c_args : ['-ffunction-sections', '-fdata-sections'],
+    link_args : ['-Wl,--gc-sections']),
+  depends : [spa_support_lib])
+
+test('pw-test-row-transport-order',
+  executable('pw-test-row-transport-order', 'test-row-transport-order.c',
+    dependencies : [pipewire_dep, pthread_lib],
+    include_directories : [includes_inc],
+    c_args : ['-ffunction-sections', '-fdata-sections', '-fwhole-program'],
+    link_args : ['-Wl,--gc-sections']),
+  depends : [spa_support_lib])
+
 polling_remote_client = executable(
   'pw-test-polling-remote-client',
   'test-polling-remote-client.c',

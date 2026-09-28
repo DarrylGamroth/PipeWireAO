@@ -340,10 +340,12 @@ static int tee_reuse_buffer(void *object, uint32_t port_id, uint32_t buffer_id)
 {
 	struct impl *impl = object;
 	struct pw_impl_port *this = &impl->this;
+	int res;
 
 	pw_log_trace_fp("%p: tee reuse buffer %d %d", this, port_id, buffer_id);
-	spa_node_port_reuse_buffer(this->node->node, this->port_id, buffer_id);
-	return 0;
+	res = spa_node_port_reuse_buffer(this->node->node,
+			this->port_id, buffer_id);
+	return this->node->row_transport ? res : 0;
 }
 
 static const struct spa_node_methods schedule_tee_node = {
@@ -371,6 +373,7 @@ static int schedule_mix_input(void *object)
 	struct spa_io_buffers *io = &this->rt.io;
 	struct pw_impl_port_mix *mix;
 	uint32_t cycle = this->node->rt.position->clock.cycle & 1;
+	bool reliable = pw_impl_port_has_reliable_peer(this);
 
 	if (SPA_UNLIKELY(PW_IMPL_PORT_IS_CONTROL(this)))
 		return SPA_STATUS_HAVE_DATA | SPA_STATUS_NEED_DATA;
@@ -381,6 +384,8 @@ static int schedule_mix_input(void *object)
 				mix->io[cycle]->status, mix->io[cycle]->buffer_id, cycle);
 		*io = *mix->io[cycle];
 		mix->io[cycle]->status = SPA_STATUS_NEED_DATA;
+		if (reliable)
+			mix->io[cycle]->buffer_id = SPA_ID_INVALID;
 		break;
 	}
         return SPA_STATUS_HAVE_DATA | SPA_STATUS_NEED_DATA;
@@ -391,12 +396,62 @@ static int schedule_mix_reuse_buffer(void *object, uint32_t port_id, uint32_t bu
 	struct impl *impl = object;
 	struct pw_impl_port_mix *mix;
 
+	if (port_id != 0)
+		return -EINVAL;
+
 	spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
 		pw_log_trace_fp("%p: reuse buffer %d %d", impl, port_id, buffer_id);
-		/* FIXME send reuse buffer to peer */
-		break;
+		if (mix->peer == NULL || mix->peer->p == NULL ||
+		    !mix->peer->p->node->row_transport)
+			return 0;
+		if (impl->rt.mix_list.next != impl->rt.mix_list.prev)
+			return -ENOTSUP;
+		return spa_node_port_reuse_buffer(mix->peer->p->mix, 0,
+				buffer_id);
 	}
 	return 0;
+}
+
+bool pw_impl_port_has_reliable_peer(struct pw_impl_port *port)
+{
+	struct impl *impl = SPA_CONTAINER_OF(port, struct impl, this);
+	struct pw_impl_port_mix *mix;
+
+	if (port->direction != PW_DIRECTION_INPUT ||
+	    spa_list_is_empty(&impl->rt.mix_list) ||
+	    impl->rt.mix_list.next != impl->rt.mix_list.prev)
+		return false;
+	spa_list_for_each(mix, &impl->rt.mix_list, rt.link)
+		return mix->peer != NULL && mix->peer->p != NULL &&
+			mix->peer->p->node->row_transport;
+	return false;
+}
+
+int pw_impl_port_reuse_reliable_input(struct pw_impl_port *port)
+{
+	struct spa_io_buffers *io = &port->rt.io;
+	struct pw_node_activation *activation;
+	struct pw_impl_node *driver;
+	uint32_t id;
+	int res;
+
+	if (!pw_impl_port_has_reliable_peer(port) ||
+	    io->status == SPA_STATUS_HAVE_DATA ||
+	    io->buffer_id == SPA_ID_INVALID)
+		return 0;
+	activation = port->node->rt.target.activation;
+	if (activation == NULL || SPA_ATOMIC_LOAD(activation->status) !=
+	    PW_NODE_ACTIVATION_FINISHED)
+		return 0;
+	driver = port->node->driver_node;
+	if (!pw_impl_node_reliable_cycle_complete(driver))
+		return 0;
+	id = io->buffer_id;
+	io->buffer_id = SPA_ID_INVALID;
+	res = spa_node_port_reuse_buffer(port->mix, 0, id);
+	if (res < 0)
+		io->buffer_id = id;
+	return res < 0 ? res : 1;
 }
 
 static const struct spa_node_methods schedule_mix_node = {
@@ -411,11 +466,24 @@ static const struct spa_node_methods schedule_mix_node = {
 SPA_EXPORT
 int pw_impl_port_init_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mix)
 {
+	struct pw_impl_port_mix *other;
 	uint32_t port_id;
 	int res = 0;
 
-	if (port->exclusive && port->n_mix != 0)
+	if ((port->exclusive ||
+	     (port->direction == PW_DIRECTION_OUTPUT &&
+	      port->node->row_transport)) &&
+	    port->n_mix != 0)
 		return -EBUSY;
+	if (port->direction == PW_DIRECTION_INPUT && port->n_mix != 0) {
+		if (mix->peer != NULL && mix->peer->p != NULL &&
+		    mix->peer->p->node->row_transport)
+			return -EBUSY;
+		spa_list_for_each(other, &port->mix_list, link)
+			if (other->peer != NULL && other->peer->p != NULL &&
+			    other->peer->p->node->row_transport)
+				return -EBUSY;
+	}
 
 	port_id = pw_map_insert_new(&port->mix_port_map, mix);
 	if (port_id == SPA_ID_INVALID)

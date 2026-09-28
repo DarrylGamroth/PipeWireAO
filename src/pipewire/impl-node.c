@@ -145,6 +145,7 @@ static int ensure_poll_error_source(struct pw_impl_node *node)
 
 static int poll_process_node(void *data);
 static int node_ready(void *data, int status);
+static void flush_reliable_retry(struct pw_impl_node *node);
 
 #define pw_node_resource(r,m,v,...)	pw_resource_call(r,struct pw_node_events,m,v,__VA_ARGS__)
 #define pw_node_resource_info(r,...)	pw_node_resource(r,info,0,__VA_ARGS__)
@@ -1258,6 +1259,33 @@ static int execute_match(void *data, const char *location, const char *action,
 	return 1;
 }
 
+static void reliable_request_event(void *data, uint64_t count SPA_UNUSED)
+{
+	flush_reliable_retry(data);
+}
+
+static int add_reliable_event(struct spa_loop *loop SPA_UNUSED,
+		bool async SPA_UNUSED, uint32_t seq SPA_UNUSED,
+		const void *data SPA_UNUSED, size_t size SPA_UNUSED, void *user_data)
+{
+	struct pw_impl_node *node = user_data;
+
+	node->rt.reliable_event = pw_loop_add_event(node->data_loop,
+			reliable_request_event, node);
+	return node->rt.reliable_event != NULL ? 0 : -errno;
+}
+
+static int remove_reliable_event(struct spa_loop *loop SPA_UNUSED,
+		bool async SPA_UNUSED, uint32_t seq SPA_UNUSED,
+		const void *data SPA_UNUSED, size_t size SPA_UNUSED, void *user_data)
+{
+	struct pw_impl_node *node = user_data;
+
+	pw_loop_destroy_source(node->data_loop, node->rt.reliable_event);
+	node->rt.reliable_event = NULL;
+	return 0;
+}
+
 static void check_properties(struct pw_impl_node *node)
 {
 	struct impl *impl = SPA_CONTAINER_OF(node, struct impl, this);
@@ -1301,6 +1329,18 @@ static void check_properties(struct pw_impl_node *node)
 	driver = pw_properties_get_bool(node->properties, PW_KEY_NODE_DRIVER, false);
 	node->exclusive = pw_properties_get_bool(node->properties, PW_KEY_NODE_EXCLUSIVE, false);
 	node->reliable = pw_properties_get_bool(node->properties, PW_KEY_NODE_RELIABLE, false);
+	node->row_transport = pw_properties_get_bool(node->properties,
+			"pipewireao.row-transport", false);
+	if (node->row_transport && node->rt.reliable_event == NULL) {
+		int res = pw_loop_locked(node->data_loop, add_reliable_event,
+				SPA_ID_INVALID, NULL, 0, node);
+		if (res < 0) {
+			node->row_transport = false;
+			node_update_state(node, PW_NODE_STATE_ERROR, res,
+					strdup("cannot create row transport event"));
+			return;
+		}
+	}
 
 	if (node->driver != driver) {
 		pw_log_debug("%p: driver %d -> %d", node, node->driver, driver);
@@ -1644,6 +1684,60 @@ static inline void calculate_stats(struct pw_impl_node *this,  struct pw_node_ac
 			a->cpu_load[0], a->cpu_load[1], a->cpu_load[2]);
 }
 
+static void flush_reliable_input_returns(struct pw_impl_node *node)
+{
+	struct pw_impl_node *driver = node->driver_node;
+	struct pw_node_target *target;
+	struct pw_impl_port *port;
+	int res;
+
+	if (driver == NULL || node != driver ||
+	    !SPA_ATOMIC_LOAD(driver->rt.reliable_release_pending) ||
+	    !pw_impl_node_reliable_cycle_complete(driver))
+		return;
+	spa_list_for_each(port, &driver->rt.input_mix, rt.node_link)
+		if ((res = pw_impl_port_reuse_reliable_input(port)) < 0)
+			goto error;
+	spa_list_for_each(target, &driver->rt.target_list, link) {
+		if (!target->active || target->node == NULL ||
+		    target->node == driver)
+			continue;
+		spa_list_for_each(port, &target->node->rt.input_mix, rt.node_link)
+			if ((res = pw_impl_port_reuse_reliable_input(port)) < 0)
+				goto error;
+	}
+	SPA_ATOMIC_STORE(driver->rt.reliable_release_pending, 0);
+	return;
+error:
+	pw_log_error("reliable input release failed: %s", spa_strerror(res));
+	pw_impl_node_rt_emit_incomplete(driver);
+}
+
+static void flush_reliable_retry(struct pw_impl_node *node)
+{
+	struct pw_impl_node *driver = node->driver_node;
+	int res;
+
+	if (driver == NULL || node != driver || !driver->row_transport ||
+	    SPA_ATOMIC_LOAD(driver->rt.reliable_release_pending) ||
+	    !SPA_ATOMIC_LOAD(driver->rt.reliable_retry_pending) ||
+	    !pw_impl_node_reliable_cycle_complete(driver))
+		return;
+	if (driver->info.state != PW_NODE_STATE_RUNNING) {
+		SPA_ATOMIC_STORE(driver->rt.reliable_retry_pending, 0);
+		return;
+	}
+	if (!SPA_ATOMIC_CAS(driver->rt.reliable_retry_pending, 1, 0))
+		return;
+	res = spa_node_send_command(driver->node,
+			&SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_RequestProcess));
+	if (res < 0) {
+		SPA_ATOMIC_STORE(driver->rt.reliable_retry_pending, 1);
+		pw_log_error("reliable output retry failed: %s", spa_strerror(res));
+		pw_impl_node_rt_emit_incomplete(driver);
+	}
+}
+
 /* The main processing entry point of a node. This is called from the data-loop and usually
  * as a result of signaling the eventfd of the node.
  *
@@ -1695,7 +1789,7 @@ static inline int process_node(void *data, uint64_t nsec)
 			spa_list_for_each(p, &this->rt.output_mix, rt.node_link)
 				spa_node_process_fast(p->mix);
 		}
-	processed:
+		processed:
 		;
 	} else {
 		/* This can happen when we deactivated the node but some links are
@@ -1705,6 +1799,13 @@ static inline int process_node(void *data, uint64_t nsec)
 		status = SPA_STATUS_HAVE_DATA;
 	}
 	a->state[0].status = status;
+	spa_list_for_each(p, &this->rt.input_mix, rt.node_link)
+		if (p->rt.io.status != SPA_STATUS_HAVE_DATA &&
+		    p->rt.io.buffer_id != SPA_ID_INVALID &&
+		    pw_impl_port_has_reliable_peer(p) &&
+		    this->driver_node != NULL)
+			SPA_ATOMIC_STORE(
+				this->driver_node->rt.reliable_release_pending, 1);
 
 	nsec = get_time_ns(data_system);
 	was_awake = SPA_ATOMIC_CAS(a->status,
@@ -1729,6 +1830,11 @@ static inline int process_node(void *data, uint64_t nsec)
 
 	if (SPA_UNLIKELY(status & SPA_STATUS_DRAINED))
 		pw_impl_node_rt_emit_drained(this);
+
+	if (was_awake && this == this->driver_node)
+		flush_reliable_input_returns(this);
+	if (was_awake && this == this->driver_node)
+		flush_reliable_retry(this);
 
 	return status;
 }
@@ -2171,6 +2277,19 @@ static void handle_request_process_command(struct pw_impl_node *node, const stru
 	if (node->driving) {
 		pw_log_debug("request process %d %d", node->info.state, impl->pending_state);
 		if (node->info.state == PW_NODE_STATE_RUNNING) {
+			if (node->row_transport) {
+				SPA_ATOMIC_STORE(node->rt.reliable_retry_pending, 1);
+				if (node->rt.reliable_event != NULL) {
+					int res = pw_loop_signal_event(node->data_loop,
+							node->rt.reliable_event);
+					if (res < 0) {
+						pw_log_error("reliable retry wake failed: %s",
+								spa_strerror(res));
+						pw_impl_node_rt_emit_incomplete(node);
+					}
+				}
+				return;
+			}
 			spa_node_send_command(node->driver_node->node, command);
 		} else if (impl->pending_state == PW_NODE_STATE_RUNNING) {
 			spa_clear_ptr(impl->pending_request_process, free);
@@ -2348,6 +2467,9 @@ static int node_ready(void *data, int status)
 		pw_log_warn("%p: ready non-driver node %s", node, node->name);
 		return -EIO;
 	}
+	if (SPA_UNLIKELY(node->row_transport &&
+			SPA_ATOMIC_LOAD(node->rt.reliable_release_pending)))
+		return -EBUSY;
 
 	nsec = get_time_ns(data_system);
 
@@ -2481,6 +2603,8 @@ static int node_reuse_buffer(void *data, uint32_t port_id, uint32_t buffer_id)
 	spa_list_for_each(p, &node->rt.input_mix, rt.node_link) {
 		if (p->port_id != port_id)
 			continue;
+		if (pw_impl_port_has_reliable_peer(p))
+			return -ENOTSUP;
 		spa_node_port_reuse_buffer(p->mix, 0, buffer_id);
 		break;
 	}
@@ -2740,6 +2864,9 @@ void pw_impl_node_destroy(struct pw_impl_node *node)
 		pw_loop_remove_source(main_loop, &node->poll_error_source);
 		spa_system_close(main_loop->system, node->poll_error_source.fd);
 	}
+	if (node->rt.reliable_event != NULL)
+		pw_loop_locked(node->data_loop, remove_reliable_event,
+				SPA_ID_INVALID, NULL, 0, node);
 	pw_properties_free(node->properties);
 	spa_clear_ptr(impl->pending_request_process, free);
 

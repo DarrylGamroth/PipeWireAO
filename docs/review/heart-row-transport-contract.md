@@ -1,9 +1,9 @@
 # HEART row block transport: contract and implementation boundary
 
-Source revisions: PipeWire `e26c9f22d`; HEART SPA plugin `9dff9df`.
+Initial source revisions: PipeWire `e26c9f22d`; HEART SPA plugin `9dff9df`.
 Worktrees: `pipewire-row-transport-contract` and `heart-row-transport-contract`,
-both on `codex/row-transport-contract` branches. No production transport change
-has been made.
+both on `codex/row-transport-contract` branches. The initial investigation
+and fail-before results below are retained as the baseline for the repair.
 
 ## Reproducible failure
 
@@ -19,6 +19,29 @@ acknowledged. Current code makes two; the test fails at
 opt-in assertion. This unit test models the tee transfer; the measured
 tee/mix and activation traces in the JuliaFilterGraph camera overlap report
 establish the same replacement in the live topology.
+
+The actual core tee/mix regression in `src/tests/test-row-transport-mix.c`
+also fails before production changes. Its reliable tee retains block ID 0
+while the consumer cannot release it, and its input mix transfers that ID.
+The test then invokes the consumer's release callback and expects one release
+of ID 0 at the source. `schedule_mix_reuse_buffer()` returns success without
+forwarding it, so the `source.releases == 1` assertion fails. These commands
+and raw outputs are captured in `docs/review/heart-row-transport-evidence/`:
+
+```text
+cd /home/dgamroth/workspaces/codex/pipewire/pipewire-row-transport-contract
+ninja -C build-row-contract src/tests/pw-test-row-transport-mix
+build-row-contract/src/tests/pw-test-row-transport-mix
+
+cd /home/dgamroth/workspaces/codex/pipewire/heart-row-transport-contract
+ninja -C build-row-contract spa/plugins/heart/spa-heart-source-test spa/plugins/heart/libspa-heart.so
+build-row-contract/spa/plugins/heart/spa-heart-source-test build-row-contract/spa/plugins/heart/libspa-heart.so
+HEART_ROW_TRANSPORT_CONTRACT=1 build-row-contract/spa/plugins/heart/spa-heart-source-test build-row-contract/spa/plugins/heart/libspa-heart.so
+```
+
+Core and opt-in HEART cases exited with SIGABRT (`-6` in the captured Python
+subprocess results); the ordinary HEART case exited 0. The core test uses no
+socket. The HEART tests reserve an OS-assigned loopback UDP port.
 
 ## Existing ownership and scheduling
 
@@ -39,10 +62,11 @@ establish the same replacement in the live topology.
 4. The Julia ndarray filter retains a FIFO input while any output is absent,
    then returns early. It schedules backlog after a successful process, with
    no proved wakeup when an output becomes available during a retained input.
-   The FGN chain currently dequeues all input buffers, keeps the newest, and
-   returns the older ones before processing. It also returns its current input
-   when any output is absent. Both behaviors violate exact FIFO delivery for
-   row blocks.
+   The FGN chain at the initial revision dequeued all input buffers, kept the
+   newest, and returned the older ones before processing. It also returned its
+   current input when any output was absent. Both behaviors violated FIFO
+   delivery for row blocks. The separate opt-in FGN FIFO patch is integrated
+   after the core transport commit.
 
 ## Required contract before a production patch
 
@@ -109,3 +133,68 @@ would still permit loss or a retained-input deadlock.
 
 No throughput or latency claim follows from the unit regression. Hardware or
 bench validation remains separate from software delivery verification.
+
+## Implemented opt-in handoff
+
+`pipewireao.row-transport=true` selects this contract on the HEART row source.
+The source also sets `node.reliable=true` to select PipeWire's reliable tee.
+Existing reliable sources without the row property retain their old behavior.
+Link setup rejects row-source fanout and incompatible fan-in. The input mix
+passes a returned buffer ID through its reciprocal tee peer only for the row
+source. The returned ID is taken from consumer-owned input IO after that
+consumer and every active driver target have reached `FINISHED`; the tee's
+`NEED_DATA` descriptor transfer is never treated as a release. The source
+rejects an invalid or duplicate ID and publishes the next row only after the
+exact ID is returned.
+
+The driver data loop scans the active target snapshot after graph completion.
+A pending release bit remains set through the entire scan, so a filter output
+return on another loop cannot request a new source cycle during release. The
+filter's opt-in output return hook raises `RequestProcess`; it sets a pending
+bit and signals a preallocated driver-loop event. A late output return thus
+wakes the driver without a new camera packet. The driver sends the command to
+HEART only after the release scan and graph completion. A failed command while
+running remains pending and emits an incomplete event. The source and impl
+node share the driver data loop through `node.loop.name`; HEART's release and
+request handlers enqueue eventfd work, so `ready` cannot synchronously reset
+the graph inside the release callback.
+
+HEART reserves every buffer for a frame when its first valid row arrives.
+The negotiated buffer count must hold at least one frame. It writes each row
+once into its reserved slot, queues its immutable ID and payload, and keeps at
+most one published ID in flight. A capacity failure drops and counts the
+whole frame once while UDP reception continues. No row path allocates per
+block. Full-frame mode keeps its existing publication path.
+
+Pause keeps a published ID borrowed until exact release. Link deactivation
+may detach IO with `port_set_io(NULL)` without recycling that ID; a non-NULL
+replacement is rejected while it is in flight. After graph quiescence,
+`use_buffers(0)` revokes the SPA buffer lifetime and clears outstanding row
+state. The caller must not deliver old-generation release callbacks after
+that revocation. The SPA callback carries only a buffer ID, so it cannot
+distinguish an old callback from a new use of the same ID after rebinding.
+
+## Focused verification
+
+The raw fail-before and pass-after outputs are in
+`docs/review/heart-row-transport-evidence/`. The three core cases use the
+actual tee/mix, filter output return, and impl-node scheduler code. The
+two-loop order case blocks the driver inside its release scan while a filter
+thread requests retry, then checks command ordering and a late return event
+without a camera packet. The HEART case uses an OS-assigned loopback port; it
+checks two fast rows, retained output, exact and duplicate release, whole-frame
+overflow, malformed-frame recovery, Pause, IO detach, and buffer revocation.
+
+```text
+cd /home/dgamroth/workspaces/codex/pipewire/pipewire-row-transport-contract
+meson test -C build-row-contract pw-test-ndarray-filter-fifo pw-test-row-transport-mix pw-test-row-transport-order pw-test-filter-output-return --print-errorlogs
+
+cd /home/dgamroth/workspaces/codex/pipewire/heart-row-transport-contract
+ninja -C build-row-contract spa/plugins/heart/libspa-heart.so spa/plugins/heart/spa-heart-source-test
+build-row-contract/spa/plugins/heart/spa-heart-source-test build-row-contract/spa/plugins/heart/libspa-heart.so
+HEART_ROW_TRANSPORT_CONTRACT=1 build-row-contract/spa/plugins/heart/spa-heart-source-test build-row-contract/spa/plugins/heart/libspa-heart.so
+```
+
+The four core tests and both HEART modes pass at this revision. This is
+focused software verification. An installed-prefix JFG/FGN finite replay and
+matched live qualification remain separate integration checks.

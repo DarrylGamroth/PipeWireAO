@@ -1826,6 +1826,8 @@ int pw_ndarray_filter_connect(struct pw_ndarray_filter *filter)
 		return -EINVAL;
 	if (filter->flags & PW_NDARRAY_FILTER_FLAG_RT_PROCESS)
 		flags |= PW_FILTER_FLAG_RT_PROCESS;
+	if (filter->flags & PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS)
+		flags |= PW_FILTER_FLAG_OUTPUT_RETURN_RETRY;
 	if (filter->flags & PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL) {
 		flags |= PW_FILTER_FLAG_INACTIVE;
 		params[n_params] = pw_ao_run_control_build_status(&builder, 0, 0,
