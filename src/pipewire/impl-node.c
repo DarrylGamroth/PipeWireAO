@@ -380,6 +380,7 @@ do_node_unprepare(struct spa_loop *loop, bool async, uint32_t seq,
 
 	this->rt.prepared = false;
 	this->row_cycle_inflight = false;
+	this->rt.reliable_retry_dispatched = false;
 	return 0;
 }
 
@@ -1736,6 +1737,16 @@ static bool driver_has_borrowed_row(struct pw_impl_node *driver)
 	return false;
 }
 
+static bool driver_has_source_row(struct pw_impl_node *driver)
+{
+	struct pw_impl_port *port;
+
+	spa_list_for_each(port, &driver->rt.output_mix, rt.node_link)
+		if (port->rt.io.status == SPA_STATUS_HAVE_DATA)
+			return true;
+	return false;
+}
+
 static void flush_reliable_retry(struct pw_impl_node *node)
 {
 	struct pw_impl_node *driver = node->driver_node;
@@ -1743,7 +1754,7 @@ static void flush_reliable_retry(struct pw_impl_node *node)
 
 	if (driver == NULL || node != driver || !driver->row_transport ||
 	    SPA_ATOMIC_LOAD(driver->rt.reliable_release_pending) ||
-	    driver_has_borrowed_row(driver) ||
+	    driver->rt.reliable_retry_dispatched ||
 	    !SPA_ATOMIC_LOAD(driver->rt.reliable_retry_pending) ||
 	    !pw_impl_node_reliable_cycle_complete(driver))
 		return;
@@ -1753,9 +1764,11 @@ static void flush_reliable_retry(struct pw_impl_node *node)
 	}
 	if (!SPA_ATOMIC_CAS(driver->rt.reliable_retry_pending, 1, 0))
 		return;
+	driver->rt.reliable_retry_dispatched = true;
 	res = spa_node_send_command(driver->node,
 			&SPA_NODE_COMMAND_INIT(SPA_NODE_COMMAND_RequestProcess));
 	if (res < 0) {
+		driver->rt.reliable_retry_dispatched = false;
 		SPA_ATOMIC_STORE(driver->rt.reliable_retry_pending, 1);
 		pw_log_error("reliable output retry failed: %s", spa_strerror(res));
 		pw_impl_node_rt_emit_incomplete(driver);
@@ -2523,10 +2536,16 @@ static int node_ready(void *data, int status)
 	if (SPA_UNLIKELY(node->row_transport && node->row_cycle_inflight)) {
 		flush_reliable_input_returns(node);
 		if (!pw_impl_node_reliable_cycle_complete(node) ||
-		    SPA_ATOMIC_LOAD(node->rt.reliable_release_pending) ||
-		    driver_has_borrowed_row(node))
+		    SPA_ATOMIC_LOAD(node->rt.reliable_release_pending))
+			return -EBUSY;
+		/* A retry may process retained input, but it cannot publish a new
+		 * source row while the previous row is borrowed. */
+		if (driver_has_borrowed_row(node) &&
+		    (!node->rt.reliable_retry_dispatched ||
+		     driver_has_source_row(node)))
 			return -EBUSY;
 	}
+	node->rt.reliable_retry_dispatched = false;
 	nsec = get_time_ns(data_system);
 
 	while (true) {

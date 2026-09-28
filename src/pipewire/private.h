@@ -1012,6 +1012,7 @@ struct pw_impl_node {
 		struct spa_source *reliable_event;
 		uint32_t reliable_release_pending;
 		uint32_t reliable_retry_pending;
+		bool reliable_retry_dispatched;	/* driver-loop owned */
 
 		bool prepared;				/**< the node was added to loop */
 	} rt;

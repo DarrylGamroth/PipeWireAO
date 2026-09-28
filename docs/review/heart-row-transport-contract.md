@@ -206,15 +206,18 @@ Each target in a row-driven graph signals completion through an eventfd. The
 driver's reliable event retries the release scan after late client or local
 target completion. This path adds no per-row native-protocol message, heap
 allocation, or main-loop scheduling step. An exported client without the
-capability cannot join a row-driven graph. New driver cycles and output retry
-commands remain gated while a row is borrowed.
+capability cannot join a row-driven graph. A borrowed row blocks new source
+publication. After graph completion, one output-return command may start a
+cycle with no new source row so the filter can process its retained input.
+The next cycle and exact reuse still wait for that retry's graph completion.
 
 `test-row-transport-mix.c` exercises the server/client mix split with a held
 input and two source IDs. It checks no release while ID 0 is retained, release
 only after filter and sink completion, exact one-time reuse of ID 0, stale ID
 rejection, and
 subsequent publication of ID 1. `test-row-transport-order.c` also checks
-first-cycle admission and release-before-retry ordering.
+first-cycle admission, release-before-retry ordering, and no-data retry
+admission with a retained row.
 
 The raw fail-before and pass-after outputs are in
 `docs/review/heart-row-transport-evidence/`. The three core cases use the
