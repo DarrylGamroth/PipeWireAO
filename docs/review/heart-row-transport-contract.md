@@ -239,6 +239,32 @@ HEART_ROW_TRANSPORT_CONTRACT=1 build-row-contract/spa/plugins/heart/spa-heart-so
 The four core transport tests, the FGN feedback test, and both HEART modes
 pass at this revision. The FGN module builds with
 `PW_FILTER_FLAG_OUTPUT_RETURN_RETRY` selected only by
-`pipewireao.fifo-inputs=true`. This is focused software verification. An
-installed-prefix JFG/FGN finite replay and
-matched live qualification remain separate integration checks.
+`pipewireao.fifo-inputs=true`. This is focused software verification. The
+private installed build was also rebuilt after commit `9803b93fd`, and its
+five focused tests passed.
+
+## Live replay after the exported-client repair
+
+With the revised HEART SPA source and the previous core, a five-frame Rust
+FGN replay received all ten Standard WFS datagrams but published only one
+row block, recorded three buffer starvations and three dropped frames, and
+produced no Standard DM command. The source counters are in
+`/home/dgamroth/.cache/copper-phase2-repaired-rust-5f-livecounters-20260928/`.
+The same five-frame replay on the private build of this commit published all
+ten blocks, emitted five DM commands, recorded zero drops and starvations,
+and matched the full-frame clipped reference within 2.24 × 10⁻⁸ µm. The
+pass-after capture is
+`/home/dgamroth/.cache/copper-phase2-row-return-smoke-20260928/`.
+
+A 1,024-frame Rust FGN row replay at 474 Hz and 2,000 µs configured readout
+then received and published all 2,048 blocks and emitted all 1,024 ordered
+DM commands. A separate replay at ±0.2 µm clipped exactly 10,563 actuator
+values and differed from the qualified JFG clipped full-frame sequence by
+at most 4.47 × 10⁻⁸ µm. JFG progressive on the same private core recorded
+2,048 graph callbacks and 1,024 ordered DM commands. Three independent
+1,024-frame 500 µs-readout runs delivered every frame at 1,800 Hz for JFG
+and 1,850 Hz for Rust FGN. One JFG 1,850 Hz run lacked two commands, and
+one of three Rust 1,899 Hz runs lacked two commands. These finite replays
+qualify only the tested load and host. Raw artifacts, complete-frame and
+progressive latency comparisons, and rate criteria are in JFG
+`docs/copper-phase2-results-20260928.md` at commit `b83d625`.
