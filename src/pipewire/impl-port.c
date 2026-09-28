@@ -463,6 +463,7 @@ int pw_impl_port_reuse_reliable_input(struct pw_impl_port *port)
 
 int pw_impl_port_publish_row_return(struct pw_impl_port *port)
 {
+	struct impl *impl = SPA_CONTAINER_OF(port, struct impl, this);
 	struct pw_impl_port_mix *mix;
 	struct spa_io_buffers *source = &port->rt.io;
 	uint32_t cycle, id;
@@ -471,7 +472,7 @@ int pw_impl_port_publish_row_return(struct pw_impl_port *port)
 	    source->buffer_id == SPA_ID_INVALID)
 		return 0;
 	cycle = port->node->rt.position->clock.cycle & 1;
-	spa_list_for_each(mix, &port->mix_list, link) {
+	spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
 		struct spa_io_buffers *io;
 
 		if (!mix->row_transport || (io = mix->io[cycle]) == NULL)
