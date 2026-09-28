@@ -63,6 +63,18 @@ test('pw-test-row-transport-order',
     link_args : ['-Wl,--gc-sections']),
   depends : [spa_support_lib])
 
+row_return_lifetime = executable('pw-test-row-return-lifetime',
+  'test-row-return-lifetime.c',
+  dependencies : [pipewire_dep, pthread_lib],
+  include_directories : [includes_inc],
+  c_args : ['-ffunction-sections', '-fdata-sections'],
+  link_args : ['-Wl,--gc-sections'])
+test('pw-test-row-return-mix-removal', row_return_lifetime,
+  depends : [spa_support_lib])
+test('pw-test-row-return-io-replacement', row_return_lifetime,
+  args : ['replace'],
+  depends : [spa_support_lib])
+
 polling_remote_client = executable(
   'pw-test-polling-remote-client',
   'test-polling-remote-client.c',
