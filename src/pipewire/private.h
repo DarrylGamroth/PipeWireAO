@@ -648,6 +648,7 @@ struct pw_node_activation {
 #define PW_NODE_ACTIVATION_FLAG_ASYNC		(1<<1)	/* the node is async */
 #define PW_NODE_ACTIVATION_FLAG_POLLING		(1<<2)	/* the activation owner polls status;
 							 * producers must not signal its eventfd */
+#define PW_NODE_ACTIVATION_FLAG_ROW_RETURN	(1<<3)	/* wake the driver after target completion */
 	uint32_t flags;					/* extra flags */
 	struct spa_io_position position;		/* contains current position and segment info.
 							 * extra info is updated by nodes that have set
@@ -947,6 +948,7 @@ struct pw_impl_node {
 	unsigned int exclusive:1;	/**< ports can only be linked once */
 	unsigned int reliable:1;	/**< ports need reliable tee */
 	unsigned int row_transport:1;	/**< exact row-block return contract */
+	unsigned int row_cycle_inflight:1;	/**< row driver has started a cycle */
 	unsigned int can_suspend:1;	/**< node can suspend */
 
 #define PASSIVE_MODE_FALSE		0
@@ -1053,6 +1055,9 @@ struct pw_impl_port_mix {
 	uint32_t id;
 	uint32_t peer_id;
 	bool have_buffers;
+	bool row_transport;
+	bool row_borrowed;
+	uint32_t row_borrowed_id;
 
 	struct {
 		bool active;
@@ -1509,6 +1514,9 @@ int pw_impl_port_set_mix(struct pw_impl_port *port, struct spa_node *node, uint3
 int pw_impl_port_init_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mix);
 bool pw_impl_port_has_reliable_peer(struct pw_impl_port *port);
 int pw_impl_port_reuse_reliable_input(struct pw_impl_port *port);
+int pw_impl_port_publish_row_return(struct pw_impl_port *port);
+int pw_impl_port_reuse_remote_row_input(struct pw_impl_port *port);
+bool pw_impl_port_has_borrowed_row(struct pw_impl_port *port);
 int pw_impl_port_release_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mix);
 
 void pw_impl_port_update_state(struct pw_impl_port *port, enum pw_impl_port_state state, int res, char *error);

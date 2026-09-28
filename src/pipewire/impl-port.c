@@ -324,11 +324,17 @@ static int tee_process_reliable(void *object)
 			pw_log_trace_fp("%p: port %d %p->%p status:%d id:%d", this,
 					mix->port.port_id, io, mio, mio->status, mio->buffer_id);
 
-			if (mio->status != SPA_STATUS_HAVE_DATA) {
+			if (mio->status != SPA_STATUS_HAVE_DATA &&
+			    !(mix->peer != NULL && mix->peer->row_transport &&
+			      mix->peer->row_borrowed)) {
 				io->buffer_id = mio->buffer_id;
 				io->status = SPA_STATUS_NEED_DATA;
 				mio->buffer_id = buffer_id;
 				mio->status = SPA_STATUS_HAVE_DATA;
+				if (mix->peer != NULL && mix->peer->row_transport) {
+					mix->peer->row_borrowed_id = buffer_id;
+					mix->peer->row_borrowed = true;
+				}
 				break;
 			}
 		}
@@ -379,6 +385,7 @@ static int schedule_mix_input(void *object)
 		return SPA_STATUS_HAVE_DATA | SPA_STATUS_NEED_DATA;
 
 	spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
+		reliable |= mix->row_transport;
 		pw_log_trace_fp("%p: mix input %d %p->%p status:%d id:%d cycle:%d", this,
 				mix->port.port_id, mix->io[cycle], io,
 				mix->io[cycle]->status, mix->io[cycle]->buffer_id, cycle);
@@ -452,6 +459,79 @@ int pw_impl_port_reuse_reliable_input(struct pw_impl_port *port)
 	if (res < 0)
 		io->buffer_id = id;
 	return res < 0 ? res : 1;
+}
+
+int pw_impl_port_publish_row_return(struct pw_impl_port *port)
+{
+	struct pw_impl_port_mix *mix;
+	struct spa_io_buffers *source = &port->rt.io;
+	uint32_t cycle, id;
+
+	if (source->status == SPA_STATUS_HAVE_DATA ||
+	    source->buffer_id == SPA_ID_INVALID)
+		return 0;
+	cycle = port->node->rt.position->clock.cycle & 1;
+	spa_list_for_each(mix, &port->mix_list, link) {
+		struct spa_io_buffers *io;
+
+		if (!mix->row_transport || (io = mix->io[cycle]) == NULL)
+			continue;
+		if (io->status != SPA_STATUS_NEED_DATA ||
+		    SPA_ATOMIC_LOAD(io->buffer_id) != SPA_ID_INVALID)
+			return -EBUSY;
+		id = source->buffer_id;
+		SPA_ATOMIC_STORE(io->buffer_id, id);
+		source->buffer_id = SPA_ID_INVALID;
+		return 1;
+	}
+	return 0;
+}
+
+int pw_impl_port_reuse_remote_row_input(struct pw_impl_port *port)
+{
+	struct pw_impl_port_mix *mix;
+	int released = 0;
+
+	spa_list_for_each(mix, &port->mix_list, link) {
+		struct pw_impl_port *source;
+		uint32_t cycle;
+
+		if (!mix->row_transport)
+			continue;
+		if (mix->peer == NULL || mix->peer->p == NULL)
+			return -ENOTSUP;
+		source = mix->peer->p;
+		for (cycle = 0; cycle < 2; cycle++) {
+			struct spa_io_buffers *io = mix->io[cycle];
+			uint32_t id;
+			int res;
+
+			if (io == NULL || (cycle == 1 && io == mix->io[0]) ||
+			    io->status != SPA_STATUS_NEED_DATA ||
+			    (id = SPA_ATOMIC_LOAD(io->buffer_id)) == SPA_ID_INVALID)
+				continue;
+			if (!mix->row_borrowed || id != mix->row_borrowed_id ||
+			    id >= source->buffers.n_buffers)
+				return -EINVAL;
+			res = spa_node_port_reuse_buffer(source->mix, 0, id);
+			if (res < 0)
+				return res;
+			SPA_ATOMIC_STORE(io->buffer_id, SPA_ID_INVALID);
+			mix->row_borrowed = false;
+			released++;
+		}
+	}
+	return released;
+}
+
+bool pw_impl_port_has_borrowed_row(struct pw_impl_port *port)
+{
+	struct pw_impl_port_mix *mix;
+
+	spa_list_for_each(mix, &port->mix_list, link)
+		if (mix->row_transport && mix->row_borrowed)
+			return true;
+	return false;
 }
 
 static const struct spa_node_methods schedule_mix_node = {

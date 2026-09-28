@@ -212,10 +212,114 @@ static void test_pending_mix_and_release(void)
 	spa_assert_se(source.releases == 1);
 }
 
+static void test_exported_filter_return(void)
+{
+	struct source_capture source = {
+		.node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
+				SPA_VERSION_NODE, &source_methods, &source),
+	};
+	struct spa_io_position position = { 0 };
+	struct pw_node_activation driver_activation = { 0 },
+			filter_activation = { 0 }, sink_activation = { 0 };
+	struct pw_node_target filter_target = { .activation = &filter_activation,
+			.active = true }, sink_target = {
+			.activation = &sink_activation, .active = true };
+	struct pw_impl_node source_node = { 0 }, filter_node = { 0 };
+	struct impl server_output = { 0 }, client_input = { 0 };
+	struct pw_impl_port server_input = { 0 };
+	struct pw_impl_port_mix server_out_mix = { 0 },
+			server_in_mix = { 0 }, client_in_mix = { 0 };
+	struct spa_io_buffers shared = SPA_IO_BUFFERS_INIT;
+
+	source.consumer_activation = &filter_activation;
+	source_node.node = &source.node;
+	source_node.row_transport = true;
+	source_node.rt.position = &position;
+	source_node.rt.target.activation = &driver_activation;
+	spa_list_init(&source_node.rt.target_list);
+	spa_list_append(&source_node.rt.target_list, &filter_target.link);
+	spa_list_append(&source_node.rt.target_list, &sink_target.link);
+	filter_node.exported = true;
+	filter_node.rt.position = &position;
+	filter_node.rt.target.activation = &filter_activation;
+	server_output.this.node = &source_node;
+	server_output.this.mix = &server_output.mix_node;
+	server_output.this.buffers.n_buffers = 2;
+	server_output.mix_node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
+			SPA_VERSION_NODE, &schedule_tee_node_reliable, &server_output);
+	server_input.node = &filter_node;
+	server_in_mix.p = &server_input;
+	server_in_mix.peer = &server_out_mix;
+	server_in_mix.row_transport = true;
+	server_in_mix.io[0] = server_in_mix.io[1] = &shared;
+	server_out_mix.p = &server_output.this;
+	server_out_mix.peer = &server_in_mix;
+	spa_list_init(&server_input.mix_list);
+	spa_list_append(&server_input.mix_list, &server_in_mix.link);
+	client_input.this.node = &filter_node;
+	client_input.this.direction = PW_DIRECTION_INPUT;
+	client_in_mix.p = &client_input.this;
+	client_in_mix.row_transport = true;
+	client_in_mix.io[0] = client_in_mix.io[1] = &shared;
+	spa_list_init(&client_input.this.mix_list);
+	spa_list_init(&client_input.rt.mix_list);
+	spa_list_append(&client_input.this.mix_list, &client_in_mix.link);
+	spa_list_append(&client_input.rt.mix_list, &client_in_mix.rt.link);
+	shared.buffer_id = SPA_ID_INVALID;
+	server_output.this.rt.io.status = SPA_STATUS_HAVE_DATA;
+	server_output.this.rt.io.buffer_id = 0;
+	server_out_mix.io[0] = server_out_mix.io[1] = &shared;
+	spa_list_init(&server_output.rt.mix_list);
+	spa_list_append(&server_output.rt.mix_list, &server_out_mix.rt.link);
+	spa_assert_se(tee_process_reliable(&server_output) >= 0);
+	spa_assert_se(shared.status == SPA_STATUS_HAVE_DATA && shared.buffer_id == 0);
+	spa_assert_se(schedule_mix_input(&client_input) >= 0);
+	spa_assert_se(client_input.this.rt.io.status == SPA_STATUS_HAVE_DATA);
+	spa_assert_se(client_input.this.rt.io.buffer_id == 0);
+	spa_assert_se(shared.status == SPA_STATUS_NEED_DATA);
+	spa_assert_se(shared.buffer_id == SPA_ID_INVALID);
+
+	/* The exported filter retains ID 0 while output is unavailable. */
+	SPA_ATOMIC_STORE(filter_activation.status, PW_NODE_ACTIVATION_AWAKE);
+	SPA_ATOMIC_STORE(driver_activation.status, PW_NODE_ACTIVATION_FINISHED);
+	SPA_ATOMIC_STORE(sink_activation.status, PW_NODE_ACTIVATION_AWAKE);
+	spa_assert_se(pw_impl_port_publish_row_return(&client_input.this) == 0);
+	spa_assert_se(!pw_impl_node_reliable_cycle_complete(&source_node));
+	spa_assert_se(source.releases == 0);
+
+	/* A later filter activation returns the borrowed ID after its callback. */
+	client_input.this.rt.io.status = SPA_STATUS_NEED_DATA;
+	client_input.this.rt.io.buffer_id = 0;
+	spa_assert_se(pw_impl_port_publish_row_return(&client_input.this) == 1);
+	spa_assert_se(shared.buffer_id == 0);
+	spa_assert_se(client_input.this.rt.io.buffer_id == SPA_ID_INVALID);
+	SPA_ATOMIC_STORE(filter_activation.status, PW_NODE_ACTIVATION_FINISHED);
+	spa_assert_se(!pw_impl_node_reliable_cycle_complete(&source_node));
+	spa_assert_se(source.releases == 0);
+	SPA_ATOMIC_STORE(sink_activation.status, PW_NODE_ACTIVATION_FINISHED);
+	spa_assert_se(pw_impl_node_reliable_cycle_complete(&source_node));
+	spa_assert_se(pw_impl_port_reuse_remote_row_input(&server_input) == 1);
+	spa_assert_se(source.releases == 1 && source.last_id == 0);
+	spa_assert_se(shared.buffer_id == SPA_ID_INVALID);
+	spa_assert_se(pw_impl_port_reuse_remote_row_input(&server_input) == 0);
+	spa_assert_se(source.releases == 1);
+	shared.buffer_id = 0;
+	spa_assert_se(pw_impl_port_reuse_remote_row_input(&server_input) == -EINVAL);
+	spa_assert_se(source.releases == 1);
+	shared.buffer_id = SPA_ID_INVALID;
+
+	/* Releasing ID 0 makes the next row eligible for publication. */
+	server_output.this.rt.io.status = SPA_STATUS_HAVE_DATA;
+	server_output.this.rt.io.buffer_id = 1;
+	spa_assert_se(tee_process_reliable(&server_output) >= 0);
+	spa_assert_se(shared.status == SPA_STATUS_HAVE_DATA && shared.buffer_id == 1);
+}
+
 int main(int argc, char *argv[])
 {
 	pw_init(&argc, &argv);
 	test_pending_mix_and_release();
+	test_exported_filter_return();
 	pw_deinit();
 	return 0;
 }

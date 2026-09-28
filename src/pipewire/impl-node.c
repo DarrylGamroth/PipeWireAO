@@ -145,6 +145,7 @@ static int ensure_poll_error_source(struct pw_impl_node *node)
 
 static int poll_process_node(void *data);
 static int node_ready(void *data, int status);
+static void flush_reliable_input_returns(struct pw_impl_node *node);
 static void flush_reliable_retry(struct pw_impl_node *node);
 
 #define pw_node_resource(r,m,v,...)	pw_resource_call(r,struct pw_node_events,m,v,__VA_ARGS__)
@@ -378,6 +379,7 @@ do_node_unprepare(struct spa_loop *loop, bool async, uint32_t seq,
 		deactivate_target(this, t, trigger);
 
 	this->rt.prepared = false;
+	this->row_cycle_inflight = false;
 	return 0;
 }
 
@@ -1261,6 +1263,7 @@ static int execute_match(void *data, const char *location, const char *action,
 
 static void reliable_request_event(void *data, uint64_t count SPA_UNUSED)
 {
+	flush_reliable_input_returns(data);
 	flush_reliable_retry(data);
 }
 
@@ -1691,19 +1694,24 @@ static void flush_reliable_input_returns(struct pw_impl_node *node)
 	struct pw_impl_port *port;
 	int res;
 
-	if (driver == NULL || node != driver ||
-	    !SPA_ATOMIC_LOAD(driver->rt.reliable_release_pending) ||
+	if (driver == NULL || node != driver || !driver->row_transport ||
 	    !pw_impl_node_reliable_cycle_complete(driver))
 		return;
-	spa_list_for_each(port, &driver->rt.input_mix, rt.node_link)
-		if ((res = pw_impl_port_reuse_reliable_input(port)) < 0)
-			goto error;
+	if (SPA_ATOMIC_LOAD(driver->rt.reliable_release_pending)) {
+		spa_list_for_each(port, &driver->rt.input_mix, rt.node_link)
+			if ((res = pw_impl_port_reuse_reliable_input(port)) < 0)
+				goto error;
+	}
 	spa_list_for_each(target, &driver->rt.target_list, link) {
 		if (!target->active || target->node == NULL ||
 		    target->node == driver)
 			continue;
-		spa_list_for_each(port, &target->node->rt.input_mix, rt.node_link)
-			if ((res = pw_impl_port_reuse_reliable_input(port)) < 0)
+		if (SPA_ATOMIC_LOAD(driver->rt.reliable_release_pending))
+			spa_list_for_each(port, &target->node->rt.input_mix, rt.node_link)
+				if ((res = pw_impl_port_reuse_reliable_input(port)) < 0)
+					goto error;
+		spa_list_for_each(port, &target->node->input_ports, link)
+			if ((res = pw_impl_port_reuse_remote_row_input(port)) < 0)
 				goto error;
 	}
 	SPA_ATOMIC_STORE(driver->rt.reliable_release_pending, 0);
@@ -1713,6 +1721,21 @@ error:
 	pw_impl_node_rt_emit_incomplete(driver);
 }
 
+static bool driver_has_borrowed_row(struct pw_impl_node *driver)
+{
+	struct pw_node_target *target;
+	struct pw_impl_port *port;
+
+	spa_list_for_each(target, &driver->rt.target_list, link) {
+		if (!target->active || target->node == NULL)
+			continue;
+		spa_list_for_each(port, &target->node->input_ports, link)
+			if (pw_impl_port_has_borrowed_row(port))
+				return true;
+	}
+	return false;
+}
+
 static void flush_reliable_retry(struct pw_impl_node *node)
 {
 	struct pw_impl_node *driver = node->driver_node;
@@ -1720,6 +1743,7 @@ static void flush_reliable_retry(struct pw_impl_node *node)
 
 	if (driver == NULL || node != driver || !driver->row_transport ||
 	    SPA_ATOMIC_LOAD(driver->rt.reliable_release_pending) ||
+	    driver_has_borrowed_row(driver) ||
 	    !SPA_ATOMIC_LOAD(driver->rt.reliable_retry_pending) ||
 	    !pw_impl_node_reliable_cycle_complete(driver))
 		return;
@@ -1750,6 +1774,7 @@ static inline int process_node(void *data, uint64_t nsec)
 	struct pw_node_activation *a = this->rt.target.activation;
 	struct spa_system *data_system = this->rt.target.system;
 	int status;
+	int row_result;
 	bool was_awake;
 
 	if (!pw_node_activation_signal_time_ready(a) ||
@@ -1777,12 +1802,24 @@ static inline int process_node(void *data, uint64_t nsec)
 			status = SPA_STATUS_OK;
 			goto processed;
 		}
+		spa_list_for_each(p, &this->rt.input_mix, rt.node_link)
+			if (SPA_UNLIKELY((row_result =
+				pw_impl_port_publish_row_return(p)) < 0)) {
+				status = SPA_STATUS_NEED_DATA;
+				goto processed;
+			}
 		/* process input mixers */
 		spa_list_for_each(p, &this->rt.input_mix, rt.node_link)
 			spa_node_process_fast(p->mix);
 
 		/* process the actual node */
 		status = spa_node_process_fast(this->node);
+		spa_list_for_each(p, &this->rt.input_mix, rt.node_link)
+			if (SPA_UNLIKELY((row_result =
+				pw_impl_port_publish_row_return(p)) < 0)) {
+				status = SPA_STATUS_NEED_DATA;
+				goto processed;
+			}
 
 		/* process output tee */
 		if (status & SPA_STATUS_HAVE_DATA) {
@@ -1835,6 +1872,15 @@ static inline int process_node(void *data, uint64_t nsec)
 		flush_reliable_input_returns(this);
 	if (was_awake && this == this->driver_node)
 		flush_reliable_retry(this);
+	if (was_awake && !this->driving &&
+	    pw_node_activation_has_flag(a, PW_NODE_ACTIVATION_FLAG_ROW_RETURN)) {
+		if (this->exported)
+			pw_impl_node_rt_emit_complete(this);
+		else if (this->driver_node != NULL &&
+			 this->driver_node->rt.reliable_event != NULL)
+			pw_loop_signal_event(this->driver_node->data_loop,
+				this->driver_node->rt.reliable_event);
+	}
 
 	return status;
 }
@@ -2467,10 +2513,20 @@ static int node_ready(void *data, int status)
 		pw_log_warn("%p: ready non-driver node %s", node, node->name);
 		return -EIO;
 	}
-	if (SPA_UNLIKELY(node->row_transport &&
-			SPA_ATOMIC_LOAD(node->rt.reliable_release_pending)))
-		return -EBUSY;
-
+	if (SPA_UNLIKELY(node->row_transport)) {
+		spa_list_for_each(t, &driver->rt.target_list, link)
+			if (t->active && t->node != NULL && t->node->remote &&
+			    !pw_properties_get_bool(t->node->properties,
+					"pipewireao.row-transport-return", false))
+				return -ENOTSUP;
+	}
+	if (SPA_UNLIKELY(node->row_transport && node->row_cycle_inflight)) {
+		flush_reliable_input_returns(node);
+		if (!pw_impl_node_reliable_cycle_complete(node) ||
+		    SPA_ATOMIC_LOAD(node->rt.reliable_release_pending) ||
+		    driver_has_borrowed_row(node))
+			return -EBUSY;
+	}
 	nsec = get_time_ns(data_system);
 
 	while (true) {
@@ -2494,7 +2550,6 @@ static int node_ready(void *data, int status)
 			break;
 		}
 	}
-
 	sync_type = check_updates(node, &reposition_owner);
 	owner[0] = SPA_ATOMIC_LOAD(a->segment_owner[0]);
 	owner[1] = SPA_ATOMIC_LOAD(a->segment_owner[1]);
@@ -2507,6 +2562,9 @@ again:
 	spa_list_for_each(t, &driver->rt.target_list, link) {
 		struct pw_node_activation *ta = t->activation;
 		uint32_t id = t->id;
+		pw_node_activation_update_flag(ta,
+				PW_NODE_ACTIVATION_FLAG_ROW_RETURN,
+				driver->row_transport);
 
 		ta->driver_id = driver->info.id;
 retry_status:
@@ -2587,6 +2645,7 @@ retry_status:
 			spa_node_process_fast(p->mix);
 	}
 
+	node->row_cycle_inflight = node->row_transport;
 	a->position.clock.cycle++;
 	pw_impl_node_rt_emit_start(node);
 

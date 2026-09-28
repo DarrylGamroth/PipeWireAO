@@ -177,6 +177,45 @@ distinguish an old callback from a new use of the same ID after rebinding.
 
 ## Focused verification
 
+### Exported filter return
+
+The live HEART source is a local server node; the FGN filter is an exported
+client node. The server link's input mix has a reciprocal pointer to the
+source output mix. The client's corresponding mix has no reciprocal pointer,
+so it cannot return a source buffer directly.
+
+The client advertises `pipewireao.row-transport-return=true` when exporting a
+node. For an input linked to a row source, the server checks that capability
+and sends the same property through the existing `port_set_mix_info` event.
+Only that mix uses the row return path. The client input mix clears the shared
+buffer ID when it transfers a row to the filter. The server link retains the
+borrowed source ID while the filter holds it, including after an activation
+finishes without output. After the filter queues its
+input buffer, the client copies the exact returned ID into the shared mix IO
+and then publishes activation `FINISHED`. A release store on the ID precedes
+the activation status store; the server acquires all target statuses before
+it reads the ID. `NEED_DATA` alone never acknowledges a row.
+
+The server driver scans these marked input mixes only after its own activation
+and every active target are `FINISHED`. It checks the returned ID against the
+borrowed ID, calls the reciprocal local source tee's `port_reuse_buffer`, and
+clears the loan and shared ID. A failed
+reuse leaves the ID pending. The first driver cycle is admitted without a
+prior-cycle completion check; later cycles wait for the prior graph to finish.
+Each target in a row-driven graph signals completion through an eventfd. The
+driver's reliable event retries the release scan after late client or local
+target completion. This path adds no per-row native-protocol message, heap
+allocation, or main-loop scheduling step. An exported client without the
+capability cannot join a row-driven graph. New driver cycles and output retry
+commands remain gated while a row is borrowed.
+
+`test-row-transport-mix.c` exercises the server/client mix split with a held
+input and two source IDs. It checks no release while ID 0 is retained, release
+only after filter and sink completion, exact one-time reuse of ID 0, stale ID
+rejection, and
+subsequent publication of ID 1. `test-row-transport-order.c` also checks
+first-cycle admission and release-before-retry ordering.
+
 The raw fail-before and pass-after outputs are in
 `docs/review/heart-row-transport-evidence/`. The three core cases use the
 actual tee/mix, filter output return, and impl-node scheduler code. The
