@@ -1,0 +1,2 @@
+command: build-row-contract/src/tests/pw-test-filter-output-return
+returncode: 0

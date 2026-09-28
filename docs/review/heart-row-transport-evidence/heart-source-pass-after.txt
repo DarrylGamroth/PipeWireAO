@@ -1,0 +1,2 @@
+$ HEART_ROW_TRANSPORT_CONTRACT=1 build-row-contract/spa/plugins/heart/spa-heart-source-test build-row-contract/spa/plugins/heart/libspa-heart.so
+exit=0

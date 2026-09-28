@@ -39,6 +39,60 @@ foreach a : test_apps
   endif
 endforeach
 
+test('pw-test-row-transport-mix',
+  executable('pw-test-row-transport-mix', 'test-row-transport-mix.c',
+    dependencies : [pipewire_dep],
+    include_directories : [includes_inc],
+    c_args : ['-ffunction-sections', '-fdata-sections'],
+    link_args : ['-Wl,--gc-sections']),
+  depends : [spa_support_lib])
+
+test('pw-test-filter-output-return',
+  executable('pw-test-filter-output-return', 'test-filter-output-return.c',
+    dependencies : [pipewire_dep],
+    include_directories : [includes_inc],
+    c_args : ['-ffunction-sections', '-fdata-sections'],
+    link_args : ['-Wl,--gc-sections']),
+  depends : [spa_support_lib])
+
+test('pw-test-row-transport-order',
+  executable('pw-test-row-transport-order', 'test-row-transport-order.c',
+    dependencies : [pipewire_dep, pthread_lib],
+    include_directories : [includes_inc],
+    c_args : ['-ffunction-sections', '-fdata-sections', '-fwhole-program'],
+    link_args : ['-Wl,--gc-sections']),
+  depends : [spa_support_lib])
+
+row_return_lifetime = executable('pw-test-row-return-lifetime',
+  'test-row-return-lifetime.c',
+  dependencies : [pipewire_dep, pthread_lib],
+  include_directories : [includes_inc],
+  c_args : ['-ffunction-sections', '-fdata-sections'],
+  link_args : ['-Wl,--gc-sections'])
+test('pw-test-row-return-mix-removal', row_return_lifetime,
+  depends : [spa_support_lib],
+  env : ['PIPEWIREAO_SPA_PLUGIN_DIR=@0@'.format(spa_dep.get_variable('plugindir'))])
+test('pw-test-row-return-io-replacement', row_return_lifetime,
+  args : ['replace'],
+  depends : [spa_support_lib],
+  env : ['PIPEWIREAO_SPA_PLUGIN_DIR=@0@'.format(spa_dep.get_variable('plugindir'))])
+
+row_return_driver_port = static_library('pw-test-row-return-driver-port',
+  'test-row-return-driver-port.c',
+  dependencies : [pipewire_dep],
+  include_directories : [includes_inc],
+  c_args : ['-ffunction-sections', '-fdata-sections'])
+test('pw-test-row-return-driver-lifetime',
+  executable('pw-test-row-return-driver-lifetime',
+    'test-row-return-driver-lifetime.c',
+    link_with : row_return_driver_port,
+    dependencies : [pipewire_dep, pthread_lib],
+    include_directories : [includes_inc],
+    c_args : ['-ffunction-sections', '-fdata-sections', '-fwhole-program'],
+    link_args : ['-Wl,--gc-sections']),
+  depends : [spa_support_lib],
+  env : ['PIPEWIREAO_SPA_PLUGIN_DIR=@0@'.format(spa_dep.get_variable('plugindir'))])
+
 polling_remote_client = executable(
   'pw-test-polling-remote-client',
   'test-polling-remote-client.c',
@@ -194,6 +248,17 @@ ndarray_filter_chain_buffer_removal = executable(
   'pw-test-ndarray-filter-chain-buffer-removal',
   'test-ndarray-filter-chain-buffer-removal.c',
   dependencies: [pipewire_dep],
+)
+ndarray_filter_chain_feedback = executable(
+  'pw-test-ndarray-filter-chain-feedback',
+  'test-ndarray-filter-chain-feedback.c',
+  include_directories : [configinc],
+  dependencies : [spa_dep, dl_lib, mathlib, pipewire_dep, pthread_lib],
+  link_with : ndarray_filter_graph,
+)
+test(
+  'pw-test-ndarray-filter-chain-feedback',
+  ndarray_filter_chain_feedback,
 )
 test(
   'pw-test-ndarray-filter-chain-props',

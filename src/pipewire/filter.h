@@ -121,6 +121,8 @@ enum pw_filter_flags {
 							  *  does a trigger_process() that will then
 							  *  dequeue/queue a buffer from another process()
 							  *  function. since 0.3.73 */
+	PW_FILTER_FLAG_OUTPUT_RETURN_RETRY = (1 << 6), /**< request a graph cycle when
+							   * an output buffer returns. */
 };
 
 enum pw_filter_port_flags {

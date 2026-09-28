@@ -226,20 +226,12 @@ static struct pw_impl_port_mix *find_mix(struct pw_impl_port *port,
 	return NULL;
 }
 
-static int
-do_add_mix(struct spa_loop *loop,
-		 bool async, uint32_t seq, const void *data, size_t size, void *user_data)
-{
-	struct pw_impl_port_mix *mix = user_data;
-	struct pw_impl_port *this = mix->p;
-	struct impl *impl = SPA_CONTAINER_OF(this, struct impl, this);
-	pw_log_trace("%p: add mix %p", this, mix);
-	if (!mix->rt.active) {
-		spa_list_append(&impl->rt.mix_list, &mix->rt.link);
-		mix->rt.active = true;
-	}
-	return 0;
-}
+struct mix_io_update {
+	struct pw_impl_port_mix *mix;
+	void *data;
+	struct spa_io_buffers *io[2];
+	uint8_t *buffer_out;
+};
 
 static void mix_recycle_all(struct impl *impl, struct pw_impl_port_mix *mix)
 {
@@ -258,21 +250,49 @@ static void mix_recycle_all(struct impl *impl, struct pw_impl_port_mix *mix)
 	}
 }
 
-static int
-do_remove_mix(struct spa_loop *loop,
-		 bool async, uint32_t seq, const void *data, size_t size, void *user_data)
+static void deactivate_mix(struct impl *impl, struct pw_impl_port_mix *mix)
 {
-	struct pw_impl_port_mix *mix = user_data;
-	struct pw_impl_port *this = mix->p;
-	struct impl *impl = SPA_CONTAINER_OF(this, struct impl, this);
-
-	pw_log_trace("%p: remove mix %p", this, mix);
+	pw_log_trace("%p: remove mix %p", &impl->this, mix);
 	if (mix->rt.active) {
 		spa_list_remove(&mix->rt.link);
 		mix->rt.active = false;
 		if (impl->this.output_mode == OUTPUT_MODE_REFCOUNTED)
 			mix_recycle_all(impl, mix);
 	}
+}
+
+static int do_set_mix_io(struct spa_loop *loop,
+		bool async, uint32_t seq, const void *data, size_t size, void *user_data)
+{
+	struct mix_io_update *update = user_data;
+	struct pw_impl_port_mix *mix = update->mix;
+	struct impl *impl = SPA_CONTAINER_OF(mix->p, struct impl, this);
+
+	if (update->data == NULL) {
+		deactivate_mix(impl, mix);
+		update->buffer_out = mix->buffer_out;
+		mix->buffer_out = NULL;
+	} else if (update->buffer_out != NULL) {
+		mix->buffer_out = update->buffer_out;
+		update->buffer_out = NULL;
+	}
+	mix->io_data = update->data;
+	mix->io[0] = update->io[0];
+	mix->io[1] = update->io[1];
+	if (update->data != NULL && !mix->rt.active) {
+		spa_list_append(&impl->rt.mix_list, &mix->rt.link);
+		mix->rt.active = true;
+	}
+	return 0;
+}
+
+static int do_remove_mix(struct spa_loop *loop,
+		bool async, uint32_t seq, const void *data, size_t size, void *user_data)
+{
+	struct pw_impl_port_mix *mix = user_data;
+	struct impl *impl = SPA_CONTAINER_OF(mix->p, struct impl, this);
+
+	deactivate_mix(impl, mix);
 	return 0;
 }
 
@@ -306,7 +326,8 @@ static int mix_port_set_io(void *object,
 	struct impl *impl = object;
 	struct pw_impl_port *this = &impl->this;
 	struct pw_impl_port_mix *mix;
-	bool refcounted = this->output_mode == OUTPUT_MODE_REFCOUNTED;
+	struct mix_io_update update = { 0 };
+	int res;
 
 	mix = find_mix(this, direction, port_id);
 	if (mix == NULL)
@@ -318,29 +339,30 @@ static int mix_port_set_io(void *object,
 	switch (id) {
 	case SPA_IO_Buffers:
 	case SPA_IO_AsyncBuffers:
-		if (data == NULL || size == 0) {
-			pw_loop_locked(this->node->data_loop,
-			       do_remove_mix, SPA_ID_INVALID, NULL, 0, mix);
-			mix->io_data = mix->io[0] = mix->io[1] = NULL;
-
-			if (refcounted && mix->buffer_out) {
-				free(mix->buffer_out);
-				mix->buffer_out = NULL;
-			}
-		} else if (data != NULL && size >= sizeof(struct spa_io_buffers)) {
+		if (data != NULL && size != 0 && size < sizeof(struct spa_io_buffers))
+			return 0;
+		update.mix = mix;
+		if (data != NULL && size >= sizeof(struct spa_io_buffers)) {
 			if (size >= sizeof(struct spa_io_async_buffers)) {
 				struct spa_io_async_buffers *ab = data;
-				mix->io_data = data;
-				mix->io[0] = &ab->buffers[this->direction];
-				mix->io[1] = &ab->buffers[this->direction^1];
+				update.io[0] = &ab->buffers[this->direction];
+				update.io[1] = &ab->buffers[this->direction^1];
 			} else {
-				mix->io_data = mix->io[0] = mix->io[1] = data;
+				update.io[0] = update.io[1] = data;
 			}
-			if (refcounted && mix->buffer_out == NULL)
-				mix->buffer_out = calloc(this->buffers.n_buffers, sizeof(uint8_t));
-			pw_loop_locked(this->node->data_loop,
-			       do_add_mix, SPA_ID_INVALID, NULL, 0, mix);
+			if (this->output_mode == OUTPUT_MODE_REFCOUNTED &&
+			    mix->buffer_out == NULL && this->buffers.n_buffers > 0) {
+				update.buffer_out = calloc(this->buffers.n_buffers,
+						sizeof(*update.buffer_out));
+				if (update.buffer_out == NULL)
+					return -ENOMEM;
+			}
+			update.data = data;
 		}
+		res = pw_loop_locked(this->node->data_loop,
+				do_set_mix_io, SPA_ID_INVALID, NULL, 0, &update);
+		free(update.buffer_out);
+		return res;
 	}
 	return 0;
 }
@@ -387,11 +409,17 @@ static int tee_process_reliable(void *object)
 					mix->port.port_id, io, mio, mio->status,
 					mio->buffer_id, this->buffers.n_buffers);
 
-			if (mio->status != SPA_STATUS_HAVE_DATA) {
+			if (mio->status != SPA_STATUS_HAVE_DATA &&
+			    !(mix->peer != NULL && mix->peer->row_transport &&
+			      mix->peer->row_borrowed)) {
 				io->buffer_id = mio->buffer_id;
 				io->status = SPA_STATUS_NEED_DATA;
 				mio->buffer_id = buffer_id;
 				mio->status = SPA_STATUS_HAVE_DATA;
+				if (mix->peer != NULL && mix->peer->row_transport) {
+					mix->peer->row_borrowed_id = buffer_id;
+					mix->peer->row_borrowed = true;
+				}
 				break;
 			}
 		}
@@ -477,11 +505,13 @@ static int tee_reuse_buffer(void *object, uint32_t port_id, uint32_t buffer_id)
 {
 	struct impl *impl = object;
 	struct pw_impl_port *this = &impl->this;
+	int res;
 
 	pw_log_trace_fp("%p: tee reuse port %d buffer id:%d/%d",
 			this, port_id, buffer_id, this->buffers.n_buffers);
-	spa_node_port_reuse_buffer(this->node->node, this->port_id, buffer_id);
-	return 0;
+	res = spa_node_port_reuse_buffer(this->node->node,
+			this->port_id, buffer_id);
+	return this->node->row_transport ? res : 0;
 }
 
 static int mix_process(void *object)
@@ -491,12 +521,14 @@ static int mix_process(void *object)
 	struct spa_io_buffers *io = &this->rt.io;
 	struct pw_impl_port_mix *mix;
 	uint32_t cycle = this->node->rt.position->clock.cycle & 1;
+	bool reliable = pw_impl_port_has_reliable_peer(this);
 
 	if (SPA_UNLIKELY(PW_IMPL_PORT_IS_CONTROL(this)))
 		return SPA_STATUS_HAVE_DATA | SPA_STATUS_NEED_DATA;
 
 	spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
 		uint32_t buffer_id = io->buffer_id;
+		reliable |= mix->row_transport;
 		pw_log_trace_fp("%p: mix input %d %p->%p status:%d id:%d/%d cycle:%d", this,
 				mix->port.port_id, mix->io[cycle], io,
 				mix->io[cycle]->status, mix->io[cycle]->buffer_id,
@@ -504,6 +536,8 @@ static int mix_process(void *object)
 		*io = *mix->io[cycle];
 		mix->io[cycle]->buffer_id = buffer_id;
 		mix->io[cycle]->status = SPA_STATUS_NEED_DATA;
+		if (reliable)
+			mix->io[cycle]->buffer_id = SPA_ID_INVALID;
 		break;
 	}
         return SPA_STATUS_HAVE_DATA | SPA_STATUS_NEED_DATA;
@@ -514,23 +548,179 @@ static int mix_reuse_buffer(void *object, uint32_t port_id, uint32_t buffer_id)
 	struct impl *impl = object;
 	struct pw_impl_port_mix *mix;
 
+	if (port_id != 0)
+		return -EINVAL;
+
 	spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
 		pw_log_trace_fp("%p: reuse port %d buffer id:%d/%d",
 				impl, port_id, buffer_id, impl->this.buffers.n_buffers);
-		/* FIXME send reuse buffer to peer */
-		break;
+		if (mix->peer == NULL || mix->peer->p == NULL ||
+		    !mix->peer->p->node->row_transport)
+			return 0;
+		if (impl->rt.mix_list.next != impl->rt.mix_list.prev)
+			return -ENOTSUP;
+		return spa_node_port_reuse_buffer(mix->peer->p->mix, 0,
+				buffer_id);
 	}
 	return 0;
+}
+
+bool pw_impl_port_has_reliable_peer(struct pw_impl_port *port)
+{
+	struct impl *impl = SPA_CONTAINER_OF(port, struct impl, this);
+	struct pw_impl_port_mix *mix;
+
+	if (port->direction != PW_DIRECTION_INPUT ||
+	    spa_list_is_empty(&impl->rt.mix_list) ||
+	    impl->rt.mix_list.next != impl->rt.mix_list.prev)
+		return false;
+	spa_list_for_each(mix, &impl->rt.mix_list, rt.link)
+		return mix->peer != NULL && mix->peer->p != NULL &&
+			mix->peer->p->node->row_transport;
+	return false;
+}
+
+int pw_impl_port_reuse_reliable_input(struct pw_impl_port *port)
+{
+	struct spa_io_buffers *io = &port->rt.io;
+	struct pw_node_activation *activation;
+	struct pw_impl_node *driver;
+	uint32_t id;
+	int res;
+
+	if (!pw_impl_port_has_reliable_peer(port) ||
+	    io->status == SPA_STATUS_HAVE_DATA ||
+	    io->buffer_id == SPA_ID_INVALID)
+		return 0;
+	activation = port->node->rt.target.activation;
+	if (activation == NULL || SPA_ATOMIC_LOAD(activation->status) !=
+	    PW_NODE_ACTIVATION_FINISHED)
+		return 0;
+	driver = port->node->driver_node;
+	if (!pw_impl_node_reliable_cycle_complete(driver))
+		return 0;
+	id = io->buffer_id;
+	io->buffer_id = SPA_ID_INVALID;
+	res = spa_node_port_reuse_buffer(port->mix, 0, id);
+	if (res < 0)
+		io->buffer_id = id;
+	return res < 0 ? res : 1;
+}
+
+int pw_impl_port_publish_row_return(struct pw_impl_port *port)
+{
+	struct impl *impl = SPA_CONTAINER_OF(port, struct impl, this);
+	struct pw_impl_port_mix *mix;
+	struct spa_io_buffers *source = &port->rt.io;
+	uint32_t cycle, id;
+
+	if (source->status == SPA_STATUS_HAVE_DATA ||
+	    source->buffer_id == SPA_ID_INVALID)
+		return 0;
+	cycle = port->node->rt.position->clock.cycle & 1;
+	spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
+		struct spa_io_buffers *io;
+
+		if (!mix->row_transport || (io = mix->io[cycle]) == NULL)
+			continue;
+		if (io->status != SPA_STATUS_NEED_DATA ||
+		    SPA_ATOMIC_LOAD(io->buffer_id) != SPA_ID_INVALID)
+			return -EBUSY;
+		id = source->buffer_id;
+		SPA_ATOMIC_STORE(io->buffer_id, id);
+		source->buffer_id = SPA_ID_INVALID;
+		return 1;
+	}
+	return 0;
+}
+
+int pw_impl_port_reuse_row_output(struct pw_impl_port *port, bool release_local)
+{
+	struct impl *impl = SPA_CONTAINER_OF(port, struct impl, this);
+	struct pw_impl_port_mix *mix;
+	int released = 0;
+
+	spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
+		struct pw_impl_port_mix *input = mix->peer;
+		uint32_t cycle;
+
+		if (input == NULL)
+			continue;
+		if (input->p == NULL)
+			return -ENOTSUP;
+		if (!input->row_transport) {
+			struct spa_io_buffers *io = &input->p->rt.io;
+			uint32_t id;
+			int res;
+
+			if (!release_local || io->status == SPA_STATUS_HAVE_DATA ||
+			    (id = io->buffer_id) == SPA_ID_INVALID)
+				continue;
+			if (id >= port->buffers.n_buffers)
+				return -EINVAL;
+			res = spa_node_port_reuse_buffer(port->mix, 0, id);
+			if (res < 0)
+				return res;
+			io->buffer_id = SPA_ID_INVALID;
+			released++;
+			continue;
+		}
+		for (cycle = 0; cycle < 2; cycle++) {
+			struct spa_io_buffers *io = mix->io[cycle];
+			uint32_t id;
+			int res;
+
+			if (io == NULL || (cycle == 1 && io == mix->io[0]) ||
+			    io->status != SPA_STATUS_NEED_DATA ||
+			    (id = SPA_ATOMIC_LOAD(io->buffer_id)) == SPA_ID_INVALID)
+				continue;
+			if (!input->row_borrowed || id != input->row_borrowed_id ||
+			    id >= port->buffers.n_buffers)
+				return -EINVAL;
+			res = spa_node_port_reuse_buffer(port->mix, 0, id);
+			if (res < 0)
+				return res;
+			SPA_ATOMIC_STORE(io->buffer_id, SPA_ID_INVALID);
+			input->row_borrowed = false;
+			released++;
+		}
+	}
+	return released;
+}
+
+bool pw_impl_port_has_borrowed_row(struct pw_impl_port *port)
+{
+	struct impl *impl = SPA_CONTAINER_OF(port, struct impl, this);
+	struct pw_impl_port_mix *mix;
+
+	spa_list_for_each(mix, &impl->rt.mix_list, rt.link)
+		if (mix->peer != NULL && mix->peer->row_transport &&
+		    mix->peer->row_borrowed)
+			return true;
+	return false;
 }
 
 SPA_EXPORT
 int pw_impl_port_init_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mix)
 {
+	struct pw_impl_port_mix *other;
 	uint32_t port_id;
 	int res = 0;
 
-	if (port->exclusive && port->n_mix != 0)
+	if ((port->exclusive ||
+	     (port->direction == PW_DIRECTION_OUTPUT &&
+	      port->node->row_transport)) &&
+	    port->n_mix != 0)
 		return -EBUSY;
+	if (port->direction == PW_DIRECTION_INPUT && port->n_mix != 0) {
+		if (mix->peer != NULL && mix->peer->p != NULL &&
+		    mix->peer->p->node->row_transport)
+			return -EBUSY;
+		spa_list_for_each(other, &port->mix_list, link)
+			if (other->peer != NULL && other->peer->p != NULL &&
+			    other->peer->p->node->row_transport)
+				return -EBUSY;
+	}
 
 	port_id = pw_map_insert_new(&port->mix_port_map, mix);
 	if (port_id == SPA_ID_INVALID)
@@ -588,6 +778,11 @@ int pw_impl_port_release_mix(struct pw_impl_port *port, struct pw_impl_port_mix 
 	int res = 0;
 	uint32_t port_id = mix->port.port_id;
 
+	res = pw_loop_locked(port->node->data_loop,
+			do_remove_mix, SPA_ID_INVALID, NULL, 0, mix);
+	if (res < 0)
+		return res;
+
 	pw_map_remove(&port->mix_port_map, port_id);
 	spa_list_remove(&mix->link);
 	port->n_mix--;
@@ -596,6 +791,9 @@ int pw_impl_port_release_mix(struct pw_impl_port *port, struct pw_impl_port_mix 
 			port->n_mix, port->port_id, mix->port.port_id);
 
 	res = pw_impl_port_call_release_mix(port, mix);
+
+	free(mix->buffer_out);
+	mix->buffer_out = NULL;
 
 	if (port->destroying)
 		return res;
@@ -607,10 +805,6 @@ int pw_impl_port_release_mix(struct pw_impl_port *port, struct pw_impl_port_mix 
 	if (port->n_mix == 0) {
 		pw_log_debug("%p: clearing port io", port);
 		pw_impl_port_set_param(port, SPA_PARAM_Format, 0, NULL);
-	}
-	if (mix->buffer_out) {
-		free(mix->buffer_out);
-		mix->buffer_out = NULL;
 	}
 	return res;
 }

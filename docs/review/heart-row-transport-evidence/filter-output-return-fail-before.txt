@@ -1,0 +1,3 @@
+command: build-row-contract/src/tests/pw-test-filter-output-return
+returncode: -6
+'capture.requests == 1' failed at ../src/tests/test-filter-output-return.c:65 main()

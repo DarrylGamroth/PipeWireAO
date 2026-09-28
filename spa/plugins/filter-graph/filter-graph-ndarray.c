@@ -1202,6 +1202,26 @@ static bool format_rate_equal(const struct spa_fgn_format *first,
 		first->rate_denom == second->rate_denom;
 }
 
+static bool input_gated_by_conditional_output(const struct fgn_port *port)
+{
+	const struct fgn_node *node = port->node;
+	uint32_t i;
+
+	/* The node consumes this input only when its required conditional input
+	 * publishes, even if the graph activates at a faster block rate. */
+	for (i = 0; i < node->n_inputs; i++) {
+		const struct fgn_port *input = node->inputs[i];
+		const struct fgn_port *source = input->source;
+
+		if (source != NULL &&
+		    !(input->info->flags & SPA_FGN_PORT_FLAG_OPTIONAL) &&
+		    (source->info->flags & SPA_FGN_PORT_FLAG_CONDITIONAL) &&
+		    format_rate_equal(source->format, port->format))
+			return true;
+	}
+	return false;
+}
+
 static int validate_graph(const struct spa_fgn_graph *graph)
 {
 	const struct spa_fgn_format *activation_rate = NULL;
@@ -1213,7 +1233,8 @@ static int validate_graph(const struct spa_fgn_graph *graph)
 		const struct fgn_port *port = graph->inputs[i];
 
 		if (port->info->flags & SPA_FGN_PORT_FLAG_PARAMETER ||
-		    !format_has_rate(port->format))
+		    !format_has_rate(port->format) ||
+		    input_gated_by_conditional_output(port))
 			continue;
 		if (activation_rate == NULL)
 			activation_rate = port->format;

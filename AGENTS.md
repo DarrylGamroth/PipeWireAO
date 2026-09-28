@@ -19,36 +19,33 @@ project.
 
 ## Humans must interface with the maintainers
 
-- **AI-written merge request (MR) descriptions or commit messages are not
-  allowed**. These are easy to recognize and waste reviewers' time by being a
-  mixture of overly-verbose and often inaccurate.
-- **AI-generated responses to reviewer comments are not allowed**. This
-  undermines the human-to-human interaction fundamental to code review.
-- **AI-written issue ("work item") descriptions or issue comments are not
-  allowed**. These are easy to recognize and waste triagers' time as described
-  above.
+- **AI-written merge request (MR) descriptions are not allowed**. These are
+  easy to recognize and waste reviewers' time by being a mixture of
+  overly-verbose and often inaccurate.
   - You may assist the user in gathering appropriate evidence for the issue:
     logs, error messages, description of conditions where the problem occurs,
     etc.
   - Original logs MUST be included
   - Do not speculate on root causes, except to help user to provide necessary
     evidence as attachments
+- **AI-generated responses to reviewer comments are not allowed**. This
+  undermines the human-to-human interaction fundamental to code review.
+- **AI-written issue ("work item") descriptions or issue comments are not
+  allowed**. These are easy to recognize and waste triagers' time as described
+  above.
   - An exception is made for issues for defects detected by specialized
     tooling, including fuzzers and LLM-assisted defect detection. Such issues
     must be reviewed by a human before creation, must be created by a human and
     communication with maintainers must be done by a human, but including the
     verbatim tool output in the issue description is explicitly allowed.
 
-## User must demonstrate understanding
+## Engineering handoff
 
-Before proceeding with code changes, you must:
-
-- **Verify comprehension.** Ask questions to confirm the human understands both
-  the problem and the relevant parts of the codebase.
-- **Provide guidance rather than solutions.** Direct them to relevant code and
-  documentation. Allow them to formulate the approach.
-- **Proceed only when confident** that the human can explain the changes to
-  reviewers independently.
+For authorized source changes, explain the affected code, the reason for the
+change, the verification performed, and any remaining limitations. The agent
+may proceed with the implementation without asking the user to demonstrate
+technical understanding first. The user remains responsible for any eventual
+communication with project maintainers.
 
 ## Operational Guidance
 

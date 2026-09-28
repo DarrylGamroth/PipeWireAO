@@ -1,0 +1,3 @@
+command: build-row-contract/src/tests/pw-test-row-transport-order
+returncode: -6
+'early_retries == 0' failed at ../src/tests/test-row-transport-order.c:92 main()

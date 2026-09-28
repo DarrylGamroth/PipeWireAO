@@ -976,6 +976,9 @@ static int impl_port_reuse_buffer(void *object, uint32_t port_id, uint32_t buffe
 
 	pw_log_trace("%p: recycle buffer %d", impl, buffer_id);
 	push_queue(port, &port->queued, &port->buffers[buffer_id]);
+	if (SPA_FLAG_IS_SET(impl->flags, PW_FILTER_FLAG_OUTPUT_RETURN_RETRY))
+		spa_node_emit_event(&impl->hooks,
+				&SPA_NODE_EVENT_INIT(SPA_NODE_EVENT_RequestProcess));
 	return 0;
 }
 

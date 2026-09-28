@@ -1,0 +1,5 @@
+cwd: /home/dgamroth/workspaces/codex/pipewire/pipewire-row-transport-contract
+command:  build-row-contract/src/tests/pw-test-row-transport-mix
+exit: -6
+output:
+'source.releases == 1' failed at ../src/tests/test-row-transport-mix.c:133 test_pending_mix_and_release()
