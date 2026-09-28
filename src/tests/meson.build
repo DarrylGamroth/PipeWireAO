@@ -90,7 +90,8 @@ test('pw-test-row-return-driver-lifetime',
     include_directories : [includes_inc],
     c_args : ['-ffunction-sections', '-fdata-sections', '-fwhole-program'],
     link_args : ['-Wl,--gc-sections']),
-  depends : [spa_support_lib])
+  depends : [spa_support_lib],
+  env : ['PIPEWIREAO_SPA_PLUGIN_DIR=@0@'.format(spa_dep.get_variable('plugindir'))])
 
 polling_remote_client = executable(
   'pw-test-polling-remote-client',
