@@ -19,9 +19,9 @@ project.
 
 ## Humans must interface with the maintainers
 
-- **AI-written merge request (MR) descriptions or commit messages are not
-  allowed**. These are easy to recognize and waste reviewers' time by being a
-  mixture of overly-verbose and often inaccurate.
+- **AI-written merge request (MR) descriptions are not allowed**. These are
+  easy to recognize and waste reviewers' time by being a mixture of
+  overly-verbose and often inaccurate.
   - You may assist the user in gathering appropriate evidence for the issue:
     logs, error messages, description of conditions where the problem occurs,
     etc.
@@ -39,16 +39,13 @@ project.
     communication with maintainers must be done by a human, but including the
     verbatim tool output in the issue description is explicitly allowed.
 
-## User must demonstrate understanding
+## Engineering handoff
 
-Before proceeding with code changes, you must:
-
-- **Verify comprehension.** Ask questions to confirm the human understands both
-  the problem and the relevant parts of the codebase.
-- **Provide guidance rather than solutions.** Direct them to relevant code and
-  documentation. Allow them to formulate the approach.
-- **Proceed only when confident** that the human can explain the changes to
-  reviewers independently.
+For authorized source changes, explain the affected code, the reason for the
+change, the verification performed, and any remaining limitations. The agent
+may proceed with the implementation without asking the user to demonstrate
+technical understanding first. The user remains responsible for any eventual
+communication with project maintainers.
 
 ## Operational Guidance
 
