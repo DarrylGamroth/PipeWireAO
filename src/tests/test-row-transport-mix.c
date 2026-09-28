@@ -131,7 +131,6 @@ static void test_pending_mix_and_release(void)
 	link.rt.in_mix.p = &input.this;
 	link.rt.out_mix.peer = &link.rt.in_mix;
 	link.rt.in_mix.peer = &link.rt.out_mix;
-	link.rt.in_mix.row_transport = true;
 	output.this.reliable = true;
 	input.this.n_mix = 1;
 	spa_list_init(&input.this.mix_list);
@@ -226,7 +225,8 @@ static void test_exported_filter_return(void)
 	struct pw_node_target filter_target = { .activation = &filter_activation,
 			.active = true }, sink_target = {
 			.activation = &sink_activation, .active = true };
-	struct pw_impl_node source_node = { 0 }, filter_node = { 0 };
+	struct pw_impl_node source_node = { 0 }, filter_node = { 0 },
+			client_node = { 0 };
 	struct impl server_output = { 0 }, client_input = { 0 };
 	struct pw_impl_port server_input = { 0 };
 	struct pw_impl_port_mix server_out_mix = { 0 },
@@ -241,7 +241,9 @@ static void test_exported_filter_return(void)
 	spa_list_init(&source_node.rt.target_list);
 	spa_list_append(&source_node.rt.target_list, &filter_target.link);
 	spa_list_append(&source_node.rt.target_list, &sink_target.link);
-	filter_node.exported = true;
+	filter_node.remote = true;
+	client_node.exported = true;
+	client_node.rt.position = &position;
 	filter_node.rt.position = &position;
 	filter_node.rt.target.activation = &filter_activation;
 	server_output.this.node = &source_node;
@@ -258,7 +260,7 @@ static void test_exported_filter_return(void)
 	server_out_mix.peer = &server_in_mix;
 	spa_list_init(&server_input.mix_list);
 	spa_list_append(&server_input.mix_list, &server_in_mix.link);
-	client_input.this.node = &filter_node;
+	client_input.this.node = &client_node;
 	client_input.this.direction = PW_DIRECTION_INPUT;
 	client_in_mix.p = &client_input.this;
 	client_in_mix.row_transport = true;

@@ -511,11 +511,11 @@ int pw_impl_port_reuse_row_output(struct pw_impl_port *port, bool release_local)
 		struct pw_impl_port_mix *input = mix->peer;
 		uint32_t cycle;
 
-		if (input == NULL || !input->row_transport)
+		if (input == NULL)
 			continue;
 		if (input->p == NULL)
 			return -ENOTSUP;
-		if (!input->p->node->exported) {
+		if (!input->row_transport) {
 			struct spa_io_buffers *io = &input->p->rt.io;
 			uint32_t id;
 			int res;
@@ -523,14 +523,12 @@ int pw_impl_port_reuse_row_output(struct pw_impl_port *port, bool release_local)
 			if (!release_local || io->status == SPA_STATUS_HAVE_DATA ||
 			    (id = io->buffer_id) == SPA_ID_INVALID)
 				continue;
-			if (!input->row_borrowed || id != input->row_borrowed_id ||
-			    id >= port->buffers.n_buffers)
+			if (id >= port->buffers.n_buffers)
 				return -EINVAL;
 			res = spa_node_port_reuse_buffer(port->mix, 0, id);
 			if (res < 0)
 				return res;
 			io->buffer_id = SPA_ID_INVALID;
-			input->row_borrowed = false;
 			released++;
 			continue;
 		}
