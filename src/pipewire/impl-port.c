@@ -222,28 +222,39 @@ static struct pw_impl_port_mix *find_mix(struct pw_impl_port *port,
 	return NULL;
 }
 
-static int
-do_add_mix(struct spa_loop *loop,
-		 bool async, uint32_t seq, const void *data, size_t size, void *user_data)
+struct mix_io_update {
+	struct pw_impl_port_mix *mix;
+	void *data;
+	struct spa_io_buffers *io[2];
+};
+
+static int do_set_mix_io(struct spa_loop *loop,
+		bool async, uint32_t seq, const void *data, size_t size, void *user_data)
 {
-	struct pw_impl_port_mix *mix = user_data;
+	struct mix_io_update *update = user_data;
+	struct pw_impl_port_mix *mix = update->mix;
 	struct pw_impl_port *this = mix->p;
 	struct impl *impl = SPA_CONTAINER_OF(this, struct impl, this);
-	pw_log_trace("%p: add mix %p", this, mix);
-	if (!mix->rt.active) {
+
+	if (update->data == NULL && mix->rt.active) {
+		spa_list_remove(&mix->rt.link);
+		mix->rt.active = false;
+	}
+	mix->io_data = update->data;
+	mix->io[0] = update->io[0];
+	mix->io[1] = update->io[1];
+	if (update->data != NULL && !mix->rt.active) {
 		spa_list_append(&impl->rt.mix_list, &mix->rt.link);
 		mix->rt.active = true;
 	}
 	return 0;
 }
 
-static int
-do_remove_mix(struct spa_loop *loop,
-		 bool async, uint32_t seq, const void *data, size_t size, void *user_data)
+static int do_remove_mix(struct spa_loop *loop,
+		bool async, uint32_t seq, const void *data, size_t size, void *user_data)
 {
 	struct pw_impl_port_mix *mix = user_data;
-	struct pw_impl_port *this = mix->p;
-	pw_log_trace("%p: remove mix %p", this, mix);
+
 	if (mix->rt.active) {
 		spa_list_remove(&mix->rt.link);
 		mix->rt.active = false;
@@ -258,6 +269,7 @@ static int port_set_io(void *object,
 	struct impl *impl = object;
 	struct pw_impl_port *this = &impl->this;
 	struct pw_impl_port_mix *mix;
+	struct mix_io_update update;
 
 	mix = find_mix(this, direction, port_id);
 	if (mix == NULL)
@@ -266,22 +278,23 @@ static int port_set_io(void *object,
 	switch (id) {
 	case SPA_IO_Buffers:
 	case SPA_IO_AsyncBuffers:
-		if (data == NULL || size == 0) {
-			pw_loop_locked(this->node->data_loop,
-			       do_remove_mix, SPA_ID_INVALID, NULL, 0, mix);
-			mix->io_data = mix->io[0] = mix->io[1] = NULL;
-		} else if (data != NULL && size >= sizeof(struct spa_io_buffers)) {
+		if (data != NULL && size != 0 && size < sizeof(struct spa_io_buffers))
+			return 0;
+		update.mix = mix;
+		update.data = NULL;
+		update.io[0] = update.io[1] = NULL;
+		if (data != NULL && size >= sizeof(struct spa_io_buffers)) {
 			if (size >= sizeof(struct spa_io_async_buffers)) {
 				struct spa_io_async_buffers *ab = data;
-				mix->io_data = data;
-				mix->io[0] = &ab->buffers[this->direction];
-				mix->io[1] = &ab->buffers[this->direction^1];
+				update.io[0] = &ab->buffers[this->direction];
+				update.io[1] = &ab->buffers[this->direction^1];
 			} else {
-				mix->io_data = mix->io[0] = mix->io[1] = data;
+				update.io[0] = update.io[1] = data;
 			}
-			pw_loop_locked(this->node->data_loop,
-			       do_add_mix, SPA_ID_INVALID, NULL, 0, mix);
+			update.data = data;
 		}
+		return pw_loop_locked(this->node->data_loop,
+				do_set_mix_io, SPA_ID_INVALID, NULL, 0, &update);
 	}
 	return 0;
 }
@@ -488,20 +501,39 @@ int pw_impl_port_publish_row_return(struct pw_impl_port *port)
 	return 0;
 }
 
-int pw_impl_port_reuse_remote_row_input(struct pw_impl_port *port)
+int pw_impl_port_reuse_row_output(struct pw_impl_port *port, bool release_local)
 {
+	struct impl *impl = SPA_CONTAINER_OF(port, struct impl, this);
 	struct pw_impl_port_mix *mix;
 	int released = 0;
 
-	spa_list_for_each(mix, &port->mix_list, link) {
-		struct pw_impl_port *source;
+	spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
+		struct pw_impl_port_mix *input = mix->peer;
 		uint32_t cycle;
 
-		if (!mix->row_transport)
+		if (input == NULL || !input->row_transport)
 			continue;
-		if (mix->peer == NULL || mix->peer->p == NULL)
+		if (input->p == NULL)
 			return -ENOTSUP;
-		source = mix->peer->p;
+		if (!input->p->node->exported) {
+			struct spa_io_buffers *io = &input->p->rt.io;
+			uint32_t id;
+			int res;
+
+			if (!release_local || io->status == SPA_STATUS_HAVE_DATA ||
+			    (id = io->buffer_id) == SPA_ID_INVALID)
+				continue;
+			if (!input->row_borrowed || id != input->row_borrowed_id ||
+			    id >= port->buffers.n_buffers)
+				return -EINVAL;
+			res = spa_node_port_reuse_buffer(port->mix, 0, id);
+			if (res < 0)
+				return res;
+			io->buffer_id = SPA_ID_INVALID;
+			input->row_borrowed = false;
+			released++;
+			continue;
+		}
 		for (cycle = 0; cycle < 2; cycle++) {
 			struct spa_io_buffers *io = mix->io[cycle];
 			uint32_t id;
@@ -511,14 +543,14 @@ int pw_impl_port_reuse_remote_row_input(struct pw_impl_port *port)
 			    io->status != SPA_STATUS_NEED_DATA ||
 			    (id = SPA_ATOMIC_LOAD(io->buffer_id)) == SPA_ID_INVALID)
 				continue;
-			if (!mix->row_borrowed || id != mix->row_borrowed_id ||
-			    id >= source->buffers.n_buffers)
+			if (!input->row_borrowed || id != input->row_borrowed_id ||
+			    id >= port->buffers.n_buffers)
 				return -EINVAL;
-			res = spa_node_port_reuse_buffer(source->mix, 0, id);
+			res = spa_node_port_reuse_buffer(port->mix, 0, id);
 			if (res < 0)
 				return res;
 			SPA_ATOMIC_STORE(io->buffer_id, SPA_ID_INVALID);
-			mix->row_borrowed = false;
+			input->row_borrowed = false;
 			released++;
 		}
 	}
@@ -527,10 +559,12 @@ int pw_impl_port_reuse_remote_row_input(struct pw_impl_port *port)
 
 bool pw_impl_port_has_borrowed_row(struct pw_impl_port *port)
 {
+	struct impl *impl = SPA_CONTAINER_OF(port, struct impl, this);
 	struct pw_impl_port_mix *mix;
 
-	spa_list_for_each(mix, &port->mix_list, link)
-		if (mix->row_transport && mix->row_borrowed)
+	spa_list_for_each(mix, &impl->rt.mix_list, rt.link)
+		if (mix->peer != NULL && mix->peer->row_transport &&
+		    mix->peer->row_borrowed)
 			return true;
 	return false;
 }
@@ -621,6 +655,11 @@ int pw_impl_port_release_mix(struct pw_impl_port *port, struct pw_impl_port_mix 
 {
 	int res = 0;
 	uint32_t port_id = mix->port.port_id;
+
+	res = pw_loop_locked(port->node->data_loop,
+			do_remove_mix, SPA_ID_INVALID, NULL, 0, mix);
+	if (res < 0)
+		return res;
 
 	pw_map_remove(&port->mix_port_map, port_id);
 	spa_list_remove(&mix->link);

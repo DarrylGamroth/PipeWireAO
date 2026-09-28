@@ -1516,7 +1516,7 @@ int pw_impl_port_init_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mi
 bool pw_impl_port_has_reliable_peer(struct pw_impl_port *port);
 int pw_impl_port_reuse_reliable_input(struct pw_impl_port *port);
 int pw_impl_port_publish_row_return(struct pw_impl_port *port);
-int pw_impl_port_reuse_remote_row_input(struct pw_impl_port *port);
+int pw_impl_port_reuse_row_output(struct pw_impl_port *port, bool release_local);
 bool pw_impl_port_has_borrowed_row(struct pw_impl_port *port);
 int pw_impl_port_release_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mix);
 

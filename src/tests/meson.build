@@ -70,10 +70,12 @@ row_return_lifetime = executable('pw-test-row-return-lifetime',
   c_args : ['-ffunction-sections', '-fdata-sections'],
   link_args : ['-Wl,--gc-sections'])
 test('pw-test-row-return-mix-removal', row_return_lifetime,
-  depends : [spa_support_lib])
+  depends : [spa_support_lib],
+  env : ['PIPEWIREAO_SPA_PLUGIN_DIR=@0@'.format(spa_dep.get_variable('plugindir'))])
 test('pw-test-row-return-io-replacement', row_return_lifetime,
   args : ['replace'],
-  depends : [spa_support_lib])
+  depends : [spa_support_lib],
+  env : ['PIPEWIREAO_SPA_PLUGIN_DIR=@0@'.format(spa_dep.get_variable('plugindir'))])
 
 polling_remote_client = executable(
   'pw-test-polling-remote-client',

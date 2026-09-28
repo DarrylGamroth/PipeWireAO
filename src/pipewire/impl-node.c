@@ -1691,7 +1691,6 @@ static inline void calculate_stats(struct pw_impl_node *this,  struct pw_node_ac
 static void flush_reliable_input_returns(struct pw_impl_node *node)
 {
 	struct pw_impl_node *driver = node->driver_node;
-	struct pw_node_target *target;
 	struct pw_impl_port *port;
 	int res;
 
@@ -1703,18 +1702,10 @@ static void flush_reliable_input_returns(struct pw_impl_node *node)
 			if ((res = pw_impl_port_reuse_reliable_input(port)) < 0)
 				goto error;
 	}
-	spa_list_for_each(target, &driver->rt.target_list, link) {
-		if (!target->active || target->node == NULL ||
-		    target->node == driver)
-			continue;
-		if (SPA_ATOMIC_LOAD(driver->rt.reliable_release_pending))
-			spa_list_for_each(port, &target->node->rt.input_mix, rt.node_link)
-				if ((res = pw_impl_port_reuse_reliable_input(port)) < 0)
-					goto error;
-		spa_list_for_each(port, &target->node->input_ports, link)
-			if ((res = pw_impl_port_reuse_remote_row_input(port)) < 0)
-				goto error;
-	}
+	spa_list_for_each(port, &driver->rt.output_mix, rt.node_link)
+		if ((res = pw_impl_port_reuse_row_output(port,
+				SPA_ATOMIC_LOAD(driver->rt.reliable_release_pending))) < 0)
+			goto error;
 	SPA_ATOMIC_STORE(driver->rt.reliable_release_pending, 0);
 	return;
 error:
@@ -1724,16 +1715,11 @@ error:
 
 static bool driver_has_borrowed_row(struct pw_impl_node *driver)
 {
-	struct pw_node_target *target;
 	struct pw_impl_port *port;
 
-	spa_list_for_each(target, &driver->rt.target_list, link) {
-		if (!target->active || target->node == NULL)
-			continue;
-		spa_list_for_each(port, &target->node->input_ports, link)
-			if (pw_impl_port_has_borrowed_row(port))
-				return true;
-	}
+	spa_list_for_each(port, &driver->rt.output_mix, rt.node_link)
+		if (pw_impl_port_has_borrowed_row(port))
+			return true;
 	return false;
 }
 

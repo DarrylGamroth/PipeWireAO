@@ -115,6 +115,7 @@ static void test_pending_mix_and_release(void)
 	output.this.node = &source_node;
 	output.this.direction = PW_DIRECTION_OUTPUT;
 	output.this.port_id = 0;
+	output.this.buffers.n_buffers = 2;
 	output.this.mix = &output.mix_node;
 	output.mix_node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
 			SPA_VERSION_NODE, &schedule_tee_node_reliable, &output);
@@ -130,6 +131,7 @@ static void test_pending_mix_and_release(void)
 	link.rt.in_mix.p = &input.this;
 	link.rt.out_mix.peer = &link.rt.in_mix;
 	link.rt.in_mix.peer = &link.rt.out_mix;
+	link.rt.in_mix.row_transport = true;
 	output.this.reliable = true;
 	input.this.n_mix = 1;
 	spa_list_init(&input.this.mix_list);
@@ -199,11 +201,11 @@ static void test_pending_mix_and_release(void)
 	spa_assert_se(pw_impl_port_reuse_reliable_input(&input.this) == 0);
 	spa_assert_se(source.releases == 0);
 	SPA_ATOMIC_STORE(sink_activation.status, PW_NODE_ACTIVATION_FINISHED);
-	spa_assert_se(pw_impl_port_reuse_reliable_input(&input.this) == 1);
+	spa_assert_se(pw_impl_port_reuse_row_output(&output.this, true) == 1);
 	spa_assert_se(source.releases == 1);
 	spa_assert_se(source.last_id == 0);
 	spa_assert_se(input.this.rt.io.buffer_id == SPA_ID_INVALID);
-	spa_assert_se(pw_impl_port_reuse_reliable_input(&input.this) == 0);
+	spa_assert_se(pw_impl_port_reuse_row_output(&output.this, true) == 0);
 	spa_assert_se(source.releases == 1);
 	link.rt.in_mix.peer = NULL;
 	link.rt.out_mix.peer = NULL;
@@ -298,13 +300,13 @@ static void test_exported_filter_return(void)
 	spa_assert_se(source.releases == 0);
 	SPA_ATOMIC_STORE(sink_activation.status, PW_NODE_ACTIVATION_FINISHED);
 	spa_assert_se(pw_impl_node_reliable_cycle_complete(&source_node));
-	spa_assert_se(pw_impl_port_reuse_remote_row_input(&server_input) == 1);
+	spa_assert_se(pw_impl_port_reuse_row_output(&server_output.this, false) == 1);
 	spa_assert_se(source.releases == 1 && source.last_id == 0);
 	spa_assert_se(shared.buffer_id == SPA_ID_INVALID);
-	spa_assert_se(pw_impl_port_reuse_remote_row_input(&server_input) == 0);
+	spa_assert_se(pw_impl_port_reuse_row_output(&server_output.this, false) == 0);
 	spa_assert_se(source.releases == 1);
 	shared.buffer_id = 0;
-	spa_assert_se(pw_impl_port_reuse_remote_row_input(&server_input) == -EINVAL);
+	spa_assert_se(pw_impl_port_reuse_row_output(&server_output.this, false) == -EINVAL);
 	spa_assert_se(source.releases == 1);
 	shared.buffer_id = SPA_ID_INVALID;
 

@@ -89,7 +89,7 @@ static void test_first_cycle(void)
 static void test_borrowed_cycle(void)
 {
 	struct pw_impl_node driver = { 0 }, filter = { 0 };
-	struct pw_impl_port input = { 0 };
+	struct pw_impl_port input = { 0 }, output = { 0 };
 	struct pw_node_activation activation = { 0 },
 			filter_activation = { 0 };
 	struct pw_node_target filter_target = {
@@ -104,9 +104,14 @@ static void test_borrowed_cycle(void)
 		.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_System,
 				SPA_VERSION_SYSTEM, &system_methods, NULL),
 	};
+	struct spa_node tee = {
+		.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
+				SPA_VERSION_NODE, &tee_methods, NULL),
+	};
 
 	driver.driver_node = &driver;
 	driver.info.id = 1;
+	output.mix = &tee;
 	driver.row_transport = true;
 	driver.row_cycle_inflight = true;
 	driver.rt.prepared = true;
@@ -116,6 +121,7 @@ static void test_borrowed_cycle(void)
 	spa_hook_list_init(&driver.rt_listener_list);
 	spa_list_init(&driver.rt.input_mix);
 	spa_list_init(&driver.rt.output_mix);
+	spa_list_append(&driver.rt.output_mix, &output.rt.node_link);
 	spa_list_init(&driver.rt.target_list);
 	spa_list_append(&driver.rt.target_list, &filter_target.link);
 	spa_list_init(&filter.rt.input_mix);
@@ -249,7 +255,8 @@ int pw_impl_port_publish_row_return(struct pw_impl_port *port SPA_UNUSED)
 	return 0;
 }
 
-int pw_impl_port_reuse_remote_row_input(struct pw_impl_port *port SPA_UNUSED)
+int pw_impl_port_reuse_row_output(struct pw_impl_port *port SPA_UNUSED,
+		bool release_local SPA_UNUSED)
 {
 	return 0;
 }
@@ -328,6 +335,7 @@ int main(int argc, char *argv[])
 	driver->data_loop = &loop;
 	SPA_ATOMIC_STORE(activation.status, PW_NODE_ACTIVATION_FINISHED);
 	spa_list_init(&driver->rt.input_mix);
+	spa_list_init(&driver->rt.output_mix);
 	spa_list_init(&driver->rt.target_list);
 	spa_list_append(&driver->rt.target_list, &follower.link);
 	spa_list_append(&driver->rt.input_mix, &input.rt.node_link);
