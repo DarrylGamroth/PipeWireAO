@@ -5,10 +5,15 @@
 #include <errno.h>
 #include <stdio.h>
 #include <math.h>
+#include <stdatomic.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <spa/buffer/alloc.h>
+#include <spa/buffer/meta.h>
 #include <spa/param/props.h>
 #include <spa/node/io.h>
 #include <spa/node/utils.h>
@@ -29,6 +34,76 @@ PW_LOG_TOPIC_EXTERN(log_filter);
 #define MAX_BUFFERS	64u
 
 #define MASK_BUFFERS	(MAX_BUFFERS-1)
+
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+
+#define FILTER_TRACE_CAPACITY 65536u
+
+struct filter_trace_record {
+	uint64_t monotonic_ns;
+	uint64_t frame;
+	uint32_t offset;
+	uint32_t port;
+	uint32_t buffer_id;
+	int32_t io_status;
+	char direction;
+	char event;
+};
+
+struct filter_trace {
+	struct filter_trace_record *records;
+	char *path;
+	uint32_t used;
+	uint32_t omitted;
+	bool initialized;
+};
+
+static _Atomic uint32_t next_filter_trace_id;
+
+static void filter_trace_prefault(void *memory, size_t bytes)
+{
+	volatile unsigned char *pages = memory;
+	long page_size = sysconf(_SC_PAGESIZE);
+	size_t stride = page_size > 0 ? (size_t)page_size : 4096u;
+
+	for (size_t i = 0; i < bytes; i += stride)
+		pages[i] = 0;
+	if (bytes != 0)
+		pages[bytes - 1] = 0;
+}
+
+static int filter_trace_init(struct filter_trace *trace)
+{
+	const char *directory = getenv("PW_FILTER_TRACE_DIR");
+	size_t length, bytes;
+	uint32_t id;
+
+	if (directory == NULL || directory[0] == '\0')
+		return 0;
+	length = strlen(directory);
+	if (length > SIZE_MAX - 64u)
+		return -ENAMETOOLONG;
+	bytes = FILTER_TRACE_CAPACITY * sizeof(*trace->records);
+	trace->path = malloc(length + 64u);
+	trace->records = malloc(bytes);
+	if (trace->path == NULL || trace->records == NULL)
+		return -ENOMEM;
+	filter_trace_prefault(trace->records, bytes);
+	id = atomic_fetch_add_explicit(&next_filter_trace_id, 1,
+			memory_order_relaxed);
+	snprintf(trace->path, length + 64u, "%s/filter-%ld-%u.csv",
+			directory, (long)getpid(), id);
+	trace->initialized = true;
+	return 0;
+}
+
+static void filter_trace_clear(struct filter_trace *trace)
+{
+	free(trace->records);
+	free(trace->path);
+}
+
+#endif
 
 static bool mlock_warned = false;
 
@@ -100,6 +175,9 @@ struct port {
 
 struct filter {
 	struct pw_filter this;
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+	struct filter_trace trace;
+#endif
 
 	const char *path;
 
@@ -148,6 +226,81 @@ struct filter {
 	int in_emit_param_changed;
 	int pending_drain;
 };
+
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+
+static void filter_trace_add(struct filter *impl, char event,
+		const struct port *port, const struct buffer *buffer,
+		const struct spa_io_buffers *io)
+{
+	struct filter_trace *trace = &impl->trace;
+	const struct spa_meta_header *header = NULL;
+	struct timespec now;
+
+	if (!trace->initialized)
+		return;
+	if (trace->used == FILTER_TRACE_CAPACITY) {
+		trace->omitted++;
+		return;
+	}
+	if (clock_gettime(CLOCK_MONOTONIC, &now) < 0) {
+		trace->omitted++;
+		return;
+	}
+	if (buffer != NULL && buffer->this.buffer != NULL)
+		header = spa_buffer_find_meta_data(buffer->this.buffer,
+				SPA_META_Header, sizeof(*header));
+	trace->records[trace->used++] = (struct filter_trace_record) {
+		.monotonic_ns = (uint64_t)now.tv_sec * 1000000000u + now.tv_nsec,
+		.frame = header != NULL ? header->seq : UINT64_MAX,
+		.offset = header != NULL ? header->offset : UINT32_MAX,
+		.port = port->id,
+		.buffer_id = buffer != NULL ? buffer->id :
+			io != NULL ? io->buffer_id : UINT32_MAX,
+		.io_status = io != NULL ? io->status : 0,
+		.direction = port->direction == SPA_DIRECTION_OUTPUT ? 'O' : 'I',
+		.event = event,
+	};
+}
+
+static void filter_trace_dump(struct filter_trace *trace)
+{
+	FILE *output;
+	uint32_t i;
+
+	if (!trace->initialized)
+		return;
+	output = fopen(trace->path, "w");
+	if (output == NULL) {
+		fprintf(stderr, "cannot write filter trace %s: %s\n",
+				trace->path, strerror(errno));
+		return;
+	}
+	fprintf(output, "# capacity=%u used=%u omitted=%u\n",
+			FILTER_TRACE_CAPACITY, trace->used, trace->omitted);
+	fputs("event,direction,monotonic_ns,port,buffer_id,frame,offset,io_status\n",
+			output);
+	for (i = 0; i < trace->used; i++) {
+		const struct filter_trace_record *record = &trace->records[i];
+
+		fprintf(output, "%c,%c,%llu,%u,%u,%llu,%u,%d\n",
+			record->event, record->direction,
+			(unsigned long long)record->monotonic_ns,
+			record->port, record->buffer_id,
+			(unsigned long long)record->frame,
+			record->offset, record->io_status);
+	}
+	fclose(output);
+}
+
+#else
+
+#define filter_trace_init(...) (0)
+#define filter_trace_clear(...) do {} while (0)
+#define filter_trace_add(...) do {} while (0)
+#define filter_trace_dump(...) do {} while (0)
+
+#endif
 
 static int get_param_index(uint32_t id)
 {
@@ -1038,6 +1191,7 @@ static int impl_node_process(void *object)
 			/* push new buffer */
 			b = &p->buffers[io->buffer_id];
 			pw_log_trace_fp("%p: dequeue buffer %d", impl, b->id);
+			filter_trace_add(impl, 'I', p, b, io);
 			push_queue(p, &p->dequeued, b);
 			drained = false;
 		} else {
@@ -1063,12 +1217,15 @@ static int impl_node_process(void *object)
 		if (p->direction == SPA_DIRECTION_INPUT) {
 			res |= SPA_STATUS_NEED_DATA;
 			if (SPA_UNLIKELY(io->status != SPA_STATUS_HAVE_DATA &&
-			    io->buffer_id != SPA_ID_INVALID))
+			    io->buffer_id != SPA_ID_INVALID)) {
+				filter_trace_add(impl, 'H', p, NULL, io);
 				continue;
+			}
 
 			/* pop buffer to recycle */
 			if ((b = pop_queue(p, &p->queued)) != NULL) {
 				pw_log_trace_fp("%p: recycle buffer %d", impl, b->id);
+				filter_trace_add(impl, 'Q', p, b, io);
 				io->buffer_id = b->id;
 			} else {
 				io->buffer_id = SPA_ID_INVALID;
@@ -1211,6 +1368,9 @@ filter_new(struct pw_context *context, const char *name,
 		res = -errno;
 		goto error_cleanup;
 	}
+	res = filter_trace_init(&impl->trace);
+	if (res < 0)
+		goto error_properties;
 
 	impl->main_loop = pw_context_get_main_loop(context);
 	impl->quantum_limit = context->settings.clock_quantum_limit;
@@ -1266,6 +1426,7 @@ filter_new(struct pw_context *context, const char *name,
 	return impl;
 
 error_properties:
+	filter_trace_clear(&impl->trace);
 	free(impl);
 error_cleanup:
 	pw_properties_free(props);
@@ -1404,6 +1565,8 @@ static void filter_free(struct pw_filter *filter)
 	struct filter *impl = SPA_CONTAINER_OF(filter, struct filter, this);
 
 	pw_log_debug("%p: free", filter);
+	filter_trace_dump(&impl->trace);
+	filter_trace_clear(&impl->trace);
 	clear_params(impl, NULL, SPA_ID_INVALID);
 
 	free(filter->error);
