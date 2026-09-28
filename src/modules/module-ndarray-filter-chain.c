@@ -5,6 +5,7 @@
 #include "config.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -12,6 +13,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <spa/debug/filter-graph-ndarray.h>
@@ -21,6 +24,7 @@
 #include <spa/param/ndarray-utils.h>
 #include <spa/pod/dynamic.h>
 #include <spa/pod/iter.h>
+#include <spa/utils/dict.h>
 #include <spa/utils/result.h>
 #include <spa/utils/string.h>
 
@@ -31,6 +35,8 @@
 #include "module-ndarray-filter-chain-parameter.h"
 
 #define NAME "ndarray-filter-chain"
+#define STARTUP_PARAMETER_PREFIX "pipewireao.startup-parameter."
+#define FEEDBACK_PREFIX "pipewireao.feedback."
 
 PW_LOG_TOPIC_STATIC(mod_topic, "mod." NAME);
 #define PW_LOG_TOPIC_DEFAULT mod_topic
@@ -55,6 +61,15 @@ PW_LOG_TOPIC_STATIC(mod_topic, "mod." NAME);
  * External graph ports become ordinary application/ndarray ports. Sparse
  * parameter ports are marked as control ports and use a bounded worker
  * handoff; their preparation never runs in the real-time process callback.
+ * A startup-only F32 artifact can be assigned with
+ * `pipewireao.startup-parameter.<node>:<port>=/absolute/artifact.f32`.
+ * The module resolves and validates every such assignment before activation,
+ * then prepares them as one graph transaction.  Mapped artifacts remain
+ * available until graph teardown.
+ * `pipewireao.feedback.<input-node>:<input-port>=<output-node>:<output-port>`
+ * retains an output for the next graph cycle. Both graph endpoints are private
+ * to this module and must have identical F32 ndarray formats. The first graph
+ * cycle receives zeros; a successful graph reset clears the retained output.
  * The module logs the resolved execution order, formats, connections, and
  * graph-owned buffer sizes once at debug log level during construction.
  * With pipewireao.run-control=true, the node connects inactive and accepts
@@ -80,6 +95,31 @@ struct port {
 	_Atomic uint64_t dropped_parameters;
 };
 
+struct startup_parameter {
+	void *mapping;
+	size_t size;
+	struct spa_chunk chunk;
+	struct spa_data data;
+	struct spa_buffer buffer;
+};
+
+struct feedback_buffer {
+	void *memory;
+	size_t size;
+	struct spa_chunk chunk;
+	struct spa_data data;
+	struct spa_meta_header header;
+	struct spa_meta meta;
+	struct spa_buffer buffer;
+};
+
+struct feedback_bridge {
+	uint32_t input_port;
+	uint32_t output_port;
+	struct feedback_buffer input;
+	struct feedback_buffer output;
+};
+
 struct impl {
 	struct pw_context *context;
 	struct pw_impl_module *module;
@@ -102,6 +142,7 @@ struct impl {
 	bool control_lock_initialized;
 	_Atomic bool destroying;
 	_Atomic int process_error;
+	_Atomic bool process_failed;
 	_Atomic bool publish_after_process;
 	bool run_control;
 	bool reset_control;
@@ -116,6 +157,10 @@ struct impl {
 	enum pw_filter_state filter_state;
 
 	struct spa_fgn_graph *graph;
+	struct startup_parameter *startup_parameters;
+	uint32_t n_startup_parameters;
+	struct feedback_bridge *feedback_bridges;
+	uint32_t n_feedback_bridges;
 	struct port **inputs;
 	struct port **outputs;
 	uint32_t n_inputs;
@@ -169,6 +214,414 @@ static int fgn_format_size(const struct spa_fgn_format *format,
 	*size = bytes;
 	*stride = (int32_t)contiguous;
 	return 0;
+}
+
+static void clear_startup_parameters(struct impl *impl)
+{
+	uint32_t i;
+
+	for (i = 0; i < impl->n_startup_parameters; i++)
+		if (impl->startup_parameters[i].mapping != NULL)
+			munmap(impl->startup_parameters[i].mapping,
+					impl->startup_parameters[i].size);
+	free(impl->startup_parameters);
+	impl->startup_parameters = NULL;
+	impl->n_startup_parameters = 0;
+}
+
+static int find_startup_parameter_port(struct impl *impl,
+		const char *qualified_name, uint32_t *input_port)
+{
+	uint32_t i;
+
+	for (i = 0; i < impl->n_inputs; i++) {
+		const struct spa_fgn_port_info *info;
+		const char *node_name;
+		char name[512];
+		int res, length;
+
+		if ((res = spa_fgn_graph_get_port_info(impl->graph,
+				SPA_DIRECTION_INPUT, i, &node_name, &info)) < 0)
+			return res;
+		length = spa_scnprintf(name, sizeof(name), "%s:%s", node_name,
+				info->name);
+		if (length < 0 || (size_t)length >= sizeof(name))
+			return -ENOSPC;
+		if (spa_streq(name, qualified_name)) {
+			if (!(info->flags & SPA_FGN_PORT_FLAG_PARAMETER))
+				return -EINVAL;
+			*input_port = i;
+			return 0;
+		}
+	}
+	return -ENOENT;
+}
+
+static int configure_startup_parameters(struct impl *impl,
+		const struct pw_properties *properties)
+{
+	const struct spa_dict_item *item;
+	struct spa_fgn_parameter_update *updates = NULL;
+	bool *assigned = NULL;
+	uint32_t n_parameters = 0, i = 0;
+	int res = 0;
+
+	spa_dict_for_each(item, &properties->dict)
+		if (spa_strstartswith(item->key, STARTUP_PARAMETER_PREFIX))
+			n_parameters++;
+	if (n_parameters == 0)
+		return 0;
+	if (n_parameters > SPA_FGN_MAX_PARAMETER_TRANSACTION_ASSIGNMENTS)
+		return -E2BIG;
+	if ((impl->startup_parameters = calloc(n_parameters,
+				sizeof(*impl->startup_parameters))) == NULL ||
+	    (updates = calloc(n_parameters, sizeof(*updates))) == NULL ||
+	    (assigned = calloc(impl->n_inputs, sizeof(*assigned))) == NULL) {
+		res = -ENOMEM;
+		goto error;
+	}
+	impl->n_startup_parameters = n_parameters;
+
+	spa_dict_for_each(item, &properties->dict) {
+		struct startup_parameter *parameter;
+		const struct spa_fgn_format *format;
+		const char *qualified_name;
+		struct stat st;
+		size_t size;
+		int32_t stride;
+		uint32_t input_port;
+		int fd;
+
+		if (!spa_strstartswith(item->key, STARTUP_PARAMETER_PREFIX))
+			continue;
+		qualified_name = item->key + strlen(STARTUP_PARAMETER_PREFIX);
+		if (*qualified_name == '\0' || item->value == NULL || *item->value == '\0') {
+			pw_log_error("invalid empty startup parameter assignment");
+			res = -EINVAL;
+			goto error;
+		}
+		if ((res = find_startup_parameter_port(impl, qualified_name,
+				&input_port)) < 0) {
+			pw_log_error("startup parameter '%s' is not an external parameter input",
+					qualified_name);
+			goto error;
+		}
+		if (assigned[input_port]) {
+			pw_log_error("duplicate startup parameter '%s'", qualified_name);
+			res = -EEXIST;
+			goto error;
+		}
+		if ((res = spa_fgn_graph_get_port_format(impl->graph,
+				SPA_DIRECTION_INPUT, input_port, &format)) < 0 ||
+		    (res = fgn_format_size(format, &size, &stride)) < 0)
+			goto error;
+		if (format->element_type != SPA_ELEMENT_TYPE_F32_LE ||
+		    format->layout != SPA_NDARRAY_LAYOUT_ROW_MAJOR ||
+		    size % _Alignof(float) != 0) {
+			pw_log_error("startup parameter '%s' requires F32_LE row-major data",
+					qualified_name);
+			res = -EINVAL;
+			goto error;
+		}
+		fd = open(item->value, O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+		if (fd < 0) {
+			res = -errno;
+			pw_log_error("can't open startup parameter '%s': %s", qualified_name,
+					spa_strerror(res));
+			goto error;
+		}
+		if (fstat(fd, &st) < 0) {
+			res = -errno;
+			close(fd);
+			goto error;
+		}
+		if (!S_ISREG(st.st_mode) || st.st_size < 0 ||
+		    (uintmax_t)st.st_size != (uintmax_t)size) {
+			close(fd);
+			pw_log_error("startup parameter '%s' has invalid byte count", qualified_name);
+			res = -EMSGSIZE;
+			goto error;
+		}
+		parameter = &impl->startup_parameters[i];
+		parameter->mapping = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+		close(fd);
+		if (parameter->mapping == MAP_FAILED) {
+			parameter->mapping = NULL;
+			res = -errno;
+			goto error;
+		}
+		parameter->size = size;
+		parameter->chunk = (struct spa_chunk) {
+			.offset = 0,
+			.size = (uint32_t)size,
+			.stride = stride,
+		};
+		parameter->data = (struct spa_data) {
+			.type = SPA_DATA_MemPtr,
+			.flags = SPA_DATA_FLAG_READABLE,
+			.fd = -1,
+			.maxsize = (uint32_t)size,
+			.data = parameter->mapping,
+			.chunk = &parameter->chunk,
+		};
+		parameter->buffer = (struct spa_buffer) {
+			.n_datas = 1,
+			.datas = &parameter->data,
+		};
+		updates[i] = (struct spa_fgn_parameter_update) {
+			.input_port = input_port,
+			.buffer = &parameter->buffer,
+		};
+		assigned[input_port] = true;
+		i++;
+	}
+	res = spa_fgn_graph_set_parameters(impl->graph, updates, n_parameters);
+	if (res < 0)
+		pw_log_error("can't prepare startup parameter transaction: %s",
+				spa_strerror(res));
+	else
+		pw_log_info("prepared %u startup parameter artifacts", n_parameters);
+error:
+	free(assigned);
+	free(updates);
+	if (res < 0)
+		clear_startup_parameters(impl);
+	return res;
+}
+
+static int find_graph_port(struct impl *impl, enum spa_direction direction,
+		const char *qualified_name, uint32_t *index,
+		const struct spa_fgn_port_info **info)
+{
+	uint32_t n_ports = direction == SPA_DIRECTION_INPUT
+		? impl->n_inputs : impl->n_outputs;
+	uint32_t i;
+
+	for (i = 0; i < n_ports; i++) {
+		const struct spa_fgn_port_info *port_info;
+		const char *node_name;
+		char name[512];
+		int res, length;
+
+		if ((res = spa_fgn_graph_get_port_info(impl->graph, direction, i,
+				&node_name, &port_info)) < 0)
+			return res;
+		length = spa_scnprintf(name, sizeof(name), "%s:%s", node_name,
+				port_info->name);
+		if (length < 0 || (size_t)length >= sizeof(name))
+			return -ENOSPC;
+		if (spa_streq(name, qualified_name)) {
+			*index = i;
+			*info = port_info;
+			return 0;
+		}
+	}
+	return -ENOENT;
+}
+
+static bool feedback_format_equal(const struct spa_fgn_format *input,
+		const struct spa_fgn_format *output)
+{
+	uint32_t i;
+
+	if (input->element_type != SPA_ELEMENT_TYPE_F32_LE ||
+	    output->element_type != SPA_ELEMENT_TYPE_F32_LE ||
+	    input->layout != SPA_NDARRAY_LAYOUT_ROW_MAJOR ||
+	    output->layout != input->layout ||
+	    output->rate_num != input->rate_num ||
+	    output->rate_denom != input->rate_denom ||
+	    output->n_dimensions != input->n_dimensions ||
+	    input->schema == NULL || output->schema == NULL ||
+	    !spa_streq(input->schema, output->schema))
+		return false;
+	for (i = 0; i < input->n_dimensions; i++)
+		if (input->shape[i] != output->shape[i])
+			return false;
+	return true;
+}
+
+static int init_feedback_buffer(struct feedback_buffer *buffer,
+		size_t size, int32_t stride, bool input)
+{
+	if ((buffer->memory = calloc(1, size)) == NULL)
+		return -ENOMEM;
+	buffer->size = size;
+	buffer->chunk = (struct spa_chunk) {
+		.offset = 0,
+		.size = input ? (uint32_t)size : 0,
+		.stride = stride,
+	};
+	buffer->data = (struct spa_data) {
+		.type = SPA_DATA_MemPtr,
+		.flags = SPA_DATA_FLAG_READWRITE,
+		.fd = -1,
+		.maxsize = (uint32_t)size,
+		.data = buffer->memory,
+		.chunk = &buffer->chunk,
+	};
+	buffer->header.pts = SPA_TIME_INVALID;
+	buffer->meta = (struct spa_meta) {
+		.type = SPA_META_Header,
+		.size = sizeof(buffer->header),
+		.data = &buffer->header,
+	};
+	buffer->buffer = (struct spa_buffer) {
+		.n_metas = 1,
+		.metas = &buffer->meta,
+		.n_datas = 1,
+		.datas = &buffer->data,
+	};
+	return 0;
+}
+
+static void clear_feedback_bridges(struct impl *impl)
+{
+	uint32_t i;
+
+	for (i = 0; i < impl->n_feedback_bridges; i++) {
+		free(impl->feedback_bridges[i].input.memory);
+		free(impl->feedback_bridges[i].output.memory);
+	}
+	free(impl->feedback_bridges);
+	impl->feedback_bridges = NULL;
+	impl->n_feedback_bridges = 0;
+}
+
+static int configure_feedback_bridges(struct impl *impl,
+		const struct pw_properties *properties)
+{
+	const struct spa_dict_item *item;
+	uint32_t count = 0, index = 0;
+	int res = 0;
+
+	spa_dict_for_each(item, &properties->dict)
+		if (spa_strstartswith(item->key, FEEDBACK_PREFIX))
+			count++;
+	if (count == 0)
+		return 0;
+	if (count > impl->n_inputs || count > impl->n_outputs)
+		return -E2BIG;
+	if ((impl->feedback_bridges = calloc(count,
+				sizeof(*impl->feedback_bridges))) == NULL)
+		return -ENOMEM;
+	impl->n_feedback_bridges = count;
+
+	spa_dict_for_each(item, &properties->dict) {
+		struct feedback_bridge *bridge;
+		const struct spa_fgn_port_info *input_info, *output_info;
+		const struct spa_fgn_format *input_format, *output_format;
+		const char *input_name;
+		size_t input_size, output_size;
+		int32_t input_stride, output_stride;
+		uint32_t previous;
+
+		if (!spa_strstartswith(item->key, FEEDBACK_PREFIX))
+			continue;
+		input_name = item->key + strlen(FEEDBACK_PREFIX);
+		if (*input_name == '\0' || item->value == NULL || *item->value == '\0') {
+			res = -EINVAL;
+			goto error;
+		}
+		bridge = &impl->feedback_bridges[index];
+		if ((res = find_graph_port(impl, SPA_DIRECTION_INPUT, input_name,
+				&bridge->input_port, &input_info)) < 0 ||
+		    (res = find_graph_port(impl, SPA_DIRECTION_OUTPUT, item->value,
+				&bridge->output_port, &output_info)) < 0)
+			goto error;
+		if ((input_info->flags & SPA_FGN_PORT_FLAG_PARAMETER) ||
+		    (output_info->flags & SPA_FGN_PORT_FLAG_CONDITIONAL)) {
+			res = -EINVAL;
+			goto error;
+		}
+		for (previous = 0; previous < index; previous++)
+			if (impl->feedback_bridges[previous].input_port == bridge->input_port ||
+			    impl->feedback_bridges[previous].output_port == bridge->output_port) {
+				res = -EEXIST;
+				goto error;
+			}
+		if ((res = spa_fgn_graph_get_port_format(impl->graph,
+				SPA_DIRECTION_INPUT, bridge->input_port,
+				&input_format)) < 0 ||
+		    (res = spa_fgn_graph_get_port_format(impl->graph,
+				SPA_DIRECTION_OUTPUT, bridge->output_port,
+				&output_format)) < 0 ||
+		    (res = fgn_format_size(input_format, &input_size,
+				&input_stride)) < 0 ||
+		    (res = fgn_format_size(output_format, &output_size,
+				&output_stride)) < 0)
+			goto error;
+		if (!feedback_format_equal(input_format, output_format) ||
+		    input_size != output_size || input_stride != output_stride) {
+			res = -EINVAL;
+			goto error;
+		}
+		if ((res = init_feedback_buffer(&bridge->input, input_size,
+				input_stride, true)) < 0 ||
+		    (res = init_feedback_buffer(&bridge->output, output_size,
+				output_stride, false)) < 0)
+			goto error;
+		index++;
+	}
+	return 0;
+error:
+	pw_log_error("invalid feedback bridge '%s': '%s': %s",
+			item->key, item->value == NULL ? "" : item->value,
+			spa_strerror(res));
+	clear_feedback_bridges(impl);
+	return res;
+}
+
+static bool feedback_input_private(const struct impl *impl, uint32_t input)
+{
+	uint32_t i;
+
+	for (i = 0; i < impl->n_feedback_bridges; i++)
+		if (impl->feedback_bridges[i].input_port == input)
+			return true;
+	return false;
+}
+
+static bool feedback_output_private(const struct impl *impl, uint32_t output)
+{
+	uint32_t i;
+
+	for (i = 0; i < impl->n_feedback_bridges; i++)
+		if (impl->feedback_bridges[i].output_port == output)
+			return true;
+	return false;
+}
+
+static int commit_feedback_bridges(struct impl *impl)
+{
+	uint32_t i;
+
+	for (i = 0; i < impl->n_feedback_bridges; i++)
+		if (impl->feedback_bridges[i].output.chunk.size !=
+		    impl->feedback_bridges[i].output.size)
+			return -ENODATA;
+	for (i = 0; i < impl->n_feedback_bridges; i++) {
+		struct feedback_bridge *bridge = &impl->feedback_bridges[i];
+
+		memcpy(bridge->input.memory, bridge->output.memory,
+				bridge->input.size);
+		bridge->input.header = bridge->output.header;
+	}
+	return 0;
+}
+
+static void reset_feedback_bridges(struct impl *impl)
+{
+	uint32_t i;
+
+	for (i = 0; i < impl->n_feedback_bridges; i++) {
+		struct feedback_bridge *bridge = &impl->feedback_bridges[i];
+
+		memset(bridge->input.memory, 0, bridge->input.size);
+		memset(&bridge->input.header, 0, sizeof(bridge->input.header));
+		bridge->input.header.pts = SPA_TIME_INVALID;
+		bridge->input.chunk.size = bridge->input.size;
+		bridge->output.chunk.size = 0;
+	}
 }
 
 static struct spa_pod *build_format(struct spa_pod_builder *builder,
@@ -394,7 +847,8 @@ static void parameter_event(void *data, uint64_t count SPA_UNUSED)
 		return;
 	for (i = 0; i < impl->n_inputs; i++) {
 		struct port *port = impl->inputs[i];
-		if ((port->flags & SPA_FGN_PORT_FLAG_PARAMETER) &&
+		if (port != NULL &&
+		    (port->flags & SPA_FGN_PORT_FLAG_PARAMETER) &&
 		    ndarray_parameter_handoff_claim(&port->parameter_handoff))
 			update_parameter(port);
 	}
@@ -497,6 +951,8 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 	uint32_t i;
 	int res;
 
+	if (atomic_load_explicit(&impl->process_failed, memory_order_acquire))
+		return;
 	if (impl->n_inputs > 0)
 		memset(impl->process_inputs, 0,
 				impl->n_inputs * sizeof(*impl->process_inputs));
@@ -507,6 +963,8 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 		struct port *port = impl->inputs[i];
 		struct pw_buffer *buffer = NULL, *next;
 
+		if (port == NULL)
+			continue;
 		if (port->flags & SPA_FGN_PORT_FLAG_PARAMETER) {
 			dequeue_parameter(port);
 			continue;
@@ -523,7 +981,11 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 			ready = false;
 	}
 	for (i = 0; i < impl->n_outputs; i++) {
-		struct pw_buffer *buffer = impl->output_buffers[i];
+		struct pw_buffer *buffer;
+
+		if (impl->outputs[i] == NULL)
+			continue;
+		buffer = impl->output_buffers[i];
 
 		if (buffer == NULL)
 			buffer = pw_filter_dequeue_buffer(impl->outputs[i]);
@@ -533,11 +995,27 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 		else
 			impl->process_outputs[i] = buffer->buffer;
 	}
+	for (i = 0; i < impl->n_feedback_bridges; i++) {
+		struct feedback_bridge *bridge = &impl->feedback_bridges[i];
+
+		impl->process_inputs[bridge->input_port] = &bridge->input.buffer;
+		impl->process_outputs[bridge->output_port] = &bridge->output.buffer;
+	}
 	if (ready) {
 		res = spa_fgn_graph_process(impl->graph,
 				impl->process_inputs, impl->n_inputs,
 				impl->process_outputs, impl->n_outputs);
+		if (res >= 0) {
+			int feedback_res = commit_feedback_bridges(impl);
+			if (feedback_res < 0) {
+				res = feedback_res;
+				pw_log_error("ndarray feedback output incomplete: %s",
+						spa_strerror(res));
+			}
+		}
 		if (res < 0) {
+			atomic_store_explicit(&impl->process_failed, true,
+					memory_order_release);
 			for (i = 0; i < impl->n_outputs; i++) {
 				struct spa_buffer *buffer = impl->process_outputs[i];
 				if (buffer != NULL && buffer->n_datas > 0 &&
@@ -557,13 +1035,14 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 				pw_loop_signal_event(impl->main_loop, impl->main_event);
 			for (i = 0; i < impl->n_inputs; i++) {
 				struct port *port = impl->inputs[i];
-				if ((port->flags & SPA_FGN_PORT_FLAG_PARAMETER) &&
+				if (port != NULL &&
+				    (port->flags & SPA_FGN_PORT_FLAG_PARAMETER) &&
 				    ndarray_parameter_handoff_rearm_retry(
 						&port->parameter_handoff)) {
-					res = pw_loop_signal_event(
+					int signal_res = pw_loop_signal_event(
 							pw_thread_loop_get_loop(impl->parameter_loop),
 							impl->parameter_event);
-					if (res < 0)
+					if (signal_res < 0)
 						ndarray_parameter_handoff_restore_retry(
 								&port->parameter_handoff);
 				}
@@ -601,6 +1080,11 @@ static int update_graph_processing(struct impl *impl,
 	     impl->actual_state == PW_AO_RUN_CONTROL_STATE_RUNNING)) {
 		struct pw_loop *data_loop;
 
+		if (atomic_load_explicit(&impl->process_failed,
+				memory_order_acquire)) {
+			res = -EIO;
+			goto done;
+		}
 		res = spa_fgn_graph_activate(impl->graph);
 		data_loop = pw_filter_get_data_loop(impl->filter);
 		if (res >= 0 && data_loop == NULL)
@@ -617,6 +1101,7 @@ static int update_graph_processing(struct impl *impl,
 		if (res >= 0)
 			*actual = PW_AO_RUN_CONTROL_STATE_STOPPED;
 	}
+done:
 	pthread_mutex_unlock(&impl->control_lock);
 	return res;
 }
@@ -742,6 +1227,13 @@ static void filter_param_changed(void *data, void *port_data,
 				if (res >= 0) {
 					pthread_mutex_lock(&impl->control_lock);
 					res = spa_fgn_graph_reset(impl->graph);
+					if (res >= 0) {
+						reset_feedback_bridges(impl);
+						atomic_store_explicit(&impl->process_error, 0,
+								memory_order_release);
+						atomic_store_explicit(&impl->process_failed, false,
+								memory_order_release);
+					}
 					pthread_mutex_unlock(&impl->control_lock);
 				}
 				if (reset.token > 0) {
@@ -1052,6 +1544,8 @@ static void impl_destroy(struct impl *impl)
 		pw_thread_loop_destroy(impl->parameter_loop);
 	if (impl->graph != NULL)
 		spa_fgn_graph_free(impl->graph);
+	clear_feedback_bridges(impl);
+	clear_startup_parameters(impl);
 	if (impl->core != NULL) {
 		if (impl->core_listeners_added) {
 			spa_hook_remove(&impl->core_listener);
@@ -1103,6 +1597,7 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 	impl->main_loop = pw_context_get_main_loop(context);
 	atomic_init(&impl->destroying, false);
 	atomic_init(&impl->process_error, 0);
+	atomic_init(&impl->process_failed, false);
 	atomic_init(&impl->publish_after_process, false);
 	if ((res = pthread_mutex_init(&impl->control_lock, NULL)) != 0) {
 		res = -res;
@@ -1133,9 +1628,17 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 		pw_log_error("can't create ndarray graph: %s", spa_strerror(res));
 		goto error;
 	}
-	log_graph_report(impl->graph);
 	impl->n_inputs = spa_fgn_graph_get_n_inputs(impl->graph);
 	impl->n_outputs = spa_fgn_graph_get_n_outputs(impl->graph);
+	if ((res = configure_feedback_bridges(impl, properties)) < 0) {
+		pw_log_error("can't configure feedback bridges: %s", spa_strerror(res));
+		goto error;
+	}
+	if ((res = configure_startup_parameters(impl, properties)) < 0) {
+		pw_log_error("can't configure startup parameters: %s", spa_strerror(res));
+		goto error;
+	}
+	log_graph_report(impl->graph);
 	if ((impl->n_inputs > 0 &&
 	     ((impl->inputs = calloc(impl->n_inputs,
 			 sizeof(*impl->inputs))) == NULL ||
@@ -1195,10 +1698,12 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 	pw_filter_add_listener(impl->filter, &impl->filter_listener,
 			&filter_events, impl);
 	for (i = 0; i < impl->n_inputs; i++)
-		if ((res = add_graph_port(impl, SPA_DIRECTION_INPUT, i)) < 0)
+		if (!feedback_input_private(impl, i) &&
+		    (res = add_graph_port(impl, SPA_DIRECTION_INPUT, i)) < 0)
 			goto error;
 	for (i = 0; i < impl->n_outputs; i++)
-		if ((res = add_graph_port(impl, SPA_DIRECTION_OUTPUT, i)) < 0)
+		if (!feedback_output_private(impl, i) &&
+		    (res = add_graph_port(impl, SPA_DIRECTION_OUTPUT, i)) < 0)
 			goto error;
 	impl->parameter_loop = pw_thread_loop_new("ndarray-parameters", NULL);
 	if (impl->parameter_loop == NULL) {
