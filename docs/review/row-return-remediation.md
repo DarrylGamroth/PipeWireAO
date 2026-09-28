@@ -25,6 +25,14 @@ ID reuse and the filter's `RequestProcess` event. These are separate focused
 tests: no complete live exported-client replay of the retained-output
 transition has been run on this branch.
 
+The supported HEART row source declares `max_output_ports = 1`. The core
+property `pipewireao.row-transport` does not itself enforce that limit. The
+current source-row guard checks all active output ports, so an unrelated
+output with `HAVE_DATA` on a generic multi-output source can suppress a
+retained-row retry. Multi-output row sources are outside the qualified
+topology; they need an explicit row-output marker or setup rejection before
+the core contract can be generalized.
+
 Verification: `meson test -C build-row-remediation
 pw-test-row-transport-order pw-test-row-transport-mix
 pw-test-filter-output-return --print-errorlogs` passed 3/3 with GCC 14.2.0,
@@ -44,25 +52,52 @@ are unsynchronized list and object-lifetime accesses. RRF-002 remains open.
 The existing `rt.input_mix`, `rt.output_mix`, and private `rt.mix_list` are
 updated through `pw_loop_locked()`. A safe driver scan could start from its
 own output ports and active output mixes, and the consumer publisher could use
-its own active RT mix list. That substitution alone has no lifetime proof:
-`pw_impl_link_destroy()` clears both `mix->peer` pointers before it calls
-`input_remove()` and `output_remove()`. A driver callback may still be using
-an active output mix at that point. Format changes remove a target input port
-from its data loop before mutating its mixer and buffers, without acquiring
-the source data loop lock. Whether graph deactivation always precedes that
-mutation is unproven. A cross-loop peer or shared IO pointer needs an
-explicit quiescence rule before either mutation.
+its own active RT mix list. That substitution needs a lifetime protocol.
+`pw_impl_link_destroy()` calls `pw_impl_link_deactivate()` before clearing
+`mix->peer`; deactivation removes the default tee's output mix synchronously
+under the source loop lock. This path gives the source reader a quiescence
+point before peer clearing. The earlier note in this branch incorrectly put
+peer clearing first.
 
-Next experiment: make a two-loop test pause the driver after it selects an
-active output mix and before it reads the peer. On the control thread,
-deactivate and destroy that link, and separately reconfigure the target input
-port while the source output port remains active. Record whether each path
-blocks until the driver callback exits. Add a test for input-port addition to
-an active target with another port. Only then replace the driver scans with a
-driver-loop-owned view and move peer clearing after its synchronous removal.
-The consumer publisher needs the analogous barrier test for mix removal.
-The lifetime proof must also cover ordinary non-row processing on the same
-RT lists.
+Other mutations bypass that ordering. Non-NULL `impl-port.c:port_set_io()`
+replacement assigns `mix->io[]` before `pw_loop_locked(do_add_mix)`; when the
+mix is already active, the locked callback does not remove it first.
+`pw_impl_port_set_param(Format)`, `pw_impl_port_use_buffers()`, and
+`pw_impl_port_set_mix()` can change a target's mixer or buffers without first
+removing the corresponding active source output mix. The driver would retain
+a cross-loop peer pointer during those changes. The source-side mix must be
+removed and its reader quiesced before target mutation, followed by consumer
+loop quiescence. Neither loop lock should be held while waiting for the other.
+
+The exported client adds a protocol boundary. Server
+`client-node.c:impl_mix_port_set_io()` updates the server mix pointer and
+`do_port_set_io()` enqueues a native `port_set_io` message. Client
+`remote-node.c:client_node_port_set_io()` applies it later. Server-side loop
+quiescence does not establish that the client stopped using the old shared IO
+or buffer generation. `spa_node_sync()` can produce a native ping/pong, but
+using that result to gate generation reuse requires an asynchronous detach
+transaction and an explicit failure path if the client disappears. A held
+loan must be returned by exact ID or revoked only after both loops and the
+client have quiesced. This transaction is outside the narrow list-scan edit;
+no partial RT-list swap was made.
+
+Deterministic validation plan:
+
+1. On two real data loops, pause the driver after selecting an active source
+   output mix. Start link destruction from the control thread. Assert that
+   peer clearing and free wait for the source scan to resume.
+2. Repeat with Format, buffer renegotiation, and mixer replacement while the
+   source output mix is active. Require source-side removal before mutation,
+   consumer-loop quiescence before reuse, and no old-generation return.
+3. Pause the consumer publisher after selecting an active mix. Start mix
+   removal, then require it to wait before clearing IO or freeing the mix.
+   Add an unrelated input port to a target that remains active through a
+   different port; ordinary processing must remain valid.
+4. For exported clients, delay the detach message and then the ping/pong
+   acknowledgment. Require no buffer-generation reuse before acknowledgment;
+   disconnect and timeout must leave the loan revoked or quarantined without
+   touching freed memory. Run a sanitizer build and a bounded stress replay
+   after the barrier tests pass.
 
 The quiet-host Rust replay r3 reported 2048 captured WFS packets, 1023 HEART
 frames published, one frame dropped, and one buffer starvation; later frames

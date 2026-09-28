@@ -137,6 +137,8 @@ bench validation remains separate from software delivery verification.
 ## Implemented opt-in handoff
 
 `pipewireao.row-transport=true` selects this contract on the HEART row source.
+HEART declares one output port; multi-output row sources are not qualified by
+this contract.
 The source also sets `node.reliable=true` to select PipeWire's reliable tee.
 Existing reliable sources without the row property retain their old behavior.
 Link setup rejects row-source fanout and incompatible fan-in. The input mix
