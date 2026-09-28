@@ -65,8 +65,8 @@ socket. The HEART tests reserve an OS-assigned loopback UDP port.
    The FGN chain at the initial revision dequeued all input buffers, kept the
    newest, and returned the older ones before processing. It also returned its
    current input when any output was absent. Both behaviors violated FIFO
-   delivery for row blocks. The separate opt-in FGN FIFO patch is integrated
-   after the core transport commit.
+   delivery for row blocks. The separate opt-in FGN FIFO and private-feedback
+   patches are integrated on this branch after the core transport commit.
 
 ## Required contract before a production patch
 
@@ -160,7 +160,8 @@ request handlers enqueue eventfd work, so `ready` cannot synchronously reset
 the graph inside the release callback.
 
 HEART reserves every buffer for a frame when its first valid row arrives.
-The negotiated buffer count must hold at least one frame. It writes each row
+The advertised and accepted buffer-count minimum holds at least one frame.
+It writes each row
 once into its reserved slot, queues its immutable ID and payload, and keeps at
 most one published ID in flight. A capacity failure drops and counts the
 whole frame once while UDP reception continues. No row path allocates per
@@ -187,7 +188,8 @@ overflow, malformed-frame recovery, Pause, IO detach, and buffer revocation.
 
 ```text
 cd /home/dgamroth/workspaces/codex/pipewire/pipewire-row-transport-contract
-meson test -C build-row-contract pw-test-ndarray-filter-fifo pw-test-row-transport-mix pw-test-row-transport-order pw-test-filter-output-return --print-errorlogs
+ninja -C build-row-contract src/modules/libpipewire-module-ndarray-filter-chain.so
+meson test -C build-row-contract pw-test-ndarray-filter-fifo pw-test-row-transport-mix pw-test-row-transport-order pw-test-filter-output-return pw-test-ndarray-filter-chain-feedback --print-errorlogs
 
 cd /home/dgamroth/workspaces/codex/pipewire/heart-row-transport-contract
 ninja -C build-row-contract spa/plugins/heart/libspa-heart.so spa/plugins/heart/spa-heart-source-test
@@ -195,6 +197,9 @@ build-row-contract/spa/plugins/heart/spa-heart-source-test build-row-contract/sp
 HEART_ROW_TRANSPORT_CONTRACT=1 build-row-contract/spa/plugins/heart/spa-heart-source-test build-row-contract/spa/plugins/heart/libspa-heart.so
 ```
 
-The four core tests and both HEART modes pass at this revision. This is
-focused software verification. An installed-prefix JFG/FGN finite replay and
+The four core transport tests, the FGN feedback test, and both HEART modes
+pass at this revision. The FGN module builds with
+`PW_FILTER_FLAG_OUTPUT_RETURN_RETRY` selected only by
+`pipewireao.fifo-inputs=true`. This is focused software verification. An
+installed-prefix JFG/FGN finite replay and
 matched live qualification remain separate integration checks.
