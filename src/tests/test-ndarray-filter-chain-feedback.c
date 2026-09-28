@@ -128,10 +128,30 @@ static void test_rejected_outputs_do_not_partially_update(void)
 	assert_inputs_unchanged(&fixture, expected_values, expected_headers);
 }
 
+static void test_retained_input_removal(void)
+{
+	struct impl impl = { .n_inputs = 1 };
+	struct pw_buffer retained = { 0 }, other = { 0 };
+	struct pw_buffer *inputs[1] = { &retained };
+	struct port port = {
+		.impl = &impl,
+		.index = 0,
+		.direction = SPA_DIRECTION_INPUT,
+	};
+
+	impl.input_buffers = inputs;
+	assert(!invalidate_retained_buffer(&impl, &port, &other));
+	assert(inputs[0] == &retained);
+	assert(invalidate_retained_buffer(&impl, &port, &retained));
+	assert(inputs[0] == NULL);
+	assert(!invalidate_retained_buffer(&impl, &port, &retained));
+}
+
 int main(void)
 {
 	test_first_all_absent_preserves_initial_zeros();
 	test_later_all_absent_preserves_feedback_and_metadata();
 	test_rejected_outputs_do_not_partially_update();
+	test_retained_input_removal();
 	return 0;
 }

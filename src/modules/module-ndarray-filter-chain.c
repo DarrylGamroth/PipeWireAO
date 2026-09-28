@@ -70,6 +70,8 @@ PW_LOG_TOPIC_STATIC(mod_topic, "mod." NAME);
  * retains an output for the next graph cycle. Both graph endpoints are private
  * to this module and must have identical F32 ndarray formats. The first graph
  * cycle receives zeros; a successful graph reset clears the retained output.
+ * `pipewireao.fifo-inputs=true` consumes the oldest input buffer and retains
+ * it until all required buffers are available for the graph cycle.
  * The module logs the resolved execution order, formats, connections, and
  * graph-owned buffer sizes once at debug log level during construction.
  * With pipewireao.run-control=true, the node connects inactive and accepts
@@ -80,7 +82,7 @@ static const struct spa_dict_item module_props[] = {
 	{ PW_KEY_MODULE_AUTHOR, "PipeWireAO contributors" },
 	{ PW_KEY_MODULE_DESCRIPTION, "Create a composite ndarray filter node" },
 	{ PW_KEY_MODULE_USAGE, "filter.graph=<graph> (node.name=<name>) "
-		"(pipewireao.run-control=<bool>)" },
+		"(pipewireao.run-control=<bool>) (pipewireao.fifo-inputs=<bool>)" },
 	{ PW_KEY_MODULE_VERSION, PACKAGE_VERSION },
 };
 
@@ -146,6 +148,7 @@ struct impl {
 	_Atomic bool publish_after_process;
 	bool run_control;
 	bool reset_control;
+	bool fifo_inputs;
 	int64_t last_request_token;
 	int64_t completed_token;
 	int32_t run_control_result;
@@ -980,10 +983,16 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 			dequeue_parameter(port);
 			continue;
 		}
-		while ((next = pw_filter_dequeue_buffer(port)) != NULL) {
-			if (buffer != NULL)
-				pw_filter_queue_buffer(port, buffer);
-			buffer = next;
+		if (impl->fifo_inputs) {
+			buffer = impl->input_buffers[i];
+			if (buffer == NULL)
+				buffer = pw_filter_dequeue_buffer(port);
+		} else {
+			while ((next = pw_filter_dequeue_buffer(port)) != NULL) {
+				if (buffer != NULL)
+					pw_filter_queue_buffer(port, buffer);
+				buffer = next;
+			}
 		}
 		impl->input_buffers[i] = buffer;
 		if (buffer != NULL)
@@ -1064,7 +1073,8 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 		if (res >= 0)
 			publish_completed_outputs(impl);
 	}
-	recycle_cycle_inputs(impl);
+	if (ready || !impl->fifo_inputs)
+		recycle_cycle_inputs(impl);
 }
 
 static int prepare_process_thread(struct spa_loop *loop SPA_UNUSED,
@@ -1281,33 +1291,44 @@ static void filter_destroyed(void *data)
 	impl->filter = NULL;
 }
 
-static bool invalidate_retained_output_buffer(struct impl *impl,
+static bool invalidate_retained_buffer(struct impl *impl,
 		struct port *port, struct pw_buffer *buffer)
 {
-	if (port == NULL || port->impl != impl ||
-	    port->direction != SPA_DIRECTION_OUTPUT ||
-	    port->index >= impl->n_outputs)
+	struct pw_buffer **retained;
+
+	if (port == NULL || port->impl != impl)
 		return false;
-	if (impl->output_buffers[port->index] != buffer)
+	if (port->direction == SPA_DIRECTION_INPUT) {
+		if (port->index >= impl->n_inputs)
+			return false;
+		retained = &impl->input_buffers[port->index];
+	} else if (port->direction == SPA_DIRECTION_OUTPUT) {
+		if (port->index >= impl->n_outputs)
+			return false;
+		retained = &impl->output_buffers[port->index];
+	} else {
 		return false;
-	impl->output_buffers[port->index] = NULL;
+	}
+	if (*retained != buffer)
+		return false;
+	*retained = NULL;
 	return true;
 }
 
-struct retained_output_removal {
+struct retained_buffer_removal {
 	struct impl *impl;
 	struct port *port;
 	struct pw_buffer *buffer;
 };
 
-static int invalidate_retained_output_on_data_loop(
+static int invalidate_retained_buffer_on_data_loop(
 		struct spa_loop *loop SPA_UNUSED, bool async SPA_UNUSED,
 		uint32_t seq SPA_UNUSED, const void *data SPA_UNUSED,
 		size_t size SPA_UNUSED, void *user_data)
 {
-	struct retained_output_removal *removal = user_data;
+	struct retained_buffer_removal *removal = user_data;
 
-	(void)invalidate_retained_output_buffer(removal->impl, removal->port,
+	(void)invalidate_retained_buffer(removal->impl, removal->port,
 			removal->buffer);
 	return 0;
 }
@@ -1317,14 +1338,14 @@ static void filter_remove_buffer(void *data, void *port_data,
 {
 	struct impl *impl = data;
 	struct port *port = port_data;
-	struct retained_output_removal removal;
+	struct retained_buffer_removal removal;
 	struct pw_loop *data_loop;
 	int res;
 
 	if (port == NULL || buffer == NULL ||
 	    atomic_load_explicit(&impl->destroying, memory_order_acquire))
 		return;
-	removal = (struct retained_output_removal) {
+	removal = (struct retained_buffer_removal) {
 		.impl = impl,
 		.port = port,
 		.buffer = buffer,
@@ -1332,13 +1353,13 @@ static void filter_remove_buffer(void *data, void *port_data,
 	data_loop = impl->filter == NULL ? NULL :
 		pw_filter_get_data_loop(impl->filter);
 	if (data_loop == NULL)
-		invalidate_retained_output_on_data_loop(NULL, false, 0,
+		invalidate_retained_buffer_on_data_loop(NULL, false, 0,
 				NULL, 0, &removal);
 	else if ((res = pw_loop_locked(data_loop,
-			invalidate_retained_output_on_data_loop, 0,
+			invalidate_retained_buffer_on_data_loop, 0,
 			NULL, 0, &removal)) < 0) {
 		pw_filter_set_error(impl->filter, res,
-				"can't synchronize retained ndarray output removal: %s",
+				"can't synchronize retained ndarray buffer removal: %s",
 				spa_strerror(res));
 	}
 }
@@ -1596,7 +1617,7 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 	struct pw_properties *properties = NULL;
 	struct impl *impl;
 	const char *graph_config, *name, *remote;
-	const char *run_control, *reset_control;
+	const char *run_control, *reset_control, *fifo_inputs;
 	uint32_t id, i;
 	int res;
 
@@ -1633,6 +1654,9 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 			PW_AO_RESET_CONTROL_KEY_ENABLED);
 	impl->reset_control = reset_control != NULL &&
 			pw_properties_parse_bool(reset_control);
+	fifo_inputs = pw_properties_get(properties, "pipewireao.fifo-inputs");
+	impl->fifo_inputs = fifo_inputs != NULL &&
+			pw_properties_parse_bool(fifo_inputs);
 	impl->actual_state = PW_AO_RUN_CONTROL_STATE_STOPPED;
 	impl->filter_state = PW_FILTER_STATE_UNCONNECTED;
 	if ((res = spa_fgn_graph_new(graph_config, &impl->graph)) < 0) {
