@@ -29,8 +29,6 @@ extern "C" {
 #define PW_VERSION_NDARRAY_FILTER_EVENTS 2u
 #define PW_VERSION_NDARRAY_FILTER_EVENTS_V1 1u
 #define PW_VERSION_NDARRAY_FILTER_CONFIG 0u
-#define PW_VERSION_NDARRAY_FILTER_EVENTS_PROGRESSIVE 3u
-#define PW_VERSION_NDARRAY_FILTER_CONFIG_PROGRESSIVE 1u
 #define PW_NDARRAY_FILTER_MAX_PORTS 1024u
 #define PW_NDARRAY_FILTER_NAME_MAX 255u
 
@@ -98,17 +96,6 @@ enum pw_ndarray_filter_flags {
 	 * for the ordinary PipeWire drain-to-latest policy.
 	 */
 	PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS = (1u << 5),
-	/** Poll committed progressive regions on a dedicated pinned worker CPU. */
-	PW_NDARRAY_FILTER_FLAG_PROGRESSIVE_BUSY_POLL = (1u << 6),
-	/** Finish a progressive frame within its original filter process cycle. */
-	PW_NDARRAY_FILTER_FLAG_PROGRESSIVE_INLINE = (1u << 7),
-	/**
-	 * Keep the pinned worker polling for the next frame on a dedicated CPU.
-	 * This consumes that CPU between frames. The worker switches to
-	 * SCHED_OTHER to avoid exhausting Linux's finite real-time CPU budget.
-	 * This flag cannot be combined with PROGRESSIVE_INLINE.
-	 */
-	PW_NDARRAY_FILTER_FLAG_PROGRESSIVE_SPIN_IDLE = (1u << 8),
 };
 
 /** Static ndarray-filter Port roles. */
@@ -157,13 +144,8 @@ enum pw_ndarray_filter_buffer_flags {
 /**
  * One borrowed packed ndarray supplied to a process callback.
  *
- * `data` is borrowed only until the callback returns, except for Version 1
- * progressive input: all its region views refer to one retained full-frame
- * buffer and remain readable through that frame's terminal process callback
- * or abort_progressive_frame() callback. A progressive callback may keep an
- * earlier input-region pointer only for that same frame on its worker.
- * An input payload is read-only even though the common C layout uses `void *`;
- * an output payload
+ * `data` is borrowed only until the callback returns. An input payload is
+ * read-only even though the common C layout uses `void *`; an output payload
  * is exclusively writable. `size` is the exact declared payload size and
  * `capacity` is the mapped capacity beginning at `data`.
  *
@@ -221,21 +203,11 @@ struct pw_ndarray_filter_port {
  * Lifecycle callbacks are serialized and never overlap `process`.
  * `prepare_process_thread` runs on the exact data-loop thread after streaming
  * starts and before the first process call. It may allocate, compile, block,
- * and touch pages. `deactivate` runs after processing has quiesced and is
+ * and touch pages. `deactivate` runs after the data loop has stopped and is
  * also called after a failed preparation attempt.
  *
- * `process` runs on the PipeWire data loop for Version 0 configurations. It
- * receives every frame-data input and output in direction-local declaration
- * order, excluding Parameter Ports. With Version 1 progressive configuration,
- * the native helper retains one full-frame input and calls `process` once for
- * each committed fixed region on its dedicated worker, or on the pinned
- * filter data loop with PW_NDARRAY_FILTER_FLAG_PROGRESSIVE_INLINE. The input data and
- * declared size then describe the exact region format, and Header offset is
- * the region's offset along the split dimension. Only the terminal callback
- * can publish output. The progressive execution thread invokes
- * abort_progressive_frame() after a
- * timeout, source abort, cancellation, or failed process callback. Lifecycle
- * deactivation waits for that thread before releasing the frame.
+ * `process` runs on the PipeWire data loop. It receives every frame-data input
+ * and output in direction-local declaration order, excluding Parameter Ports.
  * `update_parameter` runs on one owned serial worker and receives the original
  * direction-local input-port index. It may allocate and block while copying or
  * preparing a replacement, but it must not retain the borrowed buffer. A
@@ -244,12 +216,9 @@ struct pw_ndarray_filter_port {
  * one buffer is retained per Parameter Port. Newer buffers that arrive while
  * it is retained are immediately returned to their producer.
  *
- * Callbacks return zero on success or a negative errno-style value and must
- * not let an exception unwind across the callback boundary. Except for the
- * progressive input lifetime above, they must not retain borrowed pointers.
- * A retained progressive pointer must be cleared by the terminal callback or
- * abort_progressive_frame() before either returns. Outputs are published by
- * default. A process callback may
+ * Callbacks return zero on success or a negative errno-style value, must not
+ * retain borrowed pointers, and must not let an exception unwind across the
+ * callback boundary. Outputs are published by default. A process callback may
  * independently mark an output unavailable; the helper retains that buffer
  * and presents it again on the next callback.
  */
@@ -277,27 +246,9 @@ struct pw_ndarray_filter_events {
 	int (*set_props)(void *data, const struct spa_pod *props);
 	/** Reset processing state while the node is stopped. */
 	int (*reset)(void *data);
-	/** Prepare the progressive execution thread before it processes frames. */
-	int (*prepare_progressive_worker)(void *data);
-	/** Discard partial state for one frame, on the progressive execution thread. */
-	int (*abort_progressive_frame)(void *data, uint64_t generation,
-			uint64_t sequence, int reason);
 };
 
-/**
- * Immutable construction configuration. All strings and shapes are copied.
- *
- * Version 1 opts in to one progressive frame-data input. Its ordinary Port
- * format is the distinct full-frame transport schema; region_format is the
- * exact callback format. The two formats must have the same element type,
- * layout, and unsplit dimensions. The callback rate must equal the frame rate
- * multiplied by the number of regions. A row-major frame splits along the
- * first dimension; a column-major frame splits along the last. The transport
- * requires negotiated NdarrayProgress metadata and mapped MemFd data. The
- * native helper rejects a frame if any output buffer is unavailable when the
- * frame arrives. A zero timeout is invalid. CPU -1 permits an explicitly
- * unpinned development worker; set a nonnegative CPU for latency qualification.
- */
+/** Immutable construction configuration. All strings and shapes are copied. */
 struct pw_ndarray_filter_config {
 	uint32_t struct_size;
 	uint32_t version;
@@ -308,14 +259,6 @@ struct pw_ndarray_filter_config {
 	const struct pw_ndarray_filter_port *ports;
 	const struct pw_ndarray_filter_events *events;
 	void *user_data;
-	/** Version 1: direction-local index of the progressive frame-data input. */
-	uint32_t progressive_input_port;
-	/** Version 1: exact fixed-region format presented to process(). */
-	struct pw_ndarray_filter_format progressive_region_format;
-	/** Version 1: finite interval without a new committed region, in ns. */
-	uint64_t progressive_timeout_ns;
-	/** Version 1: worker CPU, or -1 for explicitly unpinned development. */
-	int32_t progressive_cpu;
 };
 
 /** Opaque owner of one main loop, PipeWire filter, and copied declaration. */
