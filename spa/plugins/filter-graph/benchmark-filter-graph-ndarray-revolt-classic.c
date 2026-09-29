@@ -94,6 +94,16 @@ static uint64_t monotonic_ns(void)
 		(uint64_t)value.tv_nsec;
 }
 
+static uint64_t process_cpu_ns(void)
+{
+	struct timespec value;
+
+	if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &value) != 0)
+		fail("process clock_gettime failed");
+	return (uint64_t)value.tv_sec * UINT64_C(1000000000) +
+		(uint64_t)value.tv_nsec;
+}
+
 static size_t element_size(uint32_t element_type)
 {
 	size_t size = spa_element_type_size(element_type);
@@ -622,13 +632,23 @@ int main(int argc, char *argv[])
 	memset(inputs[1].payload, 0, inputs[1].size);
 	memset(&inputs[1].header, 0, sizeof(inputs[1].header));
 	sequence = 0;
-	for (i = 0; i < warmup; i++) {
-		sequence++;
-		prepare_frame(&inputs[0], &inputs[1], raw_frames, sequence);
-		check_result(spa_fgn_graph_process(graph, process_inputs,
-				GRAPH_INPUT_COUNT, process_outputs, GRAPH_OUTPUT_COUNT),
-				"warm Classic graph");
-		carry_feedback(&inputs[1], &outputs[5]);
+	{
+		uint64_t wall_start = monotonic_ns();
+		uint64_t cpu_start = process_cpu_ns();
+		uint64_t cpu_elapsed, wall_elapsed;
+
+		for (i = 0; i < warmup; i++) {
+			sequence++;
+			prepare_frame(&inputs[0], &inputs[1], raw_frames, sequence);
+			check_result(spa_fgn_graph_process(graph, process_inputs,
+					GRAPH_INPUT_COUNT, process_outputs, GRAPH_OUTPUT_COUNT),
+					"warm Classic graph");
+			carry_feedback(&inputs[1], &outputs[5]);
+		}
+		cpu_elapsed = process_cpu_ns() - cpu_start;
+		wall_elapsed = monotonic_ns() - wall_start;
+		printf("benchmark-warmup: frames=%u wall_ns=%" PRIu64 " cpu_ns=%" PRIu64 "\n",
+				warmup, wall_elapsed, cpu_elapsed);
 	}
 	times = calloc(samples, sizeof(*times));
 	if (times == NULL)
