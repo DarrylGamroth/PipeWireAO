@@ -42,7 +42,8 @@ enum spa_meta_type {
 	 * PipeWireAO slots explicitly instead of following upstream implicitly. */
 	SPA_META_START_PipeWireAO = 10,
 	SPA_META_Acquisition = 11,	/**< struct spa_meta_acquisition */
-	SPA_META_NdarrayProgress = 12, /**< struct spa_meta_ndarray_progress */
+	/* Slot 12 was published for the removed ndarray progress metadata.
+	 * Keep it unassigned so a later metadata type cannot reuse that ABI ID. */
 	_SPA_META_LAST = 13,		/**< not part of ABI/API */
 
 	SPA_META_START_custom		= 0x200,
@@ -54,8 +55,6 @@ enum spa_meta_type {
 
 SPA_STATIC_ASSERT(SPA_META_Acquisition == 11,
 		"PipeWireAO acquisition metadata ABI");
-SPA_STATIC_ASSERT(SPA_META_NdarrayProgress == 12,
-		"PipeWireAO ndarray progress metadata ABI");
 
 #define SPA_META_TYPE_FEATURES(type,features)	(((type)<<16)|(features))
 
@@ -170,53 +169,6 @@ struct spa_meta_busy {
 	uint32_t flags;
 	uint32_t count;			/**< number of users busy with the buffer */
 };
-
-/**
- * Shared progress and release for a frame assembled in fixed-size regions.
- *
- * This contract supports one producer and one consuming graph path per
- * buffer; released_generation cannot acknowledge independent consumers.
- * Both peers must negotiate this metadata and shared MemFd storage. The
- * producer initializes the immutable fields before it announces the frame,
- * writes pixels, then release-stores committed_regions. The consumer
- * acquire-loads committed_regions before reading new regions. Terminal or
- * aborted state is release-stored only after the last progress update. Once
- * it has stopped reading pixels and metadata, the consumer release-stores
- * released_generation. The producer acquire-loads that generation before
- * reusing the buffer. A generation never changes while the frame is loaned.
- *
- * Writer-owned atomics occupy separate cache lines regardless of the base
- * address's cache-line alignment. Peers must verify 64-bit atomics are
- * lock-free on the mapped address before enabling this protocol.
- */
-#define SPA_META_NDARRAY_PROGRESS_VERSION 1u
-#define SPA_META_NDARRAY_PROGRESS_ACTIVE 0u
-#define SPA_META_NDARRAY_PROGRESS_TERMINAL 1u
-#define SPA_META_NDARRAY_PROGRESS_ABORTED 2u
-
-struct SPA_ALIGNED(8) spa_meta_ndarray_progress {
-	uint32_t version;
-	uint32_t abi_size;
-	uint64_t generation;
-	uint64_t sequence;
-	uint32_t region_count;
-	uint32_t region_bytes;
-	uint8_t reserved0[32];
-	uint32_t committed_regions;
-	uint32_t state;
-	uint8_t reserved1[56];
-	uint64_t released_generation;
-	uint8_t reserved2[56];
-};
-
-SPA_STATIC_ASSERT(sizeof(struct spa_meta_ndarray_progress) == 192u,
-		"ndarray progress metadata ABI size");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_ndarray_progress,
-		committed_regions) == 64u,
-		"ndarray progress watermark offset");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_ndarray_progress,
-		released_generation) == 128u,
-		"ndarray progress acknowledgement offset");
 
 enum spa_meta_videotransform_value {
 	SPA_META_TRANSFORMATION_None = 0,	/**< no transform */
