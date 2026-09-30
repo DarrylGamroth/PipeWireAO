@@ -36,6 +36,8 @@ struct test_data {
 	atomic_uint produced;
 	atomic_uint received;
 	atomic_bool streaming_reported;
+	bool buffers32;
+	uint32_t source_buffer_count;
 	int result;
 };
 
@@ -91,6 +93,30 @@ static void sink_state_changed(void *userdata, enum pw_stream_state old,
 	(void)old;
 	atomic_store_explicit(&data->sink_state, state, memory_order_release);
 	stream_state_changed(data, state, error);
+}
+
+static void source_add_buffer(void *userdata, struct pw_buffer *buffer)
+{
+	struct test_data *data = userdata;
+
+	(void)buffer;
+	if (!data->buffers32)
+		return;
+	if (++data->source_buffer_count == 32) {
+		printf("BUFFERS32\n");
+		fflush(stdout);
+	} else if (data->source_buffer_count > 32) {
+		quit_with_error(data, "source allocated more than 32 buffers");
+	}
+}
+
+static void source_remove_buffer(void *userdata, struct pw_buffer *buffer)
+{
+	struct test_data *data = userdata;
+
+	(void)buffer;
+	if (data->buffers32 && data->source_buffer_count > 0)
+		data->source_buffer_count--;
 }
 
 static void source_process(void *userdata)
@@ -218,6 +244,8 @@ static void sink_process(void *userdata)
 static const struct pw_stream_events source_events = {
 	PW_VERSION_STREAM_EVENTS,
 	.state_changed = source_state_changed,
+	.add_buffer = source_add_buffer,
+	.remove_buffer = source_remove_buffer,
 	.process = source_process,
 };
 
@@ -309,6 +337,18 @@ static struct spa_pod *build_acquisition_meta(struct spa_pod_builder *builder)
 	return spa_pod_builder_pop(builder, &frame);
 }
 
+static struct spa_pod *build_source_buffers(struct spa_pod_builder *builder)
+{
+	return spa_pod_builder_add_object(builder,
+			SPA_TYPE_OBJECT_ParamBuffers, SPA_PARAM_Buffers,
+			SPA_PARAM_BUFFERS_buffers, SPA_POD_Int(32),
+			SPA_PARAM_BUFFERS_blocks, SPA_POD_Int(1),
+			SPA_PARAM_BUFFERS_size, SPA_POD_Int(4),
+			SPA_PARAM_BUFFERS_stride, SPA_POD_Int(4),
+			SPA_PARAM_BUFFERS_dataType,
+			SPA_POD_CHOICE_FLAGS_Int(1 << SPA_DATA_MemPtr));
+}
+
 int main(int argc, char *argv[])
 {
 	static const char data_loops[] =
@@ -317,11 +357,20 @@ int main(int argc, char *argv[])
 	struct test_data data = { .result = 0 };
 	struct pw_properties *context_props, *source_props, *sink_props;
 	struct spa_pod_builder source_builder, sink_builder;
-	struct spa_pod *source_params[3], *sink_params[3];
+	struct spa_pod *source_params[4], *sink_params[3];
 	struct timespec timeout_value = { .tv_sec = 10 };
 	uint8_t source_pods[768], sink_pods[768];
 	int result;
+	int i;
 
+	for (i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "--buffers32") == 0)
+			data.buffers32 = true;
+		else {
+			fprintf(stderr, "unknown argument: %s\n", argv[i]);
+			return 2;
+		}
+	}
 	pw_init(&argc, &argv);
 	atomic_init(&data.source_state, PW_STREAM_STATE_UNCONNECTED);
 	atomic_init(&data.sink_state, PW_STREAM_STATE_UNCONNECTED);
@@ -374,12 +423,15 @@ int main(int argc, char *argv[])
 	source_params[0] = build_format(&source_builder);
 	source_params[1] = build_header_meta(&source_builder);
 	source_params[2] = build_acquisition_meta(&source_builder);
+	if (data.buffers32)
+		source_params[3] = build_source_buffers(&source_builder);
 	spa_pod_builder_init(&sink_builder, sink_pods, sizeof(sink_pods));
 	sink_params[0] = build_format(&sink_builder);
 	sink_params[1] = build_header_meta(&sink_builder);
 	sink_params[2] = build_acquisition_meta(&sink_builder);
 	if (source_params[0] == NULL || source_params[1] == NULL ||
-	    source_params[2] == NULL || sink_params[0] == NULL ||
+	    source_params[2] == NULL ||
+	    (data.buffers32 && source_params[3] == NULL) || sink_params[0] == NULL ||
 	    sink_params[1] == NULL || sink_params[2] == NULL) {
 		fprintf(stderr, "could not build ndarray stream parameters\n");
 		data.result = 1;
@@ -389,7 +441,7 @@ int main(int argc, char *argv[])
 			PW_STREAM_FLAG_DRIVER | PW_STREAM_FLAG_MAP_BUFFERS |
 			PW_STREAM_FLAG_RT_PROCESS | PW_STREAM_FLAG_NO_CONVERT,
 			(const struct spa_pod **)source_params,
-			SPA_N_ELEMENTS(source_params));
+			data.buffers32 ? 4 : 3);
 	if (result < 0) {
 		fprintf(stderr, "could not connect source: %s\n", spa_strerror(result));
 		data.result = 1;
@@ -429,7 +481,8 @@ int main(int argc, char *argv[])
 	pw_main_loop_run(data.loop);
 	if (data.result == 0 &&
 	    (atomic_load_explicit(&data.produced, memory_order_relaxed) != 2 ||
-	     atomic_load_explicit(&data.received, memory_order_relaxed) != 1)) {
+	     atomic_load_explicit(&data.received, memory_order_relaxed) != 1 ||
+	     (data.buffers32 && data.source_buffer_count != 32))) {
 		fprintf(stderr, "incomplete transfer: produced=%u received=%u\n",
 				atomic_load_explicit(&data.produced, memory_order_relaxed),
 				atomic_load_explicit(&data.received, memory_order_relaxed));

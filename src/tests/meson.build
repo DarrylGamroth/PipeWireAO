@@ -179,6 +179,28 @@ test(
   timeout: 30,
 )
 
+test(
+  'pw-test-ndarray-filter-buffers32',
+  find_program('python3'),
+  args: [
+    files('test-ndarray-filter-remote.py'),
+    pipewire_exec.full_path(),
+    pwao_link.full_path(),
+    ndarray_filter_remote_filter.full_path(),
+    ndarray_filter_remote_client.full_path(),
+    '--buffers32',
+  ],
+  depends: pipewire_daemon_required_modules + [
+    spa_support_lib,
+    pipewire_exec,
+    pwao_link,
+    ndarray_filter_remote_filter,
+    ndarray_filter_remote_client,
+  ],
+  env: polling_remote_env,
+  timeout: 30,
+)
+
 ndarray_filter_parameter_filter = executable(
   'pw-test-ndarray-filter-parameter-filter',
   'test-ndarray-filter-parameter-filter.c',
