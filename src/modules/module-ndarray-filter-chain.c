@@ -16,6 +16,10 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+#include <stdio.h>
+#include <time.h>
+#endif
 
 #include <spa/debug/filter-graph-ndarray.h>
 #include <spa/debug/log.h>
@@ -122,6 +126,158 @@ struct feedback_bridge {
 	struct feedback_buffer output;
 };
 
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+#define FGN_PROCESS_TRACE_CAPACITY 32768u
+
+struct fgn_process_trace_record {
+	uint64_t start_ns;
+	uint64_t end_ns;
+	uint64_t sequence;
+	uint32_t offset;
+	int32_t result;
+};
+
+struct fgn_process_trace {
+	struct fgn_process_trace_record *records;
+	char *path;
+	uint32_t used;
+	uint64_t omitted;
+	bool initialized;
+};
+
+static _Atomic uint32_t next_fgn_process_trace_id;
+
+static int fgn_process_trace_init(struct fgn_process_trace *trace)
+{
+	const char *directory = getenv("PW_FGN_PROCESS_TRACE_DIR");
+	size_t length, bytes = FGN_PROCESS_TRACE_CAPACITY * sizeof(*trace->records);
+	long page_size;
+	volatile unsigned char *pages;
+	uint32_t id;
+
+	if (directory == NULL || directory[0] == '\0')
+		return 0;
+	length = strlen(directory);
+	if (length > SIZE_MAX - 64u)
+		return -ENAMETOOLONG;
+	trace->path = malloc(length + 64u);
+	trace->records = malloc(bytes);
+	if (trace->path == NULL || trace->records == NULL)
+		return -ENOMEM;
+	page_size = sysconf(_SC_PAGESIZE);
+	pages = (volatile unsigned char *)trace->records;
+	for (size_t i = 0; i < bytes; i += page_size > 0 ? (size_t)page_size : 4096u)
+		pages[i] = 0;
+	pages[bytes - 1] = 0;
+	id = atomic_fetch_add_explicit(&next_fgn_process_trace_id, 1,
+			memory_order_relaxed);
+	snprintf(trace->path, length + 64u, "%s/fgn-process-%ld-%u.csv",
+			directory, (long)getpid(), id);
+	trace->initialized = true;
+	return 0;
+}
+
+static const struct spa_meta_header *fgn_process_trace_header(
+		const struct spa_buffer *input)
+{
+	const struct spa_meta_header *header = NULL;
+	uint32_t i;
+
+	if (input == NULL || input->n_metas > SPA_FGN_MAX_METAS ||
+	    (input->n_metas != 0 && (input->metas == NULL ||
+	     (uintptr_t)input->metas % _Alignof(struct spa_meta) != 0)))
+		return NULL;
+	for (i = 0; i < input->n_metas; i++) {
+		const struct spa_meta *meta = &input->metas[i];
+
+		if (meta->type != SPA_META_Header)
+			continue;
+		if (header != NULL || meta->data == NULL ||
+		    meta->size < sizeof(*header) || meta->size > SPA_FGN_MAX_META_BYTES ||
+		    (uintptr_t)meta->data % _Alignof(struct spa_meta_header) != 0)
+			return NULL;
+		header = meta->data;
+	}
+	return header;
+}
+
+static struct fgn_process_trace_record *fgn_process_trace_begin(
+		struct fgn_process_trace *trace, const struct spa_buffer *input)
+{
+	const struct spa_meta_header *header;
+	struct fgn_process_trace_record *record;
+	struct timespec now;
+
+	if (!trace->initialized)
+		return NULL;
+	if (trace->used == FGN_PROCESS_TRACE_CAPACITY) {
+		trace->omitted++;
+		return NULL;
+	}
+	header = fgn_process_trace_header(input);
+	if (clock_gettime(CLOCK_MONOTONIC, &now) < 0) {
+		trace->omitted++;
+		return NULL;
+	}
+	record = &trace->records[trace->used];
+	*record = (struct fgn_process_trace_record) {
+		.start_ns = (uint64_t)now.tv_sec * 1000000000u + now.tv_nsec,
+		.sequence = header != NULL ? header->seq : UINT64_MAX,
+		.offset = header != NULL ? header->offset : UINT32_MAX,
+	};
+	return record;
+}
+
+static void fgn_process_trace_end(struct fgn_process_trace *trace,
+		struct fgn_process_trace_record *record, int result)
+{
+	struct timespec now;
+
+	if (record == NULL)
+		return;
+	if (clock_gettime(CLOCK_MONOTONIC, &now) < 0) {
+		trace->omitted++;
+		return;
+	}
+	record->end_ns = (uint64_t)now.tv_sec * 1000000000u + now.tv_nsec;
+	record->result = result;
+	trace->used++;
+}
+
+static void fgn_process_trace_clear(struct fgn_process_trace *trace)
+{
+	FILE *output;
+	uint32_t i;
+
+	if (trace->initialized) {
+		output = fopen(trace->path, "w");
+		if (output == NULL) {
+			fprintf(stderr, "cannot write FGN process trace %s: %s\n",
+					trace->path, strerror(errno));
+		} else {
+			fprintf(output, "# capacity=%u used=%u omitted=%llu\n",
+					FGN_PROCESS_TRACE_CAPACITY, trace->used,
+					(unsigned long long)trace->omitted);
+			fputs("callback,sequence,offset,start_ns,end_ns,result\n", output);
+			for (i = 0; i < trace->used; i++) {
+				const struct fgn_process_trace_record *record = &trace->records[i];
+
+				fprintf(output, "%u,%llu,%u,%llu,%llu,%d\n", i + 1,
+						(unsigned long long)record->sequence, record->offset,
+						(unsigned long long)record->start_ns,
+						(unsigned long long)record->end_ns, record->result);
+			}
+			if (fclose(output) < 0)
+				fprintf(stderr, "cannot finish FGN process trace %s: %s\n",
+						trace->path, strerror(errno));
+		}
+	}
+	free(trace->records);
+	free(trace->path);
+	*trace = (struct fgn_process_trace) { 0 };
+}
+#endif
+
 struct impl {
 	struct pw_context *context;
 	struct pw_impl_module *module;
@@ -172,6 +328,9 @@ struct impl {
 	struct spa_buffer **process_outputs;
 	struct pw_buffer **input_buffers;
 	struct pw_buffer **output_buffers;
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+	struct fgn_process_trace process_trace;
+#endif
 };
 
 static void log_graph_report(const struct spa_fgn_graph *graph)
@@ -1022,9 +1181,17 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 		impl->process_outputs[bridge->output_port] = &bridge->output.buffer;
 	}
 	if (ready) {
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+		struct fgn_process_trace_record *record = fgn_process_trace_begin(
+				&impl->process_trace,
+				impl->n_inputs > 0 ? impl->process_inputs[0] : NULL);
+#endif
 		res = spa_fgn_graph_process(impl->graph,
 				impl->process_inputs, impl->n_inputs,
 				impl->process_outputs, impl->n_outputs);
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+		fgn_process_trace_end(&impl->process_trace, record, res);
+#endif
 		if (res >= 0) {
 			int feedback_res = commit_feedback_bridges(impl);
 			if (feedback_res < 0) {
@@ -1573,6 +1740,10 @@ static void impl_destroy(struct impl *impl)
 		}
 	if (impl->filter != NULL)
 		pw_filter_destroy(impl->filter);
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+	/* The filter's data-loop callbacks are quiescent before exporting. */
+	fgn_process_trace_clear(&impl->process_trace);
+#endif
 	if (impl->parameter_loop != NULL)
 		pw_thread_loop_destroy(impl->parameter_loop);
 	if (impl->graph != NULL)
@@ -1757,6 +1928,10 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 	if ((res = pw_thread_loop_start(impl->parameter_loop)) < 0)
 		goto error;
 	impl->parameter_loop_started = true;
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+	if ((res = fgn_process_trace_init(&impl->process_trace)) < 0)
+		goto error;
+#endif
 	if ((res = connect_filter(impl)) < 0) {
 		pw_log_error("can't connect ndarray filter: %s", spa_strerror(res));
 		goto error;
