@@ -1,0 +1,26 @@
+{
+  "date": "2026-09-29",
+  "base_commit": "1045d32aedcd800783c69e984ac62de22d6187f8",
+  "branch": "fix-row-ready-retry",
+  "worktree": "/home/dgamroth/workspaces/codex/pipewire/pipewire-row-ready-retry",
+  "source_sha256": "d8ba78857cfe69bef5125f1f9562852e7c0a931b9ea3e1cb5cad20c1e56ca358",
+  "test_sha256": "9ef0c563a4778eb655d5cdaaecd894c1de6ed2ad19f3594ea1ff8ed95b20f3b7",
+  "fail_before_returncode": -6,
+  "pass_after_returncode": 0,
+  "lifecycle_fail_before_returncode": -6,
+  "lifecycle_pass_after_returncode": 0,
+  "compiler_warnings": [],
+  "replay_evidence_directory": "/home/dgamroth/.cache/rtc-copper-julia-live-updates-ready-return-1024-r2-20260929",
+  "live_replay_observation": "Source frame253 buffer1 generation64 ready returned -16 (-EBUSY); no subsequent N/Q253; all active nodes FINISHED, core retry_pending0, Julia Parameter callback had no live entry.",
+  "scope": "Deterministic core unit validation and candidate normal DSO build; combined source/core live replay pending. Completion wake is invoked explicitly in unit fixture.",
+  "discarded_configuration": "Initial diagnostic-trace build crashed in node_ready_trace_add because old test fixtures allocate bare pw_impl_node without enclosing impl ready_trace. Behavioral fail-before and pass-after use unchanged normal build-row-benchmark flags, without PW_ENABLE_DIAGNOSTIC_TRACE.",
+  "artifact_sha256": {
+    "pass-after.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "library-commands.json": "70d103a465c938b34cb8f96ea91d00ec1849aeed31cb3e973b2ec34376e4b564",
+    "library-provenance.json": "60685cfab54f078e3a237db3ff48d974aff5268df672d776b63012d69ff67676",
+    "lifecycle-fail-before.log": "5cf694ed7b0fc27e08e83c167764afb88247e04acda0879eac71265951e553b9",
+    "lifecycle-pass-after.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "test-commands.json": "a549d4a60e19422633ccf253fe46c5da3ccd5c90b9fd7012ea52c805edf26a21",
+    "fail-before.log": "1ca297bd68ff71792f7d57389d8cccdd85b824134c6288436fef2fb34461f05f"
+  }
+}

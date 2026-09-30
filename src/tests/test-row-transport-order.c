@@ -20,6 +20,18 @@ static uint32_t wakeups;
 static bool borrowed_row;
 static const struct spa_node_methods source_methods;
 
+int pw_data_loop_add_poll_source(struct pw_data_loop *loop SPA_UNUSED,
+		struct pw_data_loop_source *source SPA_UNUSED)
+{
+	spa_assert_not_reached();
+}
+
+int pw_data_loop_remove_poll_source(struct pw_data_loop *loop SPA_UNUSED,
+		struct pw_data_loop_source *source SPA_UNUSED)
+{
+	spa_assert_not_reached();
+}
+
 static int test_tee_process(void *object SPA_UNUSED)
 {
 	return SPA_STATUS_OK;
@@ -212,6 +224,8 @@ static void test_retained_row_retry(void)
 	output.rt.io.status = SPA_STATUS_HAVE_DATA;
 	spa_assert_se(node_ready(driver, SPA_STATUS_HAVE_DATA) == -EBUSY);
 	output.rt.io.status = SPA_STATUS_NEED_DATA;
+	reliable_request_event(driver, 1);
+	spa_assert_se(retry_commands == before + 2);
 	spa_assert_se(node_ready(driver, SPA_STATUS_HAVE_DATA) == 0);
 	spa_assert_se(activation.position.clock.cycle == 1);
 	spa_assert_se(borrowed_row);
@@ -226,6 +240,158 @@ static void test_retained_row_retry(void)
 	retry_commands = before;
 	releases = 0;
 	wakeups = 0;
+}
+
+static void test_retry_unprepare(void)
+{
+	struct impl impl = { 0 };
+	struct pw_impl_node *driver = &impl.this;
+	struct pw_node_activation activation = { 0 };
+	uint32_t before = retry_commands;
+
+	driver->driver_node = driver;
+	driver->remote = true;
+	driver->row_transport = true;
+	driver->row_cycle_inflight = true;
+	driver->info.state = PW_NODE_STATE_RUNNING;
+	driver->rt.prepared = true;
+	driver->rt.target.activation = &activation;
+	driver->rt.reliable_retry_dispatched = true;
+	SPA_ATOMIC_STORE(driver->rt.reliable_retry_pending, 1);
+	SPA_ATOMIC_STORE(driver->rt.reliable_release_pending, 1);
+	SPA_ATOMIC_STORE(activation.status, PW_NODE_ACTIVATION_FINISHED);
+	spa_list_init(&driver->rt.input_mix);
+	spa_list_init(&driver->rt.output_mix);
+	spa_list_init(&driver->rt.target_list);
+
+	spa_assert_se(do_node_unprepare(NULL, false, 0, NULL, 0, driver) == 0);
+	spa_assert_se(!driver->rt.prepared);
+	spa_assert_se(!driver->row_cycle_inflight);
+	spa_assert_se(!driver->rt.reliable_retry_dispatched);
+	spa_assert_se(SPA_ATOMIC_LOAD(driver->rt.reliable_retry_pending) == 0);
+	/* Stopping a cycle does not consume a pending borrowed-row release. */
+	spa_assert_se(SPA_ATOMIC_LOAD(driver->rt.reliable_release_pending) == 1);
+	spa_assert_se(SPA_ATOMIC_LOAD(activation.status) == PW_NODE_ACTIVATION_INACTIVE);
+	SPA_ATOMIC_STORE(driver->rt.reliable_release_pending, 0);
+	spa_assert_se(do_node_prepare(NULL, false, 0, NULL, 0, driver) == 0);
+	spa_assert_se(driver->rt.prepared);
+	spa_assert_se(SPA_ATOMIC_LOAD(activation.status) == PW_NODE_ACTIVATION_FINISHED);
+	flush_reliable_retry(driver);
+	spa_assert_se(retry_commands == before);
+	spa_assert_se(!driver->rt.reliable_retry_dispatched);
+}
+
+static void test_ready_before_async_completion(void)
+{
+	struct impl impl = { 0 };
+	struct pw_impl_node *driver = &impl.this, publisher = { 0 };
+	struct pw_impl_port output = { 0 };
+	struct pw_node_activation activation = { 0 }, publisher_activation = { 0 };
+	struct pw_node_target target = {
+		.id = 2, .node = &publisher, .activation = &publisher_activation,
+		.active = true, .trigger = test_trigger,
+	};
+	struct spa_io_position position = { 0 };
+	struct spa_system system = {
+		.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_System,
+				SPA_VERSION_SYSTEM, &system_methods, NULL),
+	};
+	struct spa_node source = {
+		.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
+				SPA_VERSION_NODE, &source_methods, NULL),
+	};
+	struct spa_node tee = {
+		.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
+				SPA_VERSION_NODE, &tee_methods, NULL),
+	};
+	struct spa_source event = { 0 };
+	struct spa_loop_utils utils = {
+		.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_LoopUtils,
+				SPA_VERSION_LOOP_UTILS, &loop_methods, NULL),
+	};
+	struct pw_loop loop = { .utils = &utils };
+	uint32_t before = retry_commands, before_wakeups = wakeups;
+
+	driver->node = &source;
+	driver->driver_node = driver;
+	driver->driving = true;
+	driver->row_transport = true;
+	driver->row_cycle_inflight = true;
+	driver->info.id = 1;
+	driver->info.state = PW_NODE_STATE_RUNNING;
+	driver->rt.prepared = true;
+	driver->rt.target.activation = &activation;
+	driver->rt.target.system = &system;
+	driver->rt.position = &position;
+	driver->rt.reliable_event = &event;
+	driver->data_loop = &loop;
+	spa_hook_list_init(&driver->rt_listener_list);
+	spa_list_init(&driver->rt.input_mix);
+	spa_list_init(&driver->rt.output_mix);
+	spa_list_init(&driver->rt.target_list);
+	spa_list_append(&driver->rt.target_list, &target.link);
+	spa_list_append(&driver->rt.output_mix, &output.rt.node_link);
+	output.mix = &tee;
+	output.rt.io.status = SPA_STATUS_HAVE_DATA;
+	output.rt.io.buffer_id = 3;
+	publisher.driver_node = driver;
+	publisher.async = true;
+	publisher_activation.active_driver_id = driver->info.id;
+	pw_node_activation_update_flag(&publisher_activation,
+			PW_NODE_ACTIVATION_FLAG_ASYNC, true);
+	SPA_ATOMIC_STORE(activation.status, PW_NODE_ACTIVATION_FINISHED);
+	SPA_ATOMIC_STORE(publisher_activation.status, PW_NODE_ACTIVATION_AWAKE);
+	activation.position.clock.cycle = 17;
+	borrowed_row = false;
+	releases = 1;
+
+	/* The old source cycle finished, but its async Parameter publisher has
+	 * not finished. Retain this new source row's rejected activation. */
+	spa_assert_se(node_ready(driver, SPA_STATUS_HAVE_DATA) == -EBUSY);
+	spa_assert_se(SPA_ATOMIC_LOAD(driver->rt.reliable_retry_pending) == 1);
+	spa_assert_se(!driver->rt.reliable_retry_dispatched);
+	spa_assert_se(wakeups == before_wakeups + 1);
+	reliable_request_event(driver, 1);
+	spa_assert_se(retry_commands == before);
+	spa_assert_se(activation.position.clock.cycle == 17);
+	spa_assert_se(SPA_ATOMIC_LOAD(publisher_activation.status) ==
+			PW_NODE_ACTIVATION_AWAKE);
+
+	/* A retried ready can still be busy. It must rearm the same latch. */
+	driver->rt.reliable_retry_dispatched = true;
+	spa_assert_se(node_ready(driver, SPA_STATUS_HAVE_DATA) == -EBUSY);
+	spa_assert_se(!driver->rt.reliable_retry_dispatched);
+	spa_assert_se(SPA_ATOMIC_LOAD(driver->rt.reliable_retry_pending) == 1);
+	reliable_request_event(driver, 1);
+	spa_assert_se(retry_commands == before);
+
+	/* Completion cannot dispatch while a new row overlaps a borrowed row. */
+	SPA_ATOMIC_STORE(publisher_activation.status, PW_NODE_ACTIVATION_FINISHED);
+	borrowed_row = true;
+	reliable_request_event(driver, 1);
+	reliable_request_event(driver, 1);
+	spa_assert_se(retry_commands == before);
+	spa_assert_se(SPA_ATOMIC_LOAD(driver->rt.reliable_retry_pending) == 1);
+	spa_assert_se(!driver->rt.reliable_retry_dispatched);
+	spa_assert_se(output.rt.io.status == SPA_STATUS_HAVE_DATA);
+	spa_assert_se(output.rt.io.buffer_id == 3);
+
+	borrowed_row = false;
+	reliable_request_event(driver, 1);
+	spa_assert_se(retry_commands == before + 1);
+	spa_assert_se(SPA_ATOMIC_LOAD(driver->rt.reliable_retry_pending) == 0);
+	spa_assert_se(driver->rt.reliable_retry_dispatched);
+	reliable_request_event(driver, 1);
+	spa_assert_se(retry_commands == before + 1);
+	spa_assert_se(node_ready(driver, SPA_STATUS_HAVE_DATA) == 0);
+	spa_assert_se(activation.position.clock.cycle == 18);
+	spa_assert_se(!driver->rt.reliable_retry_dispatched);
+	spa_assert_se(SPA_ATOMIC_LOAD(publisher_activation.status) ==
+			PW_NODE_ACTIVATION_NOT_TRIGGERED);
+
+	retry_commands = before;
+	wakeups = before_wakeups;
+	releases = 0;
 }
 
 void pw_log_log_object(enum spa_log_level level SPA_UNUSED,
@@ -319,6 +485,8 @@ int main(int argc, char *argv[])
 	test_first_cycle();
 	test_borrowed_cycle();
 	test_retained_row_retry();
+	test_ready_before_async_completion();
+	test_retry_unprepare();
 	pthread_barrier_init(&release_entered, NULL, 2);
 	pthread_barrier_init(&release_resume, NULL, 2);
 	driver->node = &source;
@@ -356,7 +524,7 @@ int main(int argc, char *argv[])
 	/* A buffer returned after completion must wake the source without a
 	 * second camera packet or another graph-completion callback. */
 	handle_request_process_command(driver, &retry);
-	spa_assert_se(wakeups == 2);
+	spa_assert_se(wakeups == 3);
 	spa_assert_se(retry_commands == 1);
 	spa_assert_se(SPA_ATOMIC_LOAD(driver->rt.reliable_retry_pending) == 1);
 	/* test_retained_row_retry covers the callback transition; model it here. */
