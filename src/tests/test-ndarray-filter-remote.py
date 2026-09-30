@@ -66,7 +66,10 @@ def link_nodes(link, environment, source, sink):
 
 
 def main():
-    if len(sys.argv) not in (5, 6):
+    options = sys.argv[5:]
+    if (len(sys.argv) < 5 or
+            any(option not in ("--fifo-inputs", "--buffers32") for option in options) or
+            len(set(options)) != len(options)):
         return 2
     paths = {
         "daemon": Path(sys.argv[1]).resolve(),
@@ -97,31 +100,40 @@ def main():
         name: path.open("w+", encoding="utf-8")
         for name, path in logs.items()
     }
-    daemon = subprocess.Popen(
-        [
-            str(paths["daemon"]),
-            "-P",
-            "{ context.data-loops = [ "
-            "{ loop.name=daemon-event loop.class=data.rt loop.idle=eventfd } "
-            "] }",
-        ],
-        env=environment,
-        text=True,
-        stdout=handles["daemon"],
-        stderr=subprocess.STDOUT,
-    )
+    daemon = None
     filter_process = None
     client_process = None
     try:
+        daemon_command = [str(paths["daemon"])]
+        if "--buffers32" in options:
+            # The standard configuration caps links at 16 for old clients. This
+            # test uses current clients and explicitly permits the requested pool.
+            config = Path(environment["PIPEWIREAO_CONFIG_DIR"]) / "pipewire.conf"
+            text = config.read_text()
+            old = "link.max-buffers                       = 16"
+            if text.count(old) != 1:
+                raise TestFailure("standard daemon buffer policy insertion point changed")
+            test_config = temporary / "buffers32.conf"
+            test_config.write_text(text.replace(old, "link.max-buffers                       = 64"))
+            daemon_command.extend(["-c", str(test_config)])
+        daemon_command.extend([
+            "-P", "{ context.data-loops = [ "
+            "{ loop.name=daemon-event loop.class=data.rt loop.idle=eventfd } ] }",
+        ])
+        daemon = subprocess.Popen(
+            daemon_command,
+            env=environment,
+            text=True,
+            stdout=handles["daemon"],
+            stderr=subprocess.STDOUT,
+        )
         wait_for(
             lambda: (runtime / "pipewire-ao-0").is_socket(),
             5,
             "daemon socket",
         )
         filter_command = [str(paths["filter"])]
-        if len(sys.argv) == 6:
-            if sys.argv[5] != "--fifo-inputs":
-                return 2
+        if "--fifo-inputs" in options:
             filter_command.append("--fifo-inputs")
         filter_process = subprocess.Popen(
             filter_command,
@@ -130,8 +142,11 @@ def main():
             stdout=handles["filter"],
             stderr=subprocess.STDOUT,
         )
+        client_command = [str(paths["client"])]
+        if "--buffers32" in options:
+            client_command.append("--buffers32")
         client_process = subprocess.Popen(
-            [str(paths["client"])],
+            client_command,
             env=environment,
             text=True,
             stdin=subprocess.PIPE,
@@ -154,6 +169,8 @@ def main():
         )
         wait_for_text(filter_process, logs["filter"], "PREPARED", 5)
         wait_for_text(client_process, logs["client"], "STREAMING", 5)
+        if "--buffers32" in options:
+            wait_for_text(client_process, logs["client"], "BUFFERS32", 5)
 
         assert client_process.stdin is not None
         client_process.stdin.write("1")
@@ -209,7 +226,7 @@ def main():
             if process is not None and process.poll() is None:
                 process.kill()
                 process.wait()
-        if daemon.poll() is None:
+        if daemon is not None and daemon.poll() is None:
             daemon.terminate()
             try:
                 daemon.wait(timeout=5)

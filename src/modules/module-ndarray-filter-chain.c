@@ -1409,7 +1409,7 @@ static int add_graph_port(struct impl *impl, enum spa_direction direction,
 	params[n_params++] = build_format(&builder, SPA_PARAM_EnumFormat, format);
 	params[n_params++] = spa_pod_builder_add_object(&builder,
 			SPA_TYPE_OBJECT_ParamBuffers, SPA_PARAM_Buffers,
-			SPA_PARAM_BUFFERS_buffers, SPA_POD_CHOICE_RANGE_Int(4, 2, 16),
+			SPA_PARAM_BUFFERS_buffers, SPA_POD_CHOICE_RANGE_Int(4, 2, 64),
 			SPA_PARAM_BUFFERS_blocks, SPA_POD_Int(1),
 			SPA_PARAM_BUFFERS_size, SPA_POD_Int((int32_t)size),
 			SPA_PARAM_BUFFERS_stride, SPA_POD_Int(stride),

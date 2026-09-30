@@ -585,7 +585,7 @@ static int add_port(struct pw_ndarray_filter *filter,
 	params[0] = build_format(&builder, SPA_PARAM_EnumFormat, &port->format);
 	params[1] = spa_pod_builder_add_object(&builder,
 			SPA_TYPE_OBJECT_ParamBuffers, SPA_PARAM_Buffers,
-			SPA_PARAM_BUFFERS_buffers, SPA_POD_CHOICE_RANGE_Int(4, 2, 16),
+			SPA_PARAM_BUFFERS_buffers, SPA_POD_CHOICE_RANGE_Int(4, 2, 64),
 			SPA_PARAM_BUFFERS_blocks, SPA_POD_Int(1),
 			SPA_PARAM_BUFFERS_size, SPA_POD_Int((int32_t)port->size),
 			SPA_PARAM_BUFFERS_stride, SPA_POD_Int(port->stride),
