@@ -510,6 +510,7 @@ do_node_unprepare(struct spa_loop *loop, bool async, uint32_t seq,
 	this->rt.prepared = false;
 	this->row_cycle_inflight = false;
 	this->rt.reliable_retry_dispatched = false;
+	SPA_ATOMIC_STORE(this->rt.reliable_retry_pending, 0);
 	return 0;
 }
 
@@ -1877,6 +1878,8 @@ static void flush_reliable_retry(struct pw_impl_node *node)
 		SPA_ATOMIC_STORE(driver->rt.reliable_retry_pending, 0);
 		return;
 	}
+	if (driver_has_borrowed_row(driver) && driver_has_source_row(driver))
+		return;
 	if (!SPA_ATOMIC_CAS(driver->rt.reliable_retry_pending, 1, 0))
 		return;
 	driver->rt.reliable_retry_dispatched = true;
@@ -2661,13 +2664,13 @@ static int node_ready(void *data, int status)
 		flush_reliable_input_returns(node);
 		if (!pw_impl_node_reliable_cycle_complete(node) ||
 		    SPA_ATOMIC_LOAD(node->rt.reliable_release_pending))
-			return -EBUSY;
+			goto retry;
 		/* A retry may process retained input, but it cannot publish a new
 		 * source row while the previous row is borrowed. */
 		if (driver_has_borrowed_row(node) &&
 		    (!node->rt.reliable_retry_dispatched ||
 		     driver_has_source_row(node)))
-			return -EBUSY;
+			goto retry;
 	}
 	node->rt.reliable_retry_dispatched = false;
 	node_ready_trace_add(node, 'R', SPA_ID_INVALID,
@@ -2801,6 +2804,20 @@ retry_status:
 	node_ready_trace_add(node, 'E', SPA_ID_INVALID,
 			SPA_ATOMIC_LOAD(a->status), state->pending, state->required);
 	return 0;
+
+retry:
+	/* Completion may race this rejected source activation. Keep one retry
+	 * and wake its owner even if the completion wake already ran. */
+	node->rt.reliable_retry_dispatched = false;
+	SPA_ATOMIC_STORE(node->rt.reliable_retry_pending, 1);
+	if (node->rt.reliable_event != NULL) {
+		int res = pw_loop_signal_event(node->data_loop, node->rt.reliable_event);
+		if (res < 0) {
+			pw_log_error("reliable retry wake failed: %s", spa_strerror(res));
+			pw_impl_node_rt_emit_incomplete(node);
+		}
+	}
+	return -EBUSY;
 }
 
 static int node_reuse_buffer(void *data, uint32_t port_id, uint32_t buffer_id)
