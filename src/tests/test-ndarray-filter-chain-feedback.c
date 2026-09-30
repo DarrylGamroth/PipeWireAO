@@ -147,11 +147,113 @@ static void test_retained_input_removal(void)
 	assert(!invalidate_retained_buffer(&impl, &port, &retained));
 }
 
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+static void test_process_trace(void)
+{
+	struct fgn_process_trace trace = { 0 };
+	struct fgn_process_trace_record *record;
+	struct spa_meta_header header = { .seq = 42, .offset = 11 };
+	struct spa_meta meta = { .type = SPA_META_Header,
+		.size = sizeof(header), .data = &header };
+	struct spa_buffer buffer = { .n_metas = 1, .metas = &meta };
+	char directory[] = "/tmp/pw-fgn-process-trace-XXXXXX";
+	char line[256];
+	char *path;
+	FILE *input;
+	unsigned int callback, offset;
+	unsigned long long sequence, start, end;
+	int result;
+
+	assert(unsetenv("PW_FGN_PROCESS_TRACE_DIR") == 0);
+	assert(fgn_process_trace_init(&trace) == 0);
+	assert(trace.records == NULL && trace.path == NULL);
+	assert(fgn_process_trace_begin(&trace, &buffer) == NULL);
+	fgn_process_trace_end(&trace, NULL, -EIO);
+	assert(trace.used == 0 && trace.omitted == 0);
+	fgn_process_trace_clear(&trace);
+	assert(mkdtemp(directory) != NULL);
+	assert(setenv("PW_FGN_PROCESS_TRACE_DIR", directory, 1) == 0);
+	assert(fgn_process_trace_init(&trace) == 0);
+	assert(trace.initialized && trace.records != NULL);
+	path = strdup(trace.path);
+	assert(path != NULL && access(path, F_OK) < 0);
+	record = fgn_process_trace_begin(&trace, &buffer);
+	assert(record != NULL && trace.used == 0);
+	header.seq = 43;
+	header.offset = 22;
+	fgn_process_trace_end(&trace, record, -EIO);
+	assert(trace.used == 1 && trace.omitted == 0);
+	assert(record->sequence == 42 && record->offset == 11);
+	assert(record->start_ns > 0 && record->end_ns >= record->start_ns);
+	assert(record->result == -EIO);
+	record = fgn_process_trace_begin(&trace, NULL);
+	fgn_process_trace_end(&trace, record, 0);
+	assert(record->sequence == UINT64_MAX && record->offset == UINT32_MAX);
+	meta.size = sizeof(header) - 1;
+	record = fgn_process_trace_begin(&trace, &buffer);
+	fgn_process_trace_end(&trace, record, 0);
+	assert(record->sequence == UINT64_MAX && record->offset == UINT32_MAX);
+	meta.size = sizeof(header);
+	buffer.metas = NULL;
+	record = fgn_process_trace_begin(&trace, &buffer);
+	fgn_process_trace_end(&trace, record, -EINVAL);
+	assert(record->sequence == UINT64_MAX && record->offset == UINT32_MAX);
+	buffer.metas = &meta;
+	buffer.n_metas = SPA_FGN_MAX_METAS + 1;
+	record = fgn_process_trace_begin(&trace, &buffer);
+	fgn_process_trace_end(&trace, record, -EINVAL);
+	assert(record->sequence == UINT64_MAX && record->offset == UINT32_MAX);
+	buffer.n_metas = 1;
+	buffer.metas = (struct spa_meta *)((char *)&meta + 1);
+	record = fgn_process_trace_begin(&trace, &buffer);
+	fgn_process_trace_end(&trace, record, -EINVAL);
+	assert(record->sequence == UINT64_MAX && record->offset == UINT32_MAX);
+	buffer.metas = &meta;
+	meta.data = NULL;
+	record = fgn_process_trace_begin(&trace, &buffer);
+	fgn_process_trace_end(&trace, record, -EINVAL);
+	assert(record->sequence == UINT64_MAX && record->offset == UINT32_MAX);
+	meta.data = (char *)&header + 1;
+	record = fgn_process_trace_begin(&trace, &buffer);
+	fgn_process_trace_end(&trace, record, -EINVAL);
+	assert(record->sequence == UINT64_MAX && record->offset == UINT32_MAX);
+	meta.data = &header;
+	while (trace.used < FGN_PROCESS_TRACE_CAPACITY) {
+		record = fgn_process_trace_begin(&trace, &buffer);
+		assert(record != NULL);
+		fgn_process_trace_end(&trace, record, 0);
+	}
+	assert(fgn_process_trace_begin(&trace, &buffer) == NULL);
+	fgn_process_trace_end(&trace, NULL, -EIO);
+	assert(trace.used == FGN_PROCESS_TRACE_CAPACITY && trace.omitted == 1);
+	fgn_process_trace_clear(&trace);
+	assert(trace.records == NULL && trace.path == NULL);
+	input = fopen(path, "r");
+	assert(input != NULL);
+	assert(fgets(line, sizeof(line), input) != NULL);
+	assert(strcmp(line, "# capacity=32768 used=32768 omitted=1\n") == 0);
+	assert(fgets(line, sizeof(line), input) != NULL);
+	assert(strcmp(line, "callback,sequence,offset,start_ns,end_ns,result\n") == 0);
+	assert(fgets(line, sizeof(line), input) != NULL);
+	assert(sscanf(line, "%u,%llu,%u,%llu,%llu,%d", &callback, &sequence,
+			&offset, &start, &end, &result) == 6);
+	assert(callback == 1 && sequence == 42 && offset == 11 && result == -EIO);
+	assert(start > 0 && end >= start);
+	fclose(input);
+	assert(unlink(path) == 0 && rmdir(directory) == 0);
+	free(path);
+	assert(unsetenv("PW_FGN_PROCESS_TRACE_DIR") == 0);
+}
+#endif
+
 int main(void)
 {
 	test_first_all_absent_preserves_initial_zeros();
 	test_later_all_absent_preserves_feedback_and_metadata();
 	test_rejected_outputs_do_not_partially_update();
 	test_retained_input_removal();
+#ifdef PW_ENABLE_DIAGNOSTIC_TRACE
+	test_process_trace();
+#endif
 	return 0;
 }
