@@ -246,34 +246,39 @@ static char *make_config(const char *plugin, const char *origins,
 	(void)mask;
 	if (row) {
 		written = snprintf(config, capacity,
-			"{\"workers\":{\"helpers\":%u},\"nodes\":["
-			"{\"type\":\"ndarray\",\"name\":\"calibrate\","
-			"\"plugin\":\"%s\",\"label\":\"pixel-calibration-row-u16-f32\","
-			"\"config\":{\"image_rows\":%u,\"image_columns\":%u,"
-			"\"row_block_rows\":%u,\"rate\":[1000,1]}},"
-			"{\"type\":\"ndarray\",\"name\":\"reconstruct\","
-			"\"plugin\":\"%s\",\"label\":\"shwfs-row-reconstructor-f32\","
-			"\"config\":{\"image_rows\":%u,\"image_columns\":%u,"
-			"\"row_block_rows\":%u,\"subaperture_rows\":%u,"
-			"\"subaperture_columns\":%u,\"subaperture_count\":%u,"
-			"\"actuator_count\":%u,\"initial_subaperture_origins\":%s,"
-			"\"coordinate_scale\":1.0,\"pixel_threshold\":0.0,"
-			"\"flux_threshold\":1.0,"
-			"\"reconstructed_schema\":"
-			"\"org.calculon.ao.controller-residual-error/1\","
-			"\"rate\":[1000,1]}}],"
-			"\"links\":[{\"output\":\"calibrate:calibrated\","
-			"\"input\":\"reconstruct:row-block\"}],"
-			"\"inputs\":[\"calibrate:raw\",\"calibrate:flat\","
-			"\"calibrate:background\",\"reconstruct:subaperture-origins\","
-			"\"reconstruct:coordinates\",\"reconstruct:reference-slopes\","
-			"\"reconstruct:thresholds\",\"reconstruct:active\","
-			"\"reconstruct:reconstructor\"],"
-			"\"outputs\":[\"reconstruct:reconstructed\"]}",
+			"{ workers = { helpers = %u } nodes = ["
+			" { type = ndarray name = calibrate plugin = \"%s\" label = "
+			"pixel-calibration-row-u16-f32 config = { image_rows = %u image_columns = %u "
+			"row_block_rows = %u rate = [ 1000 1 ] } }"
+			" { type = ndarray name = measure plugin = \"%s\" label = "
+			"shack-hartmann-measurement-block-f32 config = { image_rows = %u image_columns = "
+			"%u row_block_rows = %u subaperture_rows = %u subaperture_columns = %u "
+			"subaperture_count = %u initial_subaperture_origins = %s coordinate_scale = 1.0 "
+			"pixel_threshold = 0.0 flux_threshold = 1.0 measurements_schema = "
+			"org.example.ao.measurement-block/1 column_indices_schema = "
+			"org.example.ao.reconstructor-column-indices/1 measurement_count_schema = "
+			"org.example.ao.measurement-block-count/1 rate = [ 1000 1 ] } }"
+			" { type = ndarray name = reconstruct plugin = \"%s\" label = "
+			"incremental-dense-reconstructor-f32 config = { measurement_count = %u "
+			"measurement_block_capacity = %u blocks_per_sample = %u reconstructed_count = %u "
+			"measurements_schema = org.example.ao.measurement-block/1 column_indices_schema "
+			"= org.example.ao.reconstructor-column-indices/1 measurement_count_schema = "
+			"org.example.ao.measurement-block-count/1 reconstructor_schema = "
+			"org.calculon.ao.shwfs-reconstructor/1 reconstructed_schema = "
+			"org.calculon.ao.controller-residual-error/1 rate = [ 1000 1 ] } }"
+			" ] links = [ { output = \"calibrate:calibrated\" input = \"measure:row-block\" } { "
+			"output = \"measure:measurements\" input = \"reconstruct:measurements\" } { output = "
+			"\"measure:columns\" input = \"reconstruct:columns\" } { output = \"measure:count\" "
+			"input = \"reconstruct:count\" } ]"
+			" inputs = [ \"calibrate:raw\" \"calibrate:flat\" \"calibrate:background\" "
+			"\"measure:subaperture-origins\" \"measure:coordinates\" \"measure:reference-slopes\" "
+			"\"measure:thresholds\" \"measure:active\" \"reconstruct:reconstructor\" ] outputs = [ "
+			"\"reconstruct:reconstructed\" ] }",
 			worker_helpers, plugin, IMAGE_ROWS, IMAGE_COLUMNS, block_rows,
-			plugin, IMAGE_ROWS, IMAGE_COLUMNS, block_rows,
-			SUBAPERTURE_ROWS, SUBAPERTURE_COLUMNS, SUBAPERTURES,
-			ACTUATORS, origins);
+			plugin, IMAGE_ROWS, IMAGE_COLUMNS, block_rows, SUBAPERTURE_ROWS,
+			SUBAPERTURE_COLUMNS, SUBAPERTURES, origins,
+			plugin, SUBAPERTURES * 2u, SUBAPERTURES * 2u, IMAGE_ROWS / block_rows,
+			ACTUATORS);
 	} else {
 		written = snprintf(config, capacity,
 			"{\"workers\":{\"helpers\":%u},\"nodes\":["
@@ -283,7 +288,8 @@ static char *make_config(const char *plugin, const char *origins,
 			"\"rate\":[1000,1]}},"
 			"{\"type\":\"ndarray\",\"name\":\"measure\","
 			"\"plugin\":\"%s\",\"label\":\"shack-hartmann-image-f32\","
-			"\"config\":{\"image_rows\":%u,\"image_columns\":%u,"
+			"\"config\":{\"image_schema\":\"org.calculon.ao.calibrated-pixels/1\","
+			"\"image_rows\":%u,\"image_columns\":%u,"
 			"\"subaperture_rows\":%u,\"subaperture_columns\":%u,"
 			"\"subaperture_count\":%u,\"initial_subaperture_origins\":%s,"
 			"\"coordinate_scale\":1.0,\"pixel_threshold\":0.0,"
