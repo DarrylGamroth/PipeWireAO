@@ -365,6 +365,142 @@ static void test_removed_retained_output_fails_instead_of_becoming_stale(void)
 	clear_fixture(&fixture);
 }
 
+static void test_removed_stopped_prefetched_output_is_invalidated(void)
+{
+	struct test_fixture fixture;
+	struct test_buffer output, replacement_input, replacement_output;
+	struct port_data port_data;
+
+	init_fixture(&fixture, PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS);
+	init_buffer(&output, 0.0f);
+	make_available(&fixture.output_queue, &output);
+
+	process(&fixture.filter, NULL);
+	spa_assert_se(fixture.callbacks == 0);
+	spa_assert_se(fixture.filter.input_buffers[0] == NULL);
+	spa_assert_se(fixture.filter.output_buffers[0] == &output.pw);
+	spa_assert_se(deactivate(&fixture.filter) == 0);
+	fixture.filter.actual_state = PW_AO_RUN_CONTROL_STATE_STOPPED;
+	port_data.port = &fixture.output;
+	fixture.filter.filter = NULL;
+	filter_remove_buffer(&fixture.filter, &port_data, &output.pw);
+	spa_assert_se(fixture.filter.output_buffers[0] == NULL);
+	spa_assert_se(!atomic_load_explicit(&fixture.filter.prepared,
+			memory_order_acquire));
+	spa_assert_se(atomic_load_explicit(&fixture.filter.error,
+			memory_order_acquire) == 0);
+	spa_assert_se(fixture.output_queue.n_returned == 0);
+
+	init_buffer(&replacement_input, 2.0f);
+	init_buffer(&replacement_output, 0.0f);
+	make_available(&fixture.input_queue, &replacement_input);
+	make_available(&fixture.output_queue, &replacement_output);
+	spa_assert_se(prepare_process_thread(NULL, false, 0, NULL, 0,
+			&fixture.filter) == 0);
+	fixture.filter.actual_state = PW_AO_RUN_CONTROL_STATE_RUNNING;
+	process(&fixture.filter, NULL);
+	spa_assert_se(fixture.callbacks == 1);
+	spa_assert_se(fixture.observed[0] == 2.0f);
+	spa_assert_se(fixture.first_output == &replacement_output.value);
+	spa_assert_se(fixture.first_output != &output.value);
+	spa_assert_se(fixture.input_queue.n_returned == 1);
+	spa_assert_se(fixture.input_queue.returned[0] == &replacement_input.pw);
+	spa_assert_se(fixture.output_queue.n_returned == 1);
+	spa_assert_se(fixture.output_queue.returned[0] == &replacement_output.pw);
+	spa_assert_se(fixture.filter.input_buffers[0] == NULL);
+	spa_assert_se(fixture.filter.output_buffers[0] == NULL);
+	spa_assert_se(atomic_load_explicit(&fixture.filter.error,
+			memory_order_acquire) == 0);
+	clear_fixture(&fixture);
+}
+
+static void test_removed_stopped_unavailable_output_still_fails(void)
+{
+	struct test_fixture fixture;
+	struct test_buffer input, output;
+	struct port_data port_data;
+
+	init_fixture(&fixture, PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS);
+	fixture.retain_first_output = true;
+	init_buffer(&input, 1.0f);
+	init_buffer(&output, 0.0f);
+	make_available(&fixture.input_queue, &input);
+	make_available(&fixture.output_queue, &output);
+
+	process(&fixture.filter, NULL);
+	spa_assert_se(fixture.filter.process_outputs[0].flags &
+			PW_NDARRAY_FILTER_BUFFER_FLAG_OUTPUT_UNAVAILABLE);
+	spa_assert_se(deactivate(&fixture.filter) == 0);
+	fixture.filter.actual_state = PW_AO_RUN_CONTROL_STATE_STOPPED;
+	port_data.port = &fixture.output;
+	fixture.filter.filter = NULL;
+	filter_remove_buffer(&fixture.filter, &port_data, &output.pw);
+	spa_assert_se(fixture.filter.output_buffers[0] == NULL);
+	spa_assert_se(atomic_load_explicit(&fixture.filter.error,
+			memory_order_acquire) == -EPIPE);
+	clear_fixture(&fixture);
+}
+
+static void test_removed_stopped_retained_input_still_fails(void)
+{
+	struct test_fixture fixture;
+	struct test_buffer input;
+	struct port_data port_data;
+
+	init_fixture(&fixture, PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS);
+	init_buffer(&input, 1.0f);
+	make_available(&fixture.input_queue, &input);
+
+	process(&fixture.filter, NULL);
+	spa_assert_se(fixture.filter.input_buffers[0] == &input.pw);
+	spa_assert_se(deactivate(&fixture.filter) == 0);
+	fixture.filter.actual_state = PW_AO_RUN_CONTROL_STATE_STOPPED;
+	port_data.port = &fixture.input;
+	fixture.filter.filter = NULL;
+	filter_remove_buffer(&fixture.filter, &port_data, &input.pw);
+	spa_assert_se(fixture.filter.input_buffers[0] == NULL);
+	spa_assert_se(!fixture.filter.input_available[0]);
+	spa_assert_se(atomic_load_explicit(&fixture.filter.error,
+			memory_order_acquire) == -EPIPE);
+	clear_fixture(&fixture);
+}
+
+static void test_removed_prefetched_output_requires_stopped_unprepared(void)
+{
+	static const struct {
+		bool prepared;
+		enum pw_ao_run_control_state state;
+	} cases[] = {
+		{ true, PW_AO_RUN_CONTROL_STATE_RUNNING },
+		{ true, PW_AO_RUN_CONTROL_STATE_STOPPED },
+		{ false, PW_AO_RUN_CONTROL_STATE_RUNNING },
+		{ false, PW_AO_RUN_CONTROL_STATE_UNKNOWN },
+	};
+
+	for (uint32_t i = 0; i < SPA_N_ELEMENTS(cases); i++) {
+		struct test_fixture fixture;
+		struct test_buffer output;
+		struct port_data port_data;
+
+		init_fixture(&fixture, PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS);
+		init_buffer(&output, 0.0f);
+		make_available(&fixture.output_queue, &output);
+		process(&fixture.filter, NULL);
+		spa_assert_se(fixture.callbacks == 0);
+		spa_assert_se(fixture.filter.output_buffers[0] == &output.pw);
+		if (!cases[i].prepared)
+			spa_assert_se(deactivate(&fixture.filter) == 0);
+		fixture.filter.actual_state = cases[i].state;
+		port_data.port = &fixture.output;
+		fixture.filter.filter = NULL;
+		filter_remove_buffer(&fixture.filter, &port_data, &output.pw);
+		spa_assert_se(fixture.filter.output_buffers[0] == NULL);
+		spa_assert_se(atomic_load_explicit(&fixture.filter.error,
+				memory_order_acquire) == -EPIPE);
+		clear_fixture(&fixture);
+	}
+}
+
 int main(int argc SPA_UNUSED, char *argv[] SPA_UNUSED)
 {
 	pw_init(NULL, NULL);
@@ -374,6 +510,10 @@ int main(int argc SPA_UNUSED, char *argv[] SPA_UNUSED)
 	test_fifo_progressive_output_reuses_buffer();
 	test_removed_fifo_input_fails_instead_of_becoming_stale();
 	test_removed_retained_output_fails_instead_of_becoming_stale();
+	test_removed_stopped_unavailable_output_still_fails();
+	test_removed_stopped_retained_input_still_fails();
+	test_removed_prefetched_output_requires_stopped_unprepared();
+	test_removed_stopped_prefetched_output_is_invalidated();
 	pw_deinit();
 	return 0;
 }

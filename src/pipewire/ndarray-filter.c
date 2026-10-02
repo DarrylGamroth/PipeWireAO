@@ -1785,6 +1785,7 @@ struct retained_buffer_removal {
 	struct pw_buffer *buffer;
 	bool invalidated;
 	bool was_prepared;
+	bool output_unavailable;
 };
 
 static int invalidate_retained_buffer_on_data_loop(
@@ -1794,6 +1795,10 @@ static int invalidate_retained_buffer_on_data_loop(
 {
 	struct retained_buffer_removal *removal = user_data;
 
+	if (removal->port->direction == SPA_DIRECTION_OUTPUT)
+		removal->output_unavailable =
+			removal->filter->process_outputs[removal->port->index].flags &
+			PW_NDARRAY_FILTER_BUFFER_FLAG_OUTPUT_UNAVAILABLE;
 	removal->invalidated = invalidate_retained_buffer(removal->filter,
 			removal->port, removal->buffer);
 	if (removal->invalidated)
@@ -1810,11 +1815,14 @@ static void filter_remove_buffer(void *data, void *port_data,
 	struct port_data *data_port = port_data;
 	struct retained_buffer_removal removal;
 	struct pw_loop *data_loop;
+	bool stopped;
 	int res;
 
 	if (data_port == NULL || data_port->port == NULL || buffer == NULL ||
 	    atomic_load_explicit(&filter->destroying, memory_order_acquire))
 		return;
+	/* Run-control state belongs to the main loop; output flags to the data loop. */
+	stopped = filter->actual_state == PW_AO_RUN_CONTROL_STATE_STOPPED;
 	removal = (struct retained_buffer_removal) {
 		.filter = filter,
 		.port = data_port->port,
@@ -1833,6 +1841,10 @@ static void filter_remove_buffer(void *data, void *port_data,
 		return;
 	}
 	if (!removal.invalidated)
+		return;
+	if (stopped && !removal.was_prepared &&
+	    removal.port->direction == SPA_DIRECTION_OUTPUT &&
+	    !removal.output_unavailable)
 		return;
 	if (removal.was_prepared && filter->events.deactivate != NULL)
 		(void)filter->events.deactivate(filter->user_data);
