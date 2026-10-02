@@ -55,6 +55,12 @@ test('pw-test-filter-output-return',
     link_args : ['-Wl,--gc-sections']),
   depends : [spa_support_lib])
 
+test('pw-test-buffers-negotiate',
+  executable('pw-test-buffers-negotiate', 'test-buffers-negotiate.c',
+    dependencies : [pipewire_dep],
+    include_directories : [includes_inc]),
+  depends : [spa_support_lib])
+
 test('pw-test-row-transport-order',
   executable('pw-test-row-transport-order', 'test-row-transport-order.c',
     dependencies : [pipewire_dep, pthread_lib],

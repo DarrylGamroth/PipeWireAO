@@ -376,8 +376,13 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 		max_buffers = 2u;
 	}
 
-	if (SPA_FLAG_IS_SET(flags, PW_BUFFERS_FLAG_ASYNC))
+	if (SPA_FLAG_IS_SET(flags, PW_BUFFERS_FLAG_ASYNC)) {
 		min_buffers += 1;
+		/* Reliable async handoff can retain two returned buffers in the IO
+		 * cells until the producer publishes another buffer. */
+		if (SPA_FLAG_IS_SET(flags, PW_BUFFERS_FLAG_RELIABLE))
+			min_buffers += 1;
+	}
 
 	max_buffers = SPA_MAX(min_buffers, max_buffers);
 
