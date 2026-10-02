@@ -713,8 +713,10 @@ static int do_allocation(struct pw_impl_link *this)
 		uint32_t in_port, out_port;
 
 		flags = 0;
-		/* always enable async mode */
+		/* Reserve async buffers even when the link uses synchronous IO. */
 		alloc_flags = PW_BUFFERS_FLAG_ASYNC;
+		if (output->reliable)
+			alloc_flags |= PW_BUFFERS_FLAG_RELIABLE;
 
 		if (output->output_mode == OUTPUT_MODE_RELIABLE ||
 		    output->output_mode == OUTPUT_MODE_REFCOUNTED)

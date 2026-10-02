@@ -378,7 +378,9 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 
 	if (SPA_FLAG_IS_SET(flags, PW_BUFFERS_FLAG_ASYNC))
 		min_buffers += 1;
-	if (SPA_FLAG_IS_SET(flags, PW_BUFFERS_FLAG_DELAYED))
+	if (SPA_FLAG_IS_SET(flags, PW_BUFFERS_FLAG_DELAYED) ||
+	    (SPA_FLAG_IS_SET(flags, PW_BUFFERS_FLAG_ASYNC) &&
+	     SPA_FLAG_IS_SET(flags, PW_BUFFERS_FLAG_RELIABLE)))
 		min_buffers += 1;
 
 	max_buffers = SPA_MAX(min_buffers, max_buffers);

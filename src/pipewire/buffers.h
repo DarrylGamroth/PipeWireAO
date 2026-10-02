@@ -32,7 +32,7 @@ extern "C" {
 #define PW_BUFFERS_FLAG_IN_PRIORITY	(1<<4)	/**< input parameters have priority */
 #define PW_BUFFERS_FLAG_ASYNC		(1<<5)  /**< one of the ports is async */
 #define PW_BUFFERS_FLAG_DELAYED		(1<<6)  /**< one of the ports has delayed recycle */
-
+#define PW_BUFFERS_FLAG_RELIABLE		(1<<7)	/**< output uses reliable buffer handoff */
 
 struct pw_buffers {
 	struct pw_memblock *mem;	/**< allocated buffer memory */
