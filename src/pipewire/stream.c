@@ -2655,16 +2655,31 @@ int pw_stream_return_buffer(struct pw_stream *stream, struct pw_buffer *buffer)
 {
 	struct stream *impl = SPA_CONTAINER_OF(stream, struct stream, this);
 	struct buffer *b = SPA_CONTAINER_OF(buffer, struct buffer, this);
+	int res;
 
 	pw_log_trace_fp("%p: %p id: %d", impl, buffer, b->id);
 
-	/* dequeue increments the busy count, so undo that */
-	if (b->busy) {
+	if (!SPA_FLAG_IS_SET(b->flags, BUFFER_FLAG_DEQUEUED)) {
+		pw_log_warn("%p: tried to return cleared buffer %d", stream, b->id);
+		return -EINVAL;
+	}
+
+	SPA_FLAG_CLEAR(b->flags, BUFFER_FLAG_DEQUEUED);
+
+	/* Only output dequeue claims Busy ownership. Input retains its delivery
+	 * ownership until the buffer is queued back to the producer. */
+	if (impl->direction == SPA_DIRECTION_OUTPUT && b->busy) {
 		SPA_ATOMIC_DEC(b->busy->count);
 		pw_log_trace_fp("%p: %p: %p busy count %u", impl, b, b->busy, SPA_ATOMIC_LOAD(b->busy->count));
 	}
 
-	return queue_push_front(impl, &impl->dequeued, b);
+	if ((res = queue_push_front(impl, &impl->dequeued, b)) < 0) {
+		/* Failed insertion leaves the application's loan intact. */
+		SPA_FLAG_SET(b->flags, BUFFER_FLAG_DEQUEUED);
+		if (impl->direction == SPA_DIRECTION_OUTPUT && b->busy)
+			SPA_ATOMIC_INC(b->busy->count);
+	}
+	return res;
 }
 
 static int
