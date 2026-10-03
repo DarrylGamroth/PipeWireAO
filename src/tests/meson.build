@@ -1,3 +1,11 @@
+test('pw-test-stream-buffer-return',
+  executable('pw-test-stream-buffer-return', 'test-stream-buffer-return.c',
+    dependencies : [pipewire_dep],
+    include_directories : [includes_inc],
+    c_args : ['-ffunction-sections', '-fdata-sections', '-fwhole-program'],
+    link_args : ['-Wl,--gc-sections']),
+  depends : [spa_support_lib])
+
 test_apps = [
   'test-endpoint',
   'test-interfaces',
