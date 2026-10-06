@@ -1,0 +1,38 @@
+{
+  "runs": [
+    {
+      "command": [
+        "taskset",
+        "-c",
+        "11",
+        "/home/dgamroth/.cache/rtc-native-fifo-20261006/admission-asan"
+      ],
+      "exit_status": 0,
+      "log": "admission-asan-ubsan.log"
+    },
+    {
+      "command": [
+        "taskset",
+        "-c",
+        "11",
+        "python3",
+        "src/tests/test-ndarray-filter-remote.py",
+        "/opt/pipewireao/bin/pipewire-ao",
+        "/opt/pipewireao/bin/pwao-link",
+        "/home/dgamroth/.cache/rtc-native-fifo-20261006/remote-filter",
+        "/home/dgamroth/.cache/rtc-native-fifo-20261006/remote-client",
+        "--fifo-inputs"
+      ],
+      "exit_status": 0,
+      "log": "legacy-fifo.log"
+    }
+  ],
+  "compiler": "cc (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+  "source_sha256": {
+    "src/tests/test-ndarray-filter-admission.c": "94c2672b7508a5287a1d72aff9e92f818e7548de092f241423f76a7cb13315e1",
+    "src/tests/test-ndarray-filter-remote.py": "22cec55e3c603b64bb8c8755aa19dd763cfc4e54ff31c1d432311da16f75fb21",
+    "src/tests/test-ndarray-filter-remote-filter.c": "2841041ea255a22e06189b4f886c2678359709120fe7a873169519f456d7b5b7",
+    "src/tests/test-ndarray-filter-remote-client.c": "743ea977552c42e89bdbbc6e8dee122baf6e95e1f1b7dbae9adcfe5bd4403d29",
+    "/home/dgamroth/workspaces/codex/pipewire/pipewire/build/config.h": "0dd108f82ef461e518ed4537553ad602b2f85fb09b7d9255dc3b80c4c818d1f4"
+  }
+}

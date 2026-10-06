@@ -478,3 +478,17 @@ establish the live failing scenarios; apply narrowly scoped fixes; verify both
 adapters and control/data teardown independently; add the FIFO progress test;
 then qualify the chosen deployment's timing and hardware surfaces. No production
 changes were made during this review.
+
+### AO-REV-003 connected qualification evidence (2026-10-06)
+
+The new `pw-test-ndarray-filter-fifo-queued` fixture establishes eight original
+inputs already queued behind a controlled producer output-capacity hold. Its
+stock helper trace proves exact sequence/row-offset order and same-activation
+prefetch. Returning capacity drains the original inputs without publishing
+another input; the conditional first output is deliberately unavailable and
+all seven expected artifacts are received. The native negative control disables
+only the helper backlog request and stalls at two callbacks with helper error
+zero. See [NATIVE_FIFO_VALIDATION.md](NATIVE_FIFO_VALIDATION.md) for the exact
+public API fault-injection seam, original logs, sanitizer scope, and remaining
+gates. Primary review is required before promoting the issue's disposition;
+this evidence does not qualify scientific pacing, overload, or all drivers.
