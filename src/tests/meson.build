@@ -193,6 +193,36 @@ test(
   timeout: 30,
 )
 
+ndarray_fifo_filter = executable('pw-test-ndarray-filter-fifo-filter',
+  'test-ndarray-filter-fifo-filter.c',
+  dependencies: [pipewire_dep, pthread_lib],
+  include_directories: [includes_inc],
+)
+ndarray_fifo_no_backlog = executable('pw-test-ndarray-filter-fifo-no-backlog',
+  'test-ndarray-filter-fifo-filter.c',
+  dependencies: [pipewire_dep, pthread_lib],
+  include_directories: [includes_inc],
+  c_args: ['-DTEST_DISABLE_FIFO_BACKLOG'],
+)
+ndarray_fifo_client = executable('pw-test-ndarray-filter-fifo-client',
+  'test-ndarray-filter-fifo-client.c',
+  dependencies: [pipewire_dep],
+)
+foreach scenario : [
+  ['pw-test-ndarray-filter-fifo-queued', ndarray_fifo_filter, []],
+  ['pw-test-ndarray-filter-fifo-no-backlog', ndarray_fifo_no_backlog, ['--expect-stall']],
+]
+  test(scenario[0], find_program('python3'),
+    args: [files('test-ndarray-filter-fifo.py'),
+      pipewire_exec.full_path(), pwao_link.full_path(),
+      scenario[1].full_path(), ndarray_fifo_client.full_path()] + scenario[2],
+    depends: pipewire_daemon_required_modules + [spa_support_lib,
+      pipewire_exec, pwao_link, scenario[1], ndarray_fifo_client],
+    env: polling_remote_env,
+    timeout: 30,
+  )
+endforeach
+
 test(
   'pw-test-ndarray-filter-buffers32',
   find_program('python3'),
