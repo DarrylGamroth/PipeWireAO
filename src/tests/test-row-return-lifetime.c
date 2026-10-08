@@ -148,6 +148,29 @@ static int noop_on_loop(struct spa_loop *loop SPA_UNUSED, bool async SPA_UNUSED,
 	return 0;
 }
 
+static int check_loop_thread(struct spa_loop *loop SPA_UNUSED, bool async SPA_UNUSED,
+		uint32_t seq SPA_UNUSED, const void *data SPA_UNUSED,
+		size_t size SPA_UNUSED, void *user_data)
+{
+	return pw_data_loop_in_thread(user_data) ? 0 : -EAGAIN;
+}
+
+static void wait_for_loop_thread(struct pw_data_loop *loop)
+{
+	const struct timespec pause = { .tv_nsec = 1000000 };
+	unsigned int retries = 0;
+	int res;
+
+	/* A startup invoke can run inline; prove real loop-thread entry before
+	 * invoking the publisher that waits for this caller to release it. */
+	while ((res = pw_data_loop_invoke(loop, check_loop_thread,
+			SPA_ID_INVALID, NULL, 0, true, loop)) == -EAGAIN) {
+		spa_assert_se(retries++ < 1000);
+		nanosleep(&pause, NULL);
+	}
+	spa_assert_se(res == 0);
+}
+
 int main(int argc, char *argv[])
 {
 	struct fixture f = { 0 };
@@ -164,8 +187,8 @@ int main(int argc, char *argv[])
 	spa_assert_se(driver_loop != NULL && consumer_loop != NULL);
 	spa_assert_se(pw_data_loop_start(driver_loop) == 0);
 	spa_assert_se(pw_data_loop_start(consumer_loop) == 0);
-	spa_assert_se(pw_data_loop_invoke(driver_loop, noop_on_loop,
-			SPA_ID_INVALID, NULL, 0, true, NULL) == 0);
+	wait_for_loop_thread(driver_loop);
+	wait_for_loop_thread(consumer_loop);
 
 	f.input.this.node = &f.node;
 	f.input.this.direction = PW_DIRECTION_INPUT;
