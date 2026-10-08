@@ -1025,6 +1025,7 @@ global_bind(void *object, struct pw_impl_client *client, uint32_t permissions,
 	struct pw_impl_link *this = object;
 	struct pw_global *global = this->global;
 	struct pw_resource *resource;
+	struct pw_link_info info;
 
 	resource = pw_resource_new(client, id, permissions, global->type, version, 0);
 	if (resource == NULL)
@@ -1033,9 +1034,9 @@ global_bind(void *object, struct pw_impl_client *client, uint32_t permissions,
 	pw_log_debug("%p: bound to %d", this, resource->id);
 	pw_global_add_resource(global, resource);
 
-	this->info.change_mask = PW_LINK_CHANGE_MASK_ALL;
-	pw_link_resource_info(resource, &this->info);
-	this->info.change_mask = 0;
+	info = this->info;
+	info.change_mask = PW_LINK_CHANGE_MASK_ALL;
+	pw_link_resource_info(resource, &info);
 
 	return 0;
 
