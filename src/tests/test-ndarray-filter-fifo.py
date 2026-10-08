@@ -122,8 +122,11 @@ def main():
                 raise remote.TestFailure("disabled-backlog failure was not a clean live stall: " + text)
         elif helper_status != 0 or "RESULT callbacks=8 retained=1" not in text:
             raise remote.TestFailure("native FIFO processing was incomplete: " + text)
-        if not expect_stall and client.wait(timeout=5) != 0:
-            raise remote.TestFailure("native endpoint client failed")
+        if not expect_stall:
+            client.stdin.write("Q")
+            client.stdin.flush()
+            if client.wait(timeout=5) != 0:
+                raise remote.TestFailure("native endpoint client failed")
         sources = [line for line in remote.read_log(logs["client"]).splitlines() if line.startswith("SOURCE ")]
         if sources != [f"SOURCE {packet}" for packet in range(1, 9)]:
             raise remote.TestFailure("finite source published unexpected original inputs")
