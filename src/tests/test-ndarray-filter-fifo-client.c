@@ -40,6 +40,7 @@ struct test_data {
 	bool burst_started;
 	bool cycle_pending;
 	bool retry_pending;
+	bool source_pool_ready;
 	uint32_t sink_buffer_count;
 	uint32_t source_buffer_count;
 	atomic_int result;
@@ -103,6 +104,7 @@ static void source_add_buffer(void *userdata, struct pw_buffer *buffer)
 
 	(void)buffer;
 	if (++data->source_buffer_count == 16) {
+		data->source_pool_ready = true;
 		printf("BUFFERS16\n");
 		fflush(stdout);
 	} else if (data->source_buffer_count > 16) {
@@ -263,7 +265,6 @@ static void sink_process(void *userdata)
 		printf("RESULT produced=%u received=7\n",
 			atomic_load_explicit(&data->produced, memory_order_relaxed));
 		fflush(stdout);
-		pw_main_loop_quit(data->loop);
 	}
 }
 
@@ -342,6 +343,10 @@ static void trigger_source(void *userdata, int fd, uint32_t mask)
 	if (command == 'B' && !data->burst_started) {
 		data->burst_started = true;
 		drive(data);
+	} else if (command == 'Q' &&
+			atomic_load_explicit(&data->produced, memory_order_acquire) == 8 &&
+			atomic_load_explicit(&data->received, memory_order_acquire) == 7) {
+		pw_main_loop_quit(data->loop);
 	} else {
 		quit_with_error(data, "invalid finite-burst control command");
 	}
@@ -559,7 +564,7 @@ int main(int argc, char *argv[])
 	if (data.result == 0 &&
 	    (atomic_load_explicit(&data.produced, memory_order_relaxed) != 8 ||
 	     atomic_load_explicit(&data.received, memory_order_relaxed) != 7 ||
-	     data.source_buffer_count != 16)) {
+	     !data.source_pool_ready)) {
 		fprintf(stderr, "incomplete transfer: produced=%u received=%u\n",
 				atomic_load_explicit(&data.produced, memory_order_relaxed),
 				atomic_load_explicit(&data.received, memory_order_relaxed));
