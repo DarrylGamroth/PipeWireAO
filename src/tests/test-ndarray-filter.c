@@ -179,6 +179,7 @@ static void test_valid_config(void)
 	spa_assert_se(PW_NDARRAY_FILTER_BUFFER_FLAG_INPUT_UNAVAILABLE == (1u << 1));
 	spa_assert_se(PW_NDARRAY_FILTER_PORT_FLAG_NONE == 0);
 	spa_assert_se(PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER == (1u << 0));
+	spa_assert_se(PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3 == (1u << 1));
 	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS_V1 == 1);
 	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS == 2);
 	spa_assert_se(PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS == (1u << 1));
@@ -302,8 +303,16 @@ static void test_config_validation(void)
 	ports[0].struct_size = 0;
 	expect_new_error(-EINVAL);
 	ports[0] = saved_port;
-	ports[0].flags = PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER << 1;
+	ports[0].flags = PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3 << 1;
 	expect_new_error(-EINVAL);
+	ports[0] = saved_port;
+	ports[0].flags = PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3;
+	{
+		struct pw_ndarray_filter *filter = NULL;
+
+		spa_assert_se(pw_ndarray_filter_new(&config, &filter) == 0);
+		pw_ndarray_filter_destroy(filter);
+	}
 	ports[0] = saved_port;
 	ports[0].flags = PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER;
 	ports[0].format.rate_num = 0;

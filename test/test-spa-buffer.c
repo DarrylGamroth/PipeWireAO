@@ -230,7 +230,7 @@ PWTEST(buffer_acquisition_meta)
 	malformed.reserved[1] = 1;
 	pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
 	malformed = acquisition;
-	malformed.version++;
+	malformed.version = SPA_META_ACQUISITION_VERSION_3 + 1;
 	pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
 	malformed = acquisition;
 	malformed.abi_size--;
@@ -277,9 +277,149 @@ PWTEST(buffer_acquisition_meta)
 	return PWTEST_PASS;
 }
 
+PWTEST(buffer_acquisition_trigger_classification)
+{
+	const uint8_t domain[SPA_META_ACQUISITION_DOMAIN_SIZE] = { 1 };
+	const uint8_t grandmaster[SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE] = { 1 };
+	struct spa_meta_acquisition acquisition, original, peer, malformed;
+	struct spa_meta meta = { SPA_META_Acquisition, sizeof(acquisition), &acquisition };
+	enum spa_meta_acquisition_trigger_classification classification;
+	int64_t difference;
+	uint64_t uncertainty;
+	uint32_t value;
+
+	pwtest_int_eq((uint32_t)SPA_META_ACQUISITION_VERSION_3, 3U);
+	pwtest_int_eq((uint32_t)SPA_META_FEATURE_ACQUISITION_VERSION_3, 1U << 2);
+	pwtest_bool_true(spa_meta_acquisition_init(&acquisition));
+	pwtest_int_eq(acquisition.version, (uint32_t)SPA_META_ACQUISITION_VERSION_2);
+	pwtest_bool_true(spa_meta_acquisition_get_trigger_classification(
+			&acquisition, &classification));
+	pwtest_int_eq((uint32_t)classification, (uint32_t)SPA_META_ACQUISITION_TRIGGER_ABSENT);
+	pwtest_bool_false(spa_meta_acquisition_get_trigger_classification(&acquisition, NULL));
+	pwtest_bool_false(spa_meta_acquisition_get_trigger_classification(NULL, &classification));
+	pwtest_bool_false(spa_meta_acquisition_set_trigger_classification(NULL,
+			SPA_META_ACQUISITION_TRIGGER_HIGH));
+
+	original = acquisition;
+	for (value = 0; value <= 3; value++) {
+		acquisition = original;
+		pwtest_bool_true(spa_meta_acquisition_set_trigger_classification(&acquisition,
+				(enum spa_meta_acquisition_trigger_classification)value));
+		pwtest_int_eq(acquisition.version, (uint32_t)SPA_META_ACQUISITION_VERSION_3);
+		pwtest_int_eq(acquisition.reserved2, (uint64_t)value);
+		pwtest_bool_true(spa_meta_acquisition_is_valid(&meta));
+		pwtest_bool_true(spa_meta_acquisition_get_trigger_classification(
+				&acquisition, &classification));
+		pwtest_int_eq(classification, value);
+		/* The setter changes only the version and final word. */
+		peer = acquisition;
+		peer.version = original.version;
+		peer.reserved2 = 0;
+		pwtest_int_eq(memcmp(&peer, &original, sizeof(peer)), 0);
+	}
+	original = acquisition;
+	for (value = 4; value <= 5; value++) {
+		pwtest_bool_false(spa_meta_acquisition_set_trigger_classification(&acquisition,
+				(enum spa_meta_acquisition_trigger_classification)value));
+		pwtest_int_eq(memcmp(&acquisition, &original, sizeof(original)), 0);
+	}
+	pwtest_bool_false(spa_meta_acquisition_set_trigger_classification(&acquisition,
+			(enum spa_meta_acquisition_trigger_classification)-1));
+	pwtest_int_eq(memcmp(&acquisition, &original, sizeof(original)), 0);
+
+	for (value = 1; value <= 4; value++) {
+		malformed = acquisition;
+		malformed.version = value;
+		if (value == 3)
+			malformed.reserved2 = UINT64_C(1) << 63;
+		meta.data = &malformed;
+		pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
+		peer = malformed;
+		classification = SPA_META_ACQUISITION_TRIGGER_LOW;
+		pwtest_bool_false(spa_meta_acquisition_get_trigger_classification(
+				&malformed, &classification));
+		pwtest_int_eq((uint32_t)classification, (uint32_t)SPA_META_ACQUISITION_TRIGGER_LOW);
+		pwtest_bool_false(spa_meta_acquisition_set_trigger_classification(&malformed,
+				SPA_META_ACQUISITION_TRIGGER_ABSENT));
+		pwtest_int_eq(memcmp(&malformed, &peer, sizeof(peer)), 0);
+	}
+	malformed = acquisition;
+	malformed.reserved2 = 4;
+	pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
+	pwtest_bool_true(spa_meta_acquisition_init(&malformed));
+	malformed.version = SPA_META_ACQUISITION_VERSION_1;
+	peer = malformed;
+	pwtest_bool_true(spa_meta_acquisition_get_trigger_classification(
+			&malformed, &classification));
+	pwtest_int_eq((uint32_t)classification, (uint32_t)SPA_META_ACQUISITION_TRIGGER_ABSENT);
+	pwtest_bool_false(spa_meta_acquisition_set_trigger_classification(&malformed,
+			SPA_META_ACQUISITION_TRIGGER_HIGH));
+	pwtest_int_eq(memcmp(&malformed, &peer, sizeof(peer)), 0);
+
+	meta.data = &acquisition;
+	pwtest_bool_true(spa_meta_acquisition_set_identity(&acquisition, domain, 7, 42));
+	pwtest_bool_true(spa_meta_acquisition_set_exposure_duration(&acquisition, 100));
+	pwtest_bool_true(spa_meta_acquisition_set_exposure_start_ptp(
+			&acquisition, 1000, 5, grandmaster, 2));
+	pwtest_bool_true(spa_meta_acquisition_init(&peer));
+	pwtest_bool_true(spa_meta_acquisition_set_identity(&peer, domain, 7, 42));
+	pwtest_bool_true(spa_meta_acquisition_set_exposure_start_ptp(&peer, 1010, 6, grandmaster, 2));
+	pwtest_bool_true(spa_meta_acquisition_identity_equal(&acquisition, &peer));
+	pwtest_bool_true(spa_meta_acquisition_time_difference(&acquisition, &peer,
+			&difference, &uncertainty));
+	pwtest_int_eq(difference, -10);
+	pwtest_int_eq(uncertainty, 11U);
+	pwtest_bool_true(spa_meta_acquisition_times_match(&acquisition, &peer, 0));
+	pwtest_bool_true(spa_meta_acquisition_set_trigger_classification(&peer,
+			SPA_META_ACQUISITION_TRIGGER_LOW));
+	pwtest_bool_true(spa_meta_acquisition_time_difference(&peer, &acquisition,
+			&difference, &uncertainty));
+	pwtest_int_eq(difference, 10);
+	peer.timestamp_uncertainty_nsec = UINT64_MAX;
+	pwtest_bool_true(spa_meta_acquisition_time_difference(&acquisition, &peer,
+			&difference, &uncertainty));
+	pwtest_int_eq(uncertainty, UINT64_MAX);
+	peer.ptp_domain_number++;
+	pwtest_bool_false(spa_meta_acquisition_time_difference(&acquisition, &peer, NULL, NULL));
+	peer.ptp_domain_number--;
+	peer.ptp_grandmaster_id[0]++;
+	pwtest_bool_false(spa_meta_acquisition_time_difference(&acquisition, &peer, NULL, NULL));
+
+	malformed = acquisition;
+	meta.data = &malformed;
+	malformed.timebase = SPA_META_ACQUISITION_TIMEBASE_MONOTONIC;
+	pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
+	malformed = acquisition;
+	SPA_FLAG_CLEAR(malformed.flags, SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID);
+	pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
+	malformed = acquisition;
+	memset(malformed.ptp_grandmaster_id, 0, sizeof(malformed.ptp_grandmaster_id));
+	pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
+	malformed = acquisition;
+	malformed.exposure_start_nsec = SPA_TIME_INVALID;
+	pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
+	malformed = acquisition;
+	malformed.reserved[0] = 1;
+	pwtest_bool_false(spa_meta_acquisition_is_valid(&meta));
+	meta.data = &acquisition;
+	pwtest_bool_true(spa_meta_acquisition_set_exposure_start(&acquisition, 2000, 7));
+	pwtest_int_eq(acquisition.version, (uint32_t)SPA_META_ACQUISITION_VERSION_3);
+	pwtest_int_eq(acquisition.reserved2, (uint64_t)SPA_META_ACQUISITION_TRIGGER_MIXED);
+	pwtest_int_eq(acquisition.timebase, (uint32_t)SPA_META_ACQUISITION_TIMEBASE_MONOTONIC);
+	pwtest_bool_false(SPA_FLAG_IS_SET(acquisition.flags, SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID));
+	pwtest_bool_true(spa_meta_acquisition_is_valid(&meta));
+	pwtest_bool_false(spa_meta_acquisition_time_difference(&acquisition, &peer, NULL, NULL));
+	pwtest_bool_true(spa_meta_acquisition_init(&acquisition));
+	pwtest_int_eq(acquisition.version, (uint32_t)SPA_META_ACQUISITION_VERSION_2);
+	pwtest_int_eq(acquisition.reserved2, 0U);
+	return PWTEST_PASS;
+}
+
 PWTEST(buffer_acquisition_meta_exports)
 {
 	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_init"));
+	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_get_trigger_classification"));
+	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_set_trigger_classification"));
 	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_set_identity"));
 	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT, "spa_meta_acquisition_set_exposure_start"));
 	pwtest_ptr_notnull(dlsym(RTLD_DEFAULT,
@@ -381,6 +521,25 @@ PWTEST(buffer_acquisition_meta_param)
 	pwtest_int_ge(spa_pod_filter(&result_builder, &result, fixed, offered), 0);
 	pwtest_ptr_null(spa_pod_find_prop(result, NULL, SPA_PARAM_META_features));
 
+	for (uint32_t required = 1; required <= 4; required <<= 1) {
+		for (uint32_t supplied = 0; supplied <= 4; supplied++) {
+			if (supplied == 3)
+				continue;
+			spa_pod_builder_init(&fixed_builder, fixed_buffer, sizeof(fixed_buffer));
+			fixed = build_acquisition_meta_param(&fixed_builder, SPA_META_Acquisition,
+					SPA_META_ACQUISITION_SIZE, true,
+					SPA_POD_PROP_FLAG_MANDATORY, required);
+			spa_pod_builder_init(&offered_builder, offered_buffer, sizeof(offered_buffer));
+			offered = build_acquisition_meta_param(&offered_builder, SPA_META_Acquisition,
+					SPA_META_ACQUISITION_SIZE, supplied != 0,
+					SPA_POD_PROP_FLAG_MANDATORY, supplied);
+			spa_pod_builder_init(&result_builder, result_buffer, sizeof(result_buffer));
+			if (required == supplied)
+				pwtest_int_ge(spa_pod_filter(&result_builder, &result, fixed, offered), 0);
+			else
+				pwtest_int_lt(spa_pod_filter(&result_builder, &result, fixed, offered), 0);
+		}
+	}
 	return PWTEST_PASS;
 }
 
@@ -448,6 +607,7 @@ PWTEST_SUITE(spa_buffer)
 	pwtest_add(buffer_abi_types, PWTEST_NOARG);
 	pwtest_add(buffer_abi_sizes, PWTEST_NOARG);
 	pwtest_add(buffer_acquisition_meta, PWTEST_NOARG);
+	pwtest_add(buffer_acquisition_trigger_classification, PWTEST_NOARG);
 	pwtest_add(buffer_acquisition_meta_exports, PWTEST_NOARG);
 	pwtest_add(buffer_acquisition_meta_param, PWTEST_NOARG);
 	pwtest_add(buffer_alloc, PWTEST_NOARG);

@@ -37,6 +37,7 @@ struct test_data {
 	atomic_uint received;
 	atomic_bool streaming_reported;
 	bool buffers32;
+	bool acquisition_v3;
 	uint32_t source_buffer_count;
 	int result;
 };
@@ -171,9 +172,11 @@ static void source_process(void *userdata)
 	if (acquisition == NULL || !spa_meta_acquisition_init(acquisition) ||
 	    !spa_meta_acquisition_set_identity(acquisition, domain, 7, sequence) ||
 	    !spa_meta_acquisition_set_exposure_start(acquisition,
-			100000 + sequence, 50)) {
+			100000 + sequence, 50) ||
+	    (data->acquisition_v3 && !spa_meta_acquisition_set_trigger_classification(
+		    acquisition, SPA_META_ACQUISITION_TRIGGER_HIGH))) {
 		(void)pw_stream_queue_buffer(data->source, buffer);
-		quit_with_error(data, "source Acquisition V2 metadata is unavailable");
+		quit_with_error(data, "source Acquisition metadata is unavailable");
 		return;
 	}
 	(void)pw_stream_queue_buffer(data->source, buffer);
@@ -220,12 +223,15 @@ static void sink_process(void *userdata)
 		return;
 	}
 	if (!spa_meta_acquisition_is_valid(acquisition_meta) ||
-	    acquisition->version != SPA_META_ACQUISITION_VERSION_2 ||
+	    acquisition->version != (data->acquisition_v3
+		    ? SPA_META_ACQUISITION_VERSION_3 : SPA_META_ACQUISITION_VERSION_2) ||
+	    acquisition->reserved2 != (data->acquisition_v3
+		    ? SPA_META_ACQUISITION_TRIGGER_HIGH : SPA_META_ACQUISITION_TRIGGER_ABSENT) ||
 	    acquisition->generation != 7 || acquisition->sequence != 2 ||
 	    acquisition->exposure_start_nsec != 100002 ||
 	    acquisition->timestamp_uncertainty_nsec != 50) {
 		(void)pw_stream_queue_buffer(data->sink, buffer);
-		quit_with_error(data, "sink received an unexpected Acquisition V2 record");
+		quit_with_error(data, "sink received an unexpected Acquisition record");
 		return;
 	}
 	if (atomic_fetch_add_explicit(&data->received, 1,
@@ -320,7 +326,8 @@ static struct spa_pod *build_header_meta(struct spa_pod_builder *builder)
 			SPA_POD_Int(sizeof(struct spa_meta_header)));
 }
 
-static struct spa_pod *build_acquisition_meta(struct spa_pod_builder *builder)
+static struct spa_pod *build_acquisition_meta(struct spa_pod_builder *builder,
+		bool acquisition_v3)
 {
 	struct spa_pod_frame frame;
 
@@ -333,7 +340,9 @@ static struct spa_pod *build_acquisition_meta(struct spa_pod_builder *builder)
 			0);
 	spa_pod_builder_prop(builder, SPA_PARAM_META_features,
 			SPA_POD_PROP_FLAG_MANDATORY);
-	spa_pod_builder_int(builder, SPA_META_FEATURE_ACQUISITION_VERSION_2);
+	spa_pod_builder_int(builder, acquisition_v3
+			? SPA_META_FEATURE_ACQUISITION_VERSION_3
+			: SPA_META_FEATURE_ACQUISITION_VERSION_2);
 	return spa_pod_builder_pop(builder, &frame);
 }
 
@@ -366,6 +375,8 @@ int main(int argc, char *argv[])
 	for (i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "--buffers32") == 0)
 			data.buffers32 = true;
+		else if (strcmp(argv[i], "--acquisition-v3") == 0)
+			data.acquisition_v3 = true;
 		else {
 			fprintf(stderr, "unknown argument: %s\n", argv[i]);
 			return 2;
@@ -422,13 +433,13 @@ int main(int argc, char *argv[])
 	spa_pod_builder_init(&source_builder, source_pods, sizeof(source_pods));
 	source_params[0] = build_format(&source_builder);
 	source_params[1] = build_header_meta(&source_builder);
-	source_params[2] = build_acquisition_meta(&source_builder);
+	source_params[2] = build_acquisition_meta(&source_builder, data.acquisition_v3);
 	if (data.buffers32)
 		source_params[3] = build_source_buffers(&source_builder);
 	spa_pod_builder_init(&sink_builder, sink_pods, sizeof(sink_pods));
 	sink_params[0] = build_format(&sink_builder);
 	sink_params[1] = build_header_meta(&sink_builder);
-	sink_params[2] = build_acquisition_meta(&sink_builder);
+	sink_params[2] = build_acquisition_meta(&sink_builder, data.acquisition_v3);
 	if (source_params[0] == NULL || source_params[1] == NULL ||
 	    source_params[2] == NULL ||
 	    (data.buffers32 && source_params[3] == NULL) || sink_params[0] == NULL ||

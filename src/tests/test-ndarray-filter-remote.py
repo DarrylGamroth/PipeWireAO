@@ -68,7 +68,7 @@ def link_nodes(link, environment, source, sink):
 def main():
     options = sys.argv[5:]
     if (len(sys.argv) < 5 or
-            any(option not in ("--fifo-inputs", "--buffers32") for option in options) or
+            any(option not in ("--fifo-inputs", "--buffers32", "--acquisition-v3") for option in options) or
             len(set(options)) != len(options)):
         return 2
     paths = {
@@ -135,6 +135,8 @@ def main():
         filter_command = [str(paths["filter"])]
         if "--fifo-inputs" in options:
             filter_command.append("--fifo-inputs")
+        if "--acquisition-v3" in options:
+            filter_command.append("--acquisition-v3")
         filter_process = subprocess.Popen(
             filter_command,
             env=environment,
@@ -145,6 +147,8 @@ def main():
         client_command = [str(paths["client"])]
         if "--buffers32" in options:
             client_command.append("--buffers32")
+        if "--acquisition-v3" in options:
+            client_command.append("--acquisition-v3")
         client_process = subprocess.Popen(
             client_command,
             env=environment,

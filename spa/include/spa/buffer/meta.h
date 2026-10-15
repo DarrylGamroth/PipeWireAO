@@ -218,12 +218,14 @@ struct spa_meta_sync_timeline {
 enum spa_meta_acquisition_constant {
 	SPA_META_ACQUISITION_VERSION_1 = 1u,
 	SPA_META_ACQUISITION_VERSION_2 = 2u,
+	SPA_META_ACQUISITION_VERSION_3 = 3u,
 	SPA_META_ACQUISITION_VERSION = SPA_META_ACQUISITION_VERSION_2,
 	SPA_META_ACQUISITION_SIZE = 96u,
 	SPA_META_ACQUISITION_DOMAIN_SIZE = 16u,
 	SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE = 8u,
 	SPA_META_FEATURE_ACQUISITION_VERSION_1 = (1u << 0),
 	SPA_META_FEATURE_ACQUISITION_VERSION_2 = (1u << 1),
+	SPA_META_FEATURE_ACQUISITION_VERSION_3 = (1u << 2),
 	SPA_META_FEATURE_ACQUISITION_CURRENT = SPA_META_FEATURE_ACQUISITION_VERSION_2,
 };
 
@@ -241,6 +243,13 @@ enum spa_meta_acquisition_timebase {
 	SPA_META_ACQUISITION_TIMEBASE_TAI,
 };
 
+enum spa_meta_acquisition_trigger_classification {
+	SPA_META_ACQUISITION_TRIGGER_ABSENT = 0u,
+	SPA_META_ACQUISITION_TRIGGER_LOW = 1u,
+	SPA_META_ACQUISITION_TRIGGER_HIGH = 2u,
+	SPA_META_ACQUISITION_TRIGGER_MIXED = 3u,
+};
+
 /**
  * Physical acquisition identity and qualified exposure time.
  *
@@ -256,7 +265,8 @@ enum spa_meta_acquisition_timebase {
  * nanoseconds and identify the PTP grandmaster and PTP domain that established
  * the mapping. timestamp_uncertainty_nsec is an inclusive error bound for the
  * exposure-start mapping. A PTP time is comparable only with another valid
- * Version 2 PTP time carrying the same grandmaster identity and domain number.
+ * Version 2 or 3 PTP time carrying the same grandmaster identity and domain number.
+ * Version 3 encodes trigger classification in reserved2; all upper bits are zero.
  */
 struct SPA_ALIGNED(8) spa_meta_acquisition {
 	uint32_t version;
@@ -272,7 +282,7 @@ struct SPA_ALIGNED(8) spa_meta_acquisition {
 	uint8_t ptp_grandmaster_id[SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE];
 	uint8_t ptp_domain_number;
 	uint8_t reserved[7];
-	uint64_t reserved2;
+	uint64_t reserved2;	/**< Version 3 trigger classification; zero in Versions 1/2. */
 };
 
 SPA_STATIC_ASSERT(sizeof(struct spa_meta_acquisition) == SPA_META_ACQUISITION_SIZE,
@@ -329,11 +339,15 @@ static inline bool _spa_meta_acquisition_fields_are_valid(
 
 	if (acquisition == NULL || !SPA_IS_ALIGNED(acquisition, 8) ||
 	    (acquisition->version != SPA_META_ACQUISITION_VERSION_1 &&
-	     acquisition->version != SPA_META_ACQUISITION_VERSION_2) ||
+	     acquisition->version != SPA_META_ACQUISITION_VERSION_2 &&
+	     acquisition->version != SPA_META_ACQUISITION_VERSION_3) ||
 	    acquisition->abi_size != SPA_META_ACQUISITION_SIZE ||
 	    (acquisition->flags & ~SPA_META_ACQUISITION_FLAG_ALL) != 0 ||
 	    !_spa_meta_acquisition_bytes_are_zero(acquisition->reserved,
-		    sizeof(acquisition->reserved)) || acquisition->reserved2 != 0)
+		    sizeof(acquisition->reserved)) ||
+	    (acquisition->version == SPA_META_ACQUISITION_VERSION_3
+		    ? acquisition->reserved2 > SPA_META_ACQUISITION_TRIGGER_MIXED
+		    : acquisition->reserved2 != 0))
 		return false;
 	if (acquisition->version == SPA_META_ACQUISITION_VERSION_1 &&
 	    (acquisition->timebase != SPA_META_ACQUISITION_TIMEBASE_NONE ||
@@ -366,7 +380,7 @@ static inline bool _spa_meta_acquisition_fields_are_valid(
 
 	ptp_valid = SPA_FLAG_IS_SET(acquisition->flags,
 			SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID);
-	if (acquisition->version == SPA_META_ACQUISITION_VERSION_2) {
+	if (acquisition->version != SPA_META_ACQUISITION_VERSION_1) {
 		if (!start_valid) {
 			if (acquisition->timebase != SPA_META_ACQUISITION_TIMEBASE_NONE)
 				return false;
@@ -442,7 +456,7 @@ SPA_API_META bool spa_meta_acquisition_set_exposure_start(
 
 	acquisition->exposure_start_nsec = exposure_start_nsec;
 	acquisition->timestamp_uncertainty_nsec = timestamp_uncertainty_nsec;
-	if (acquisition->version == SPA_META_ACQUISITION_VERSION_2) {
+	if (acquisition->version != SPA_META_ACQUISITION_VERSION_1) {
 		acquisition->timebase = SPA_META_ACQUISITION_TIMEBASE_MONOTONIC;
 		memset(acquisition->ptp_grandmaster_id, 0,
 				sizeof(acquisition->ptp_grandmaster_id));
@@ -463,7 +477,7 @@ SPA_API_META bool spa_meta_acquisition_set_exposure_start_ptp(
 		uint8_t ptp_domain_number)
 {
 	if (!_spa_meta_acquisition_fields_are_valid(acquisition) ||
-	    acquisition->version != SPA_META_ACQUISITION_VERSION_2 ||
+	    acquisition->version == SPA_META_ACQUISITION_VERSION_1 ||
 	    exposure_start_nsec < 0 || ptp_grandmaster_id == NULL ||
 	    _spa_meta_acquisition_bytes_are_zero(ptp_grandmaster_id,
 		    SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE))
@@ -495,7 +509,35 @@ SPA_API_META bool spa_meta_acquisition_set_exposure_duration(
 	return true;
 }
 
-/** Validate a mapped Version 1 or Version 2 acquisition metadata allocation. */
+/** Read trigger classification; valid Versions 1/2 report absent. */
+SPA_API_META bool spa_meta_acquisition_get_trigger_classification(
+		const struct spa_meta_acquisition *acquisition,
+		enum spa_meta_acquisition_trigger_classification *classification)
+{
+	if (!_spa_meta_acquisition_fields_are_valid(acquisition) || classification == NULL)
+		return false;
+
+	*classification = (enum spa_meta_acquisition_trigger_classification)
+		acquisition->reserved2;
+	return true;
+}
+
+/** Set trigger classification, upgrading valid Version 2 metadata to Version 3. */
+SPA_API_META bool spa_meta_acquisition_set_trigger_classification(
+		struct spa_meta_acquisition *acquisition,
+		enum spa_meta_acquisition_trigger_classification classification)
+{
+	if (!_spa_meta_acquisition_fields_are_valid(acquisition) ||
+	    acquisition->version == SPA_META_ACQUISITION_VERSION_1 ||
+	    (uint32_t)classification > SPA_META_ACQUISITION_TRIGGER_MIXED)
+		return false;
+
+	acquisition->version = SPA_META_ACQUISITION_VERSION_3;
+	acquisition->reserved2 = classification;
+	return true;
+}
+
+/** Validate a mapped Version 1, 2 or 3 acquisition metadata allocation. */
 SPA_API_META bool spa_meta_acquisition_is_valid(const struct spa_meta *meta)
 {
 	return meta != NULL && meta->type == SPA_META_Acquisition &&
@@ -534,8 +576,8 @@ SPA_API_META bool spa_meta_acquisition_time_difference(
 
 	if (!_spa_meta_acquisition_fields_are_valid(a) ||
 	    !_spa_meta_acquisition_fields_are_valid(b) ||
-	    a->version != SPA_META_ACQUISITION_VERSION_2 ||
-	    b->version != SPA_META_ACQUISITION_VERSION_2 ||
+	    a->version == SPA_META_ACQUISITION_VERSION_1 ||
+	    b->version == SPA_META_ACQUISITION_VERSION_1 ||
 	    !SPA_FLAG_IS_SET(a->flags,
 		    SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID |
 		    SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID) ||

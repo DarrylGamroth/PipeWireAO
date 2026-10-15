@@ -111,6 +111,8 @@ enum pw_ndarray_filter_port_flags {
 	 * cycle; it is recycled without invoking update_parameter().
 	 */
 	PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER = (1u << 0),
+	/** Require Acquisition Version 3 metadata with trigger classification. */
+	PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3 = (1u << 1),
 };
 
 /** Metadata stored by value in one callback buffer. */

@@ -23,6 +23,7 @@ struct test_data {
 	void *retained_output;
 	atomic_uint callbacks;
 	atomic_bool retained;
+	bool acquisition_v3;
 };
 
 static int prepare_process_thread(void *userdata SPA_UNUSED)
@@ -55,7 +56,10 @@ static int process(void *userdata,
 	    (input->metadata_valid & PW_NDARRAY_FILTER_METADATA_ACQUISITION) == 0 ||
 	    (output->metadata_available & PW_NDARRAY_FILTER_METADATA_HEADER) == 0 ||
 	    (output->metadata_available & PW_NDARRAY_FILTER_METADATA_ACQUISITION) == 0 ||
-	    input->acquisition.version != SPA_META_ACQUISITION_VERSION_2)
+	    input->acquisition.version != (data->acquisition_v3
+		    ? SPA_META_ACQUISITION_VERSION_3 : SPA_META_ACQUISITION_VERSION_2) ||
+	    (data->acquisition_v3 && input->acquisition.reserved2 !=
+		    SPA_META_ACQUISITION_TRIGGER_HIGH))
 		return -EINVAL;
 	memcpy(&input_value, input->data, sizeof(input_value));
 	callback = atomic_fetch_add_explicit(&data->callbacks, 1,
@@ -116,7 +120,7 @@ static void *wait_for_stop(void *userdata)
 int main(int argc, char *argv[])
 {
 	static const uint32_t shape[] = { 1 };
-	static const struct pw_ndarray_filter_port ports[] = {
+	struct pw_ndarray_filter_port ports[] = {
 		{
 			.struct_size = sizeof(struct pw_ndarray_filter_port),
 			.direction = SPA_DIRECTION_INPUT,
@@ -161,12 +165,18 @@ int main(int argc, char *argv[])
 	bool stop_thread_started = false;
 	int result, status = 1;
 
-	if (argc > 2 || (argc == 2 && !spa_streq(argv[1], "--fifo-inputs"))) {
-		fprintf(stderr, "usage: %s [--fifo-inputs]\n", argv[0]);
-		return 2;
+	for (int i = 1; i < argc; i++) {
+		if (spa_streq(argv[i], "--fifo-inputs"))
+			config.flags |= PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS;
+		else if (spa_streq(argv[i], "--acquisition-v3")) {
+			data.acquisition_v3 = true;
+			for (uint32_t p = 0; p < SPA_N_ELEMENTS(ports); p++)
+				ports[p].flags |= PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3;
+		} else {
+			fprintf(stderr, "unknown argument: %s\n", argv[i]);
+			return 2;
+		}
 	}
-	if (argc == 2)
-		config.flags |= PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS;
 	atomic_init(&data.callbacks, 0);
 	atomic_init(&data.retained, false);
 	sigemptyset(&data.stop_signals);

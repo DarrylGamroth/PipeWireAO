@@ -501,9 +501,83 @@ static void test_removed_prefetched_output_requires_stopped_unprepared(void)
 	}
 }
 
+static void test_acquisition_v3_port_metadata(void)
+{
+	struct test_buffer buffer;
+	struct ndarray_port port = { .size = sizeof(float), .stride = sizeof(float) };
+	struct pw_ndarray_filter_buffer view;
+	struct spa_meta_acquisition acquisition;
+	struct spa_meta meta = { SPA_META_Acquisition, sizeof(acquisition), &acquisition };
+	uint8_t storage[256];
+	struct spa_pod_builder builder;
+	struct spa_pod *param;
+	const struct spa_pod_prop *feature;
+	int32_t value;
+
+	init_buffer(&buffer, 1.0f);
+	buffer.spa.n_metas = 1;
+	buffer.spa.metas = &meta;
+	for (uint32_t flagged = 0; flagged <= 1; flagged++) {
+		port.flags = flagged ? PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3 : 0;
+		spa_pod_builder_init(&builder, storage, sizeof(storage));
+		param = build_acquisition_meta(&builder, port.flags);
+		spa_assert_se(param != NULL);
+		feature = spa_pod_find_prop(param, NULL, SPA_PARAM_META_features);
+		spa_assert_se(feature != NULL);
+		spa_assert_se(feature->flags & SPA_POD_PROP_FLAG_MANDATORY);
+		spa_assert_se(spa_pod_get_int(&feature->value, &value) == 0);
+		spa_assert_se(value == (flagged ? SPA_META_FEATURE_ACQUISITION_VERSION_3
+				: SPA_META_FEATURE_ACQUISITION_VERSION_2));
+		for (uint32_t version = 1; version <= 3; version++) {
+			spa_assert_se(spa_meta_acquisition_init(&acquisition));
+			acquisition.version = version;
+			if (flagged == (version == 3)) {
+				spa_assert_se(project_buffer(&buffer.pw, &port, false, &view) == 0);
+				spa_assert_se(view.acquisition.version == version);
+				spa_assert_se(validate_completed_output(&port, &buffer.pw, &view) == 0);
+			} else {
+				spa_assert_se(project_buffer(&buffer.pw, &port, false, &view) == -EINVAL);
+				spa_assert_se(project_buffer(&buffer.pw, &port, true, &view) == 0);
+				view.acquisition = acquisition;
+				view.metadata_valid = PW_NDARRAY_FILTER_METADATA_ACQUISITION;
+				spa_assert_se(validate_completed_output(&port, &buffer.pw, &view) == -EINVAL);
+			}
+		}
+		spa_assert_se(project_buffer(&buffer.pw, &port, true, &view) == 0);
+		spa_assert_se(view.acquisition.version == (flagged ? 3u : 2u));
+		commit_output(&port, &buffer.pw, &view);
+		spa_assert_se(spa_meta_acquisition_is_valid(&meta));
+		spa_assert_se(acquisition.version == (flagged ? 3u : 2u));
+		spa_assert_se(acquisition.reserved2 == 0);
+	}
+	port.flags = PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3;
+	buffer.spa.n_metas = 0;
+	spa_assert_se(project_buffer(&buffer.pw, &port, false, &view) == -EINVAL);
+	spa_assert_se(project_buffer(&buffer.pw, &port, true, &view) == -EINVAL);
+	spa_assert_se(validate_completed_output(&port, &buffer.pw, &view) == -EINVAL);
+	buffer.spa.n_metas = 1;
+	for (uint32_t trigger = 0; trigger <= 3; trigger++) {
+		spa_assert_se(spa_meta_acquisition_init(&acquisition));
+		spa_assert_se(spa_meta_acquisition_set_trigger_classification(&acquisition,
+				(enum spa_meta_acquisition_trigger_classification)trigger));
+		spa_assert_se(project_buffer(&buffer.pw, &port, false, &view) == 0);
+		spa_assert_se(view.acquisition.reserved2 == trigger);
+		spa_assert_se(validate_completed_output(&port, &buffer.pw, &view) == 0);
+		memset(&acquisition, 0, sizeof(acquisition));
+		commit_output(&port, &buffer.pw, &view);
+		spa_assert_se(spa_meta_acquisition_is_valid(&meta));
+		spa_assert_se(acquisition.reserved2 == trigger);
+		view.acquisition.reserved2 = UINT64_C(1) << 63;
+		spa_assert_se(validate_completed_output(&port, &buffer.pw, &view) == -EINVAL);
+		acquisition.reserved2 = 4;
+		spa_assert_se(project_buffer(&buffer.pw, &port, false, &view) == -EINVAL);
+	}
+}
+
 int main(int argc SPA_UNUSED, char *argv[] SPA_UNUSED)
 {
 	pw_init(NULL, NULL);
+	test_acquisition_v3_port_metadata();
 	test_default_admission_keeps_latest();
 	test_fifo_admission_preserves_order_and_progress();
 	test_fifo_retains_input_while_output_is_unavailable();
