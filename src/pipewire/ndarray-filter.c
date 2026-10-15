@@ -357,7 +357,8 @@ static int copy_port(struct ndarray_port *destination,
 	int res;
 
 	if (source == NULL || source->struct_size < sizeof(*source) ||
-	    (source->flags & ~PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER) != 0 ||
+	    (source->flags & ~(PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER |
+		    PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3)) != 0 ||
 	    source->reserved != 0 ||
 	    (source->direction != SPA_DIRECTION_INPUT &&
 	     source->direction != SPA_DIRECTION_OUTPUT) ||
@@ -547,7 +548,8 @@ static struct spa_pod *build_format(struct spa_pod_builder *builder,
 	return spa_pod_builder_pop(builder, &object);
 }
 
-static struct spa_pod *build_acquisition_meta(struct spa_pod_builder *builder)
+static struct spa_pod *build_acquisition_meta(struct spa_pod_builder *builder,
+		uint32_t port_flags)
 {
 	struct spa_pod_frame frame;
 
@@ -560,7 +562,10 @@ static struct spa_pod *build_acquisition_meta(struct spa_pod_builder *builder)
 			0);
 	spa_pod_builder_prop(builder, SPA_PARAM_META_features,
 			SPA_POD_PROP_FLAG_MANDATORY);
-	spa_pod_builder_int(builder, SPA_META_FEATURE_ACQUISITION_VERSION_2);
+	spa_pod_builder_int(builder,
+			port_flags & PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3
+			? SPA_META_FEATURE_ACQUISITION_VERSION_3
+			: SPA_META_FEATURE_ACQUISITION_VERSION_2);
 	return spa_pod_builder_pop(builder, &frame);
 }
 
@@ -597,7 +602,7 @@ static int add_port(struct pw_ndarray_filter *filter,
 			SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Header),
 			SPA_PARAM_META_size,
 			SPA_POD_Int(sizeof(struct spa_meta_header)));
-	params[3] = build_acquisition_meta(&builder);
+	params[3] = build_acquisition_meta(&builder, port->flags);
 	for (i = 0; i < SPA_N_ELEMENTS(params); i++)
 		if (params[i] == NULL) {
 			pw_properties_free(properties);
@@ -777,6 +782,23 @@ static int validate_regions(struct pw_ndarray_filter *filter)
 	return 0;
 }
 
+static bool acquisition_version_matches_port(const struct ndarray_port *port,
+		const struct spa_meta_acquisition *acquisition)
+{
+	return port->flags & PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3
+		? acquisition->version == SPA_META_ACQUISITION_VERSION_3
+		: acquisition->version != SPA_META_ACQUISITION_VERSION_3;
+}
+
+static void init_port_acquisition(const struct ndarray_port *port,
+		struct spa_meta_acquisition *acquisition)
+{
+	spa_meta_acquisition_init(acquisition);
+	if (port->flags & PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3)
+		spa_meta_acquisition_set_trigger_classification(acquisition,
+				SPA_META_ACQUISITION_TRIGGER_ABSENT);
+}
+
 static int project_buffer(struct pw_buffer *pw_buffer,
 		const struct ndarray_port *port, bool output,
 		struct pw_ndarray_filter_buffer *view)
@@ -790,7 +812,7 @@ static int project_buffer(struct pw_buffer *pw_buffer,
 	view->data = SPA_PTROFF(data->data, data->chunk->offset, void);
 	view->size = (uint32_t)port->size;
 	view->capacity = data->maxsize - data->chunk->offset;
-	spa_meta_acquisition_init(&view->acquisition);
+	init_port_acquisition(port, &view->acquisition);
 
 	if ((meta = spa_buffer_find_meta(buffer, SPA_META_Header)) != NULL) {
 		view->metadata_available |= PW_NDARRAY_FILTER_METADATA_HEADER;
@@ -800,13 +822,16 @@ static int project_buffer(struct pw_buffer *pw_buffer,
 		}
 	}
 	if ((meta = spa_buffer_find_meta(buffer, SPA_META_Acquisition)) != NULL) {
-		if (!output && !spa_meta_acquisition_is_valid(meta))
+		if (!output && (!spa_meta_acquisition_is_valid(meta) ||
+		    !acquisition_version_matches_port(port, meta->data)))
 			return -EINVAL;
 		view->metadata_available |= PW_NDARRAY_FILTER_METADATA_ACQUISITION;
 		if (!output) {
 			memcpy(&view->acquisition, meta->data, sizeof(view->acquisition));
 			view->metadata_valid |= PW_NDARRAY_FILTER_METADATA_ACQUISITION;
 		}
+	} else if (port->flags & PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3) {
+		return -EINVAL;
 	}
 	return 0;
 }
@@ -833,7 +858,9 @@ static int validate_completed_output(const struct ndarray_port *port,
 	if (spa_buffer_find_meta(buffer, SPA_META_Acquisition) != NULL)
 		metadata_available |= PW_NDARRAY_FILTER_METADATA_ACQUISITION;
 
-	if (view->struct_size < sizeof(*view) ||
+	if (((port->flags & PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3) &&
+	     !(metadata_available & PW_NDARRAY_FILTER_METADATA_ACQUISITION)) ||
+	    view->struct_size < sizeof(*view) ||
 	    view->flags & ~PW_NDARRAY_FILTER_BUFFER_FLAG_OUTPUT_UNAVAILABLE ||
 	    view->data != expected || view->size != port->size ||
 	    view->capacity != data->maxsize - data->chunk->offset ||
@@ -846,7 +873,8 @@ static int validate_completed_output(const struct ndarray_port *port,
 			.size = sizeof(view->acquisition),
 			.data = (void *)&view->acquisition,
 		};
-		if (!spa_meta_acquisition_is_valid(&acquisition_meta))
+		if (!spa_meta_acquisition_is_valid(&acquisition_meta) ||
+		    !acquisition_version_matches_port(port, &view->acquisition))
 			return -EINVAL;
 	}
 	return 0;
@@ -873,7 +901,7 @@ static void commit_output(const struct ndarray_port *port,
 		if (view->metadata_valid & PW_NDARRAY_FILTER_METADATA_ACQUISITION)
 			memcpy(meta->data, &view->acquisition, sizeof(view->acquisition));
 		else
-			spa_meta_acquisition_init(meta->data);
+			init_port_acquisition(port, meta->data);
 	}
 }
 

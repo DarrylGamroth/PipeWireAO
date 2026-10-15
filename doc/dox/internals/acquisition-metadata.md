@@ -77,16 +77,17 @@ counter and a consistency check for sources that have one.
 
 ## Metadata versions
 
-`SPA_META_Acquisition` keeps a 96-byte, 8-byte-aligned allocation in both
-versions.
+`SPA_META_Acquisition` keeps metadata ID 11 and a 96-byte, 8-byte-aligned allocation in all
+three versions. Metadata ID 12 remains retired.
 
 | Version | Exposure time | Cross-host use |
 | --- | --- | --- |
 | 1 | Host-local `CLOCK_MONOTONIC` nanoseconds | Never comparable across hosts |
 | 2 | Explicit `MONOTONIC` or `TAI` timebase | Comparable only with valid matching PTP provenance |
+| 3 | Version 2 time semantics plus trigger classification | Same PTP requirements as Version 2 |
 
 Version 2 reuses Version 1 reserved storage without changing allocation size.
-Version-aware readers accept both versions. A Version 2 producer and consumer
+Version-aware readers accept all three versions. A Version 2 producer and consumer
 negotiate `SPA_META_FEATURE_ACQUISITION_VERSION_2`; an older Version 1 reader
 must not silently receive Version 2 metadata.
 
@@ -95,7 +96,45 @@ must not silently receive Version 2 metadata.
 `spa_meta_acquisition_is_valid()` before interpreting a mapped value.
 
 Verification: ABI tests check size, alignment, field offsets, reserved bytes,
-version negotiation, malformed records, and Version 1 read compatibility.
+version negotiation, malformed records, and Version 1 and Version 2 compatibility.
+
+### Version 3 trigger classification
+
+**ACQ-TRIGGER-001:** Version 3 **MUST** encode trigger classification in the
+`reserved2` word at byte offset 88: absent = 0, low = 1, high = 2, mixed = 3.
+All upper bits **MUST** be zero. Version 1 and Version 2 **MUST** retain a zero
+`reserved2` word. Absent means no classification was supplied; low and high
+classify the acquisition's trigger level, and mixed means the acquisition
+contains both levels. Classification does not alter identity or timing.
+
+**ACQ-TRIGGER-002:** Version 3 **MUST** apply every Version 2 clock, PTP,
+validation, comparison, and timestamp-setter rule. The trigger setter **MUST**
+upgrade a valid Version 2 record to Version 3 and **MUST** reject Version 1 and
+malformed records without modifying them. The getter **MUST** reject malformed
+records and return absent for valid Version 1 and Version 2 records.
+
+**ACQ-TRIGGER-003:** Initialization and default producers **MUST** remain at
+Version 2. `SPA_META_FEATURE_ACQUISITION_CURRENT` **MUST** remain the Version 2
+feature. A Version 3 endpoint **MUST** explicitly require
+`SPA_META_FEATURE_ACQUISITION_VERSION_3`. The ndarray helper **MUST** select that
+mandatory feature only for a Port with
+`PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3`; an unflagged Port **MUST** require
+Version 2. Older helpers **MUST** reject this unknown flag at admission. This
+opt-in **MUST NOT** change Port or callback-buffer structure layout. Flagged
+Ports **MUST** reject missing acquisition metadata and Version 1/2 payloads; unflagged Ports **MUST** reject
+Version 3 payloads. Empty output metadata on flagged Ports **MUST** use Version
+3 with absent classification. Global initialization remains Version 2.
+
+Verification: round-trip all classifications; reject out-of-range encodings and
+nonzero Version 1/2 reserved words; check Version 2/3 PTP comparisons and setter
+behavior; prove feature mismatch rejects negotiation and flagged Ports publish
+Version 3 through the native protocol. `pw-test-ndarray-filter-acquisition-admission`
+checks the explicit Port flag against the current library. Run that same binary
+with an older library selected through `LD_LIBRARY_PATH` and
+`--expect-unsupported` to verify admission rejects the unknown flag. The
+`pw-test-ndarray-filter-remote` and `pw-test-ndarray-filter-acquisition-v3`
+selectors prove Version 2 and Version 3 shared-memory metadata transfer,
+respectively; they do not exercise a cross-host wire codec.
 
 ## PTP-qualified time
 
