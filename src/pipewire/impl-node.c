@@ -556,7 +556,6 @@ static int idle_node(struct pw_impl_node *this)
 {
 	int res;
 
-
 	pw_log_debug("%p: idle node state:%s pending:%s pause-on-idle:%d", this,
 			pw_node_state_as_string(this->info.state),
 			pw_node_state_as_string(this->pending_state),

@@ -93,9 +93,9 @@ int main(int argc, char *argv[])
 {
 	struct pw_context context = { 0 };
 	const uint32_t requested[] = { 2, 1, 3, 8 };
-	const uint32_t modes[] = { 0, PW_BUFFERS_FLAG_RELIABLE,
-		PW_BUFFERS_FLAG_ASYNC, PW_BUFFERS_FLAG_ASYNC | PW_BUFFERS_FLAG_RELIABLE };
-	const uint32_t minimum[] = { 1, 1, 2, 3 };
+	const uint32_t modes[] = { 0, PW_BUFFERS_FLAG_DELAYED,
+		PW_BUFFERS_FLAG_ASYNC, PW_BUFFERS_FLAG_ASYNC | PW_BUFFERS_FLAG_DELAYED };
+	const uint32_t minimum[] = { 1, 2, 2, 3 };
 	const uint32_t extras[] = { PW_BUFFERS_FLAG_NO_MEM, PW_BUFFERS_FLAG_SHARED,
 		PW_BUFFERS_FLAG_DYNAMIC, PW_BUFFERS_FLAG_IN_PRIORITY };
 	uint32_t cases = 0;

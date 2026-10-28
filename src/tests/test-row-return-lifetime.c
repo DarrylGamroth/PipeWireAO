@@ -126,7 +126,7 @@ static void *replace_on_control_thread(void *data)
 {
 	struct fixture *f = data;
 	in_replacement = true;
-	spa_assert_se(port_set_io(&f->input, PW_DIRECTION_INPUT,
+	spa_assert_se(mix_port_set_io(&f->input, PW_DIRECTION_INPUT,
 			f->mix.port.port_id, SPA_IO_Buffers,
 			&f->replacement, sizeof(f->replacement)) == 0);
 	in_replacement = false;

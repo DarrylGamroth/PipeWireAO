@@ -492,7 +492,7 @@ int main(int argc, char *argv[])
 	driver->node = &source;
 	driver->driver_node = driver;
 	driver->driving = true;
-	driver->reliable = true;
+	driver->output_mode = OUTPUT_MODE_RELIABLE;
 	driver->row_transport = true;
 	driver->row_cycle_inflight = true;
 	driver->info.state = PW_NODE_STATE_RUNNING;

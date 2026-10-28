@@ -715,9 +715,6 @@ static int do_allocation(struct pw_impl_link *this)
 		flags = 0;
 		/* Reserve async buffers even when the link uses synchronous IO. */
 		alloc_flags = PW_BUFFERS_FLAG_ASYNC;
-		if (output->reliable)
-			alloc_flags |= PW_BUFFERS_FLAG_RELIABLE;
-
 		if (output->output_mode == OUTPUT_MODE_RELIABLE ||
 		    output->output_mode == OUTPUT_MODE_REFCOUNTED)
 			alloc_flags |= PW_BUFFERS_FLAG_DELAYED;

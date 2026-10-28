@@ -72,6 +72,61 @@ static const struct spa_node_methods source_methods = {
 	.port_reuse_buffer = source_reuse_buffer,
 };
 
+static void test_non_row_reliable_recycling(void)
+{
+	struct spa_io_position position = { 0 };
+	struct pw_node_activation activation = { .status = PW_NODE_ACTIVATION_FINISHED };
+	struct source_capture source = {
+		.node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
+				SPA_VERSION_NODE, &source_methods, &source),
+		.consumer_activation = &activation,
+	};
+	struct pw_impl_node source_node = { .node = &source.node,
+		.rt.position = &position }, consumer_node = { .rt.position = &position };
+	struct impl output = { 0 }, input = { 0 };
+	struct pw_impl_port_mix out_mix = { 0 }, in_mix = { 0 };
+	struct spa_io_buffers shared = SPA_IO_BUFFERS_INIT;
+
+	output.this.node = &source_node;
+	output.this.direction = PW_DIRECTION_OUTPUT;
+	output.this.output_mode = OUTPUT_MODE_RELIABLE;
+	output.this.buffers.n_buffers = 3;
+	input.this.node = &consumer_node;
+	input.this.direction = PW_DIRECTION_INPUT;
+	input.this.rt.io = SPA_IO_BUFFERS_INIT;
+	out_mix.p = &output.this;
+	out_mix.peer = &in_mix;
+	out_mix.io[0] = out_mix.io[1] = &shared;
+	in_mix.p = &input.this;
+	in_mix.peer = &out_mix;
+	in_mix.io[0] = in_mix.io[1] = &shared;
+	spa_list_init(&output.rt.mix_list);
+	spa_list_init(&input.rt.mix_list);
+	spa_list_append(&output.rt.mix_list, &out_mix.rt.link);
+	spa_list_append(&input.rt.mix_list, &in_mix.rt.link);
+
+	for (uint32_t i = 0; i < 4; i++) {
+		uint32_t buffer_id = i % output.this.buffers.n_buffers;
+
+		output.this.rt.io.status = SPA_STATUS_HAVE_DATA;
+		output.this.rt.io.buffer_id = buffer_id;
+		spa_assert_se(tee_process_reliable(&output) >= 0);
+		spa_assert_se(output.this.rt.io.status == SPA_STATUS_NEED_DATA);
+		spa_assert_se(output.this.rt.io.buffer_id ==
+				(i < 2 ? SPA_ID_INVALID : i - 2));
+		spa_assert_se(shared.status == SPA_STATUS_HAVE_DATA);
+		spa_assert_se(shared.buffer_id == buffer_id);
+		input.this.rt.io.status = SPA_STATUS_NEED_DATA;
+		spa_assert_se(mix_process(&input) >= 0);
+		spa_assert_se(input.this.rt.io.status == SPA_STATUS_HAVE_DATA);
+		spa_assert_se(input.this.rt.io.buffer_id == buffer_id);
+		spa_assert_se(shared.status == SPA_STATUS_NEED_DATA);
+		spa_assert_se(shared.buffer_id == (i == 0 ? SPA_ID_INVALID : i - 1));
+		spa_assert_se(!in_mix.row_borrowed);
+		spa_assert_se(source.releases == 0);
+	}
+}
+
 static void test_pending_mix_and_release(void)
 {
 	struct source_capture source = {
@@ -117,21 +172,31 @@ static void test_pending_mix_and_release(void)
 	output.this.port_id = 0;
 	output.this.buffers.n_buffers = 2;
 	output.this.mix = &output.mix_node;
+	output.mix_methods = (struct spa_node_methods) {
+		SPA_VERSION_NODE_METHODS,
+		.port_reuse_buffer = tee_reuse_buffer,
+		.process = tee_process_reliable,
+	};
 	output.mix_node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
-			SPA_VERSION_NODE, &schedule_tee_node_reliable, &output);
+			SPA_VERSION_NODE, &output.mix_methods, &output);
 	input.this.node = &filter_node;
 	input.this.direction = PW_DIRECTION_INPUT;
 	input.this.port_id = 0;
 	input.this.mix = &input.mix_node;
+	input.mix_methods = (struct spa_node_methods) {
+		SPA_VERSION_NODE_METHODS,
+		.port_reuse_buffer = mix_reuse_buffer,
+		.process = mix_process,
+	};
 	input.mix_node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
-			SPA_VERSION_NODE, &schedule_mix_node, &input);
+			SPA_VERSION_NODE, &input.mix_methods, &input);
 	link.output = &output.this;
 	link.input = &input.this;
 	link.rt.out_mix.p = &output.this;
 	link.rt.in_mix.p = &input.this;
 	link.rt.out_mix.peer = &link.rt.in_mix;
 	link.rt.in_mix.peer = &link.rt.out_mix;
-	output.this.reliable = true;
+	output.this.output_mode = OUTPUT_MODE_RELIABLE;
 	input.this.n_mix = 1;
 	spa_list_init(&input.this.mix_list);
 	spa_list_append(&input.this.mix_list, &link.rt.in_mix.link);
@@ -168,7 +233,7 @@ static void test_pending_mix_and_release(void)
 	spa_assert_se(output.this.rt.io.buffer_id == 1);
 	spa_assert_se(source.releases == 0);
 
-	spa_assert_se(schedule_mix_input(&input) >= 0);
+	spa_assert_se(mix_process(&input) >= 0);
 	spa_assert_se(input.this.rt.io.status == SPA_STATUS_HAVE_DATA);
 	spa_assert_se(input.this.rt.io.buffer_id == 0);
 	spa_assert_se(source.releases == 0);
@@ -177,7 +242,7 @@ static void test_pending_mix_and_release(void)
 	 * request-process retry may run the mix again without new input. */
 	input.this.rt.io.status = SPA_STATUS_NEED_DATA;
 	input.this.rt.io.buffer_id = SPA_ID_INVALID;
-	spa_assert_se(schedule_mix_input(&input) >= 0);
+	spa_assert_se(mix_process(&input) >= 0);
 	spa_assert_se(input.this.rt.io.status == SPA_STATUS_NEED_DATA);
 	spa_assert_se(input.this.rt.io.buffer_id == SPA_ID_INVALID);
 	SPA_ATOMIC_STORE(activation.status, PW_NODE_ACTIVATION_FINISHED);
@@ -249,8 +314,13 @@ static void test_exported_filter_return(void)
 	server_output.this.node = &source_node;
 	server_output.this.mix = &server_output.mix_node;
 	server_output.this.buffers.n_buffers = 2;
+	server_output.mix_methods = (struct spa_node_methods) {
+		SPA_VERSION_NODE_METHODS,
+		.port_reuse_buffer = tee_reuse_buffer,
+		.process = tee_process_reliable,
+	};
 	server_output.mix_node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
-			SPA_VERSION_NODE, &schedule_tee_node_reliable, &server_output);
+			SPA_VERSION_NODE, &server_output.mix_methods, &server_output);
 	server_input.node = &filter_node;
 	server_in_mix.p = &server_input;
 	server_in_mix.peer = &server_out_mix;
@@ -277,7 +347,7 @@ static void test_exported_filter_return(void)
 	spa_list_append(&server_output.rt.mix_list, &server_out_mix.rt.link);
 	spa_assert_se(tee_process_reliable(&server_output) >= 0);
 	spa_assert_se(shared.status == SPA_STATUS_HAVE_DATA && shared.buffer_id == 0);
-	spa_assert_se(schedule_mix_input(&client_input) >= 0);
+	spa_assert_se(mix_process(&client_input) >= 0);
 	spa_assert_se(client_input.this.rt.io.status == SPA_STATUS_HAVE_DATA);
 	spa_assert_se(client_input.this.rt.io.buffer_id == 0);
 	spa_assert_se(shared.status == SPA_STATUS_NEED_DATA);
@@ -322,6 +392,7 @@ static void test_exported_filter_return(void)
 int main(int argc, char *argv[])
 {
 	pw_init(&argc, &argv);
+	test_non_row_reliable_recycling();
 	test_pending_mix_and_release();
 	test_exported_filter_return();
 	pw_deinit();
