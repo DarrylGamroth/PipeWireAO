@@ -98,6 +98,7 @@ static const struct spa_type_info spa_type_prop_info[] = {
 	{ SPA_PROP_INFO_description, SPA_TYPE_String, SPA_TYPE_INFO_PROP_INFO_BASE "description", NULL },
 	{ SPA_PROP_INFO_group, SPA_TYPE_String, SPA_TYPE_INFO_PROP_INFO_BASE "group", NULL },
 	{ SPA_PROP_INFO_visibility, SPA_TYPE_String, SPA_TYPE_INFO_PROP_INFO_BASE "visibility", NULL },
+	{ SPA_PROP_INFO_displayName, SPA_TYPE_String, SPA_TYPE_INFO_PROP_INFO_BASE "displayName", NULL },
 	{ 0, 0, NULL, NULL },
 };
 
