@@ -5,11 +5,13 @@
 #include <errno.h>
 #include <limits.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <spa/utils/defs.h>
 #include <spa/param/ndarray.h>
 #include <spa/param/ndarray-utils.h>
+#include <spa/param/props-types.h>
 #include <spa/pod/filter.h>
 
 #include <pipewire/ndarray-filter.h>
@@ -181,7 +183,12 @@ static void test_valid_config(void)
 	spa_assert_se(PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER == (1u << 0));
 	spa_assert_se(PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3 == (1u << 1));
 	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS_V1 == 1);
-	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS == 2);
+	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS_V2 == 2);
+	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS == 3);
+	spa_assert_se(SPA_PROP_INFO_visibility == 9);
+	spa_assert_se(SPA_PROP_INFO_displayName == 10);
+	spa_assert_se(spa_type_prop_info[10].type == SPA_PROP_INFO_displayName);
+	spa_assert_se(spa_type_prop_info[10].parent == SPA_TYPE_String);
 	spa_assert_se(PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS == (1u << 1));
 	spa_assert_se(PW_NDARRAY_FILTER_FLAG_OWNER_RUN_CONTROL == (1u << 2));
 	spa_assert_se(PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES == (1u << 3));
@@ -198,6 +205,22 @@ static void test_valid_config(void)
 	spa_assert_se(pw_ndarray_filter_run(filter) == -EINVAL);
 	pw_ndarray_filter_destroy(filter);
 	pw_ndarray_filter_destroy(NULL);
+	/* A v2 caller owns only the original prefix, with no apply_props tail. */
+	{
+		size_t size = offsetof(struct pw_ndarray_filter_events, apply_props);
+		void *v2 = malloc(size);
+		uint32_t version = PW_VERSION_NDARRAY_FILTER_EVENTS_V2;
+
+		spa_assert_se(v2 != NULL);
+		memcpy(v2, &events, size);
+		memcpy(v2, &version, sizeof(version));
+		config.events = v2;
+		filter = NULL;
+		spa_assert_se(pw_ndarray_filter_new(&config, &filter) == 0);
+		free(v2);
+		pw_ndarray_filter_destroy(filter);
+		config.events = &events;
+	}
 
 	config.flags = PW_NDARRAY_FILTER_FLAG_RT_PROCESS;
 	filter = NULL;
