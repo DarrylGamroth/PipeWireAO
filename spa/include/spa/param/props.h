@@ -34,6 +34,8 @@ enum spa_prop_info {
 					  *  nested UI groups */
 	SPA_PROP_INFO_visibility,	/**< (String) UI visibility level, for example
 					  *  "Beginner", "Expert", "Guru", or "Invisible" */
+	SPA_PROP_INFO_displayName,	/**< (String) optional user readable label;
+					  *  does not change the property name or id */
 };
 
 /** predefined properties for SPA_TYPE_OBJECT_Props */
