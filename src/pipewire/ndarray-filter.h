@@ -26,7 +26,8 @@ extern "C" {
 
 /** \{ */
 
-#define PW_VERSION_NDARRAY_FILTER_EVENTS 2u
+#define PW_VERSION_NDARRAY_FILTER_EVENTS 3u
+#define PW_VERSION_NDARRAY_FILTER_EVENTS_V2 2u
 #define PW_VERSION_NDARRAY_FILTER_EVENTS_V1 1u
 #define PW_VERSION_NDARRAY_FILTER_CONFIG 0u
 #define PW_NDARRAY_FILTER_MAX_PORTS 1024u
@@ -248,6 +249,15 @@ struct pw_ndarray_filter_events {
 	int (*set_props)(void *data, const struct spa_pod *props);
 	/** Reset processing state while the node is stopped. */
 	int (*reset)(void *data);
+	/**
+	 * Adopt staged scalar properties without processing a frame. Optional since
+	 * version 3. Called after successful set_props while prepared, serialized
+	 * with process on its loop, even when required inputs are silent. Stopped
+	 * requests remain staged for prepare_process_thread. Must not process data
+	 * or change lifecycle state. The owner publishes its applied snapshot here;
+	 * native property readback follows after this callback returns.
+	 */
+	int (*apply_props)(void *data);
 };
 
 /** Immutable construction configuration. All strings and shapes are copied. */
