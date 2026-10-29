@@ -415,6 +415,7 @@ static int copy_config(struct pw_ndarray_filter *filter,
 	    config->n_ports > PW_NDARRAY_FILTER_MAX_PORTS ||
 	    config->ports == NULL || config->events == NULL ||
 	    (config->events->version != PW_VERSION_NDARRAY_FILTER_EVENTS_V1 &&
+	     config->events->version != PW_VERSION_NDARRAY_FILTER_EVENTS_V2 &&
 	     config->events->version != PW_VERSION_NDARRAY_FILTER_EVENTS) ||
 	    config->events->process == NULL ||
 	    (config->remote_name != NULL && config->remote_name[0] == '\0'))
@@ -433,7 +434,9 @@ static int copy_config(struct pw_ndarray_filter *filter,
 	memcpy(&filter->events, config->events,
 		config->events->version == PW_VERSION_NDARRAY_FILTER_EVENTS_V1
 			? offsetof(struct pw_ndarray_filter_events, enum_prop_info)
-			: sizeof(filter->events));
+			: config->events->version == PW_VERSION_NDARRAY_FILTER_EVENTS_V2
+				? offsetof(struct pw_ndarray_filter_events, apply_props)
+				: sizeof(filter->events));
 	filter->user_data = config->user_data;
 	filter->flags = config->flags;
 	filter->n_ports = config->n_ports;
@@ -469,13 +472,13 @@ static int copy_config(struct pw_ndarray_filter *filter,
 	if (parameter_input > 0 && config->events->update_parameter == NULL)
 		return -EINVAL;
 	if ((config->flags & PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES) &&
-	    (config->events->version < PW_VERSION_NDARRAY_FILTER_EVENTS ||
+	    (config->events->version < PW_VERSION_NDARRAY_FILTER_EVENTS_V2 ||
 	     config->events->enum_prop_info == NULL ||
 	     config->events->get_props == NULL ||
 	     config->events->set_props == NULL))
 		return -EINVAL;
 	if ((config->flags & PW_NDARRAY_FILTER_FLAG_OWNER_RESET_CONTROL) &&
-	    (config->events->version < PW_VERSION_NDARRAY_FILTER_EVENTS ||
+	    (config->events->version < PW_VERSION_NDARRAY_FILTER_EVENTS_V2 ||
 	     config->events->reset == NULL))
 		return -EINVAL;
 	filter->n_inputs = input;
@@ -1377,6 +1380,37 @@ static int deactivate(struct pw_ndarray_filter *filter)
 	return res > 0 ? -EPROTO : res;
 }
 
+static int apply_props(struct spa_loop *loop SPA_UNUSED,
+		bool async SPA_UNUSED, uint32_t seq SPA_UNUSED,
+		const void *data SPA_UNUSED, size_t size SPA_UNUSED, void *user_data)
+{
+	struct pw_ndarray_filter *filter = user_data;
+	int res;
+
+	if (atomic_load_explicit(&filter->destroying, memory_order_acquire))
+		return -ECANCELED;
+	if (!atomic_load_explicit(&filter->prepared, memory_order_acquire))
+		return 0;
+	res = filter->events.apply_props(filter->user_data);
+	return res > 0 ? -EPROTO : res;
+}
+
+static int apply_owner_props(struct pw_ndarray_filter *filter)
+{
+	struct pw_loop *data_loop;
+
+	if (filter->events.apply_props == NULL)
+		return 0;
+	/* Non-RT processing shares this main loop. RT callbacks instead share
+	 * the data loop: invoke there so an in-flight process finishes first. */
+	if (!(filter->flags & PW_NDARRAY_FILTER_FLAG_RT_PROCESS))
+		return apply_props(NULL, false, 0, NULL, 0, filter);
+	data_loop = pw_filter_get_data_loop(filter->filter);
+	if (data_loop == NULL)
+		return -EIO;
+	return pw_loop_invoke(data_loop, apply_props, 0, NULL, 0, true, filter);
+}
+
 static void fail_on_main_loop(struct pw_ndarray_filter *filter, int res,
 		const char *message);
 
@@ -1758,6 +1792,8 @@ owner_properties:
 		res = filter->events.set_props(filter->user_data, param);
 		if (res > 0)
 			res = -EPROTO;
+		if (res == 0)
+			res = apply_owner_props(filter);
 		if (res < 0)
 			fail_on_main_loop(filter, res,
 					"invalid ndarray owner properties");
