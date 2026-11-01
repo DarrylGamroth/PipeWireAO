@@ -77,7 +77,7 @@ int main(void)
 		.inputs = ports, .outputs = ports, .input_buffers = native_buffers,
 		.output_buffers = native_buffers, .input_available = available };
 	struct spa_meta borrowed;
-	uint32_t optical = SPA_META_OPTICAL_FRINGED;
+	uint32_t optical = SPA_META_OPTICAL_FRINGED, trigger = SPA_META_ACQUISITION_TRIGGER_LOW;
 	int32_t optional = 17;
 
 	spa_assert_se(spa_meta_acquisition_init(&acquisition));
@@ -86,8 +86,24 @@ int main(void)
 	spa_assert_se(spa_meta_acquisition_set_trigger_classification(&acquisition, SPA_META_ACQUISITION_TRIGGER_LOW));
 	spa_assert_se(spa_meta_properties_init(&metas[2]));
 	spa_assert_se(spa_meta_properties_add(&metas[2], 1, SPA_TYPE_Id, 4, &optical));
+	spa_assert_se(spa_meta_properties_add(&metas[2], SPA_META_PROPERTY_triggerClassification, SPA_TYPE_Id, 4, &trigger));
 	spa_assert_se(spa_meta_properties_add(&metas[2], 19, SPA_TYPE_Int, 4, &optional));
 	spa_assert_se(project_buffer(&native, &port, false, &view) == 0);
+	{
+		const struct spa_pod *property = spa_meta_properties_find(&metas[2], SPA_META_PROPERTY_triggerClassification);
+		trigger = SPA_META_ACQUISITION_TRIGGER_HIGH;
+		memcpy(SPA_POD_BODY((struct spa_pod *)property), &trigger, sizeof(trigger));
+		spa_assert_se(project_buffer(&native, &port, false, &view) == -EINVAL);
+		acquisition.version = SPA_META_ACQUISITION_VERSION_2;
+		acquisition.reserved2 = 0;
+		port.flags = 0;
+		spa_assert_se(project_buffer(&native, &port, false, &view) == 0);
+		spa_assert_se(spa_meta_acquisition_set_trigger_classification(&acquisition, SPA_META_ACQUISITION_TRIGGER_LOW));
+		port.flags = PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3;
+		trigger = SPA_META_ACQUISITION_TRIGGER_LOW;
+		memcpy(SPA_POD_BODY((struct spa_pod *)property), &trigger, sizeof(trigger));
+		spa_assert_se(project_buffer(&native, &port, false, &view) == 0);
+	}
 	spa_assert_se(view.struct_size == sizeof(struct pw_ndarray_filter_buffer));
 	spa_assert_se(pw_ndarray_filter_get_buffer_properties(&filter, SPA_DIRECTION_INPUT, 0, &borrowed) == -EPERM);
 	filter.in_process = true;
@@ -113,10 +129,29 @@ int main(void)
 	spa_assert_se(validate_completed_output(&port, &native, &view) == 0);
 	view.flags = 0;
 	spa_assert_se(spa_meta_properties_add(&metas[2], 1, SPA_TYPE_Id, 4, &optical));
+	spa_assert_se(spa_meta_properties_add(&metas[2], SPA_META_PROPERTY_triggerClassification, SPA_TYPE_Id, 4, &trigger));
 	view.acquisition = acquisition;
 	view.header = header;
 	view.metadata_valid = PW_NDARRAY_FILTER_METADATA_HEADER | PW_NDARRAY_FILTER_METADATA_ACQUISITION;
 	spa_assert_se(validate_completed_output(&port, &native, &view) == 0);
+	{
+		const struct spa_pod *property = spa_meta_properties_find(&metas[2], SPA_META_PROPERTY_triggerClassification);
+		trigger = SPA_META_ACQUISITION_TRIGGER_HIGH;
+		memcpy(SPA_POD_BODY((struct spa_pod *)property), &trigger, sizeof(trigger));
+		spa_assert_se(validate_completed_output(&port, &native, &view) == -EINVAL);
+		view.acquisition.version = SPA_META_ACQUISITION_VERSION_2;
+		view.acquisition.reserved2 = 0;
+		port.flags = 0;
+		spa_assert_se(validate_completed_output(&port, &native, &view) == 0);
+		view.acquisition = acquisition;
+		port.flags = PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3;
+		trigger = SPA_META_ACQUISITION_TRIGGER_LOW;
+		memcpy(SPA_POD_BODY((struct spa_pod *)property), &trigger, sizeof(trigger));
+		spa_assert_se(validate_completed_output(&port, &native, &view) == 0);
+	}
+	view.metadata_valid &= ~PW_NDARRAY_FILTER_METADATA_ACQUISITION;
+	spa_assert_se(validate_completed_output(&port, &native, &view) == -EINVAL);
+	view.metadata_valid |= PW_NDARRAY_FILTER_METADATA_ACQUISITION;
 	view.header.seq++;
 	spa_assert_se(validate_completed_output(&port, &native, &view) == -EINVAL);
 	view.header.seq--;

@@ -871,8 +871,10 @@ static int project_buffer(struct pw_buffer *pw_buffer,
 		    spa_buffer_find_meta(buffer, SPA_META_TYPE_FEATURES(SPA_META_Properties,
 			    SPA_META_FEATURE_PROPERTIES_VERSION_1)) == NULL)
 			return -ENOTSUP;
-		if (!output && !spa_meta_properties_is_valid(meta, port->property_requirements,
-				port->n_property_requirements)) {
+		if (!output && (!spa_meta_properties_is_valid(meta, port->property_requirements,
+				port->n_property_requirements) ||
+		    !spa_meta_properties_acquisition_is_consistent(meta,
+				spa_buffer_find_meta(buffer, SPA_META_Acquisition)))) {
 			return -EINVAL;
 		}
 		if (!output &&
@@ -908,6 +910,7 @@ static int validate_completed_output(const struct ndarray_port *port,
 	struct spa_buffer *buffer = pw_buffer->buffer;
 	struct spa_data *data = &buffer->datas[0];
 	struct spa_meta acquisition_meta;
+	struct spa_meta_acquisition default_acquisition;
 	uint32_t metadata_available = 0;
 	void *expected = SPA_PTROFF(data->data, data->chunk->offset, void);
 
@@ -941,6 +944,16 @@ static int validate_completed_output(const struct ndarray_port *port,
 		if (meta == NULL || meta->size != port->properties_capacity ||
 		    !spa_meta_properties_is_valid(meta, port->property_requirements,
 			    port->n_property_requirements))
+			return -EINVAL;
+		if ((metadata_available & PW_NDARRAY_FILTER_METADATA_ACQUISITION) &&
+		    !(view->metadata_valid & PW_NDARRAY_FILTER_METADATA_ACQUISITION)) {
+			init_port_acquisition(port, &default_acquisition);
+			acquisition_meta = (struct spa_meta) {
+				SPA_META_Acquisition, sizeof(default_acquisition), &default_acquisition };
+		}
+		if (!spa_meta_properties_acquisition_is_consistent(meta,
+				metadata_available & PW_NDARRAY_FILTER_METADATA_ACQUISITION ?
+				&acquisition_meta : NULL))
 			return -EINVAL;
 		if ((view->metadata_valid & PW_NDARRAY_FILTER_METADATA_HEADER) &&
 		    (view->metadata_valid & PW_NDARRAY_FILTER_METADATA_ACQUISITION) &&
@@ -2216,7 +2229,8 @@ int pw_ndarray_filter_set_port_buffer_properties(struct pw_ndarray_filter *filte
 	for (i = 0; i < n_requirements; i++) {
 		if (requirements[i].key == 0 ||
 		    !_spa_meta_property_type_is_valid(requirements[i].type) ||
-		    (requirements[i].key == SPA_META_PROPERTY_opticalClassification &&
+		    ((requirements[i].key == SPA_META_PROPERTY_opticalClassification ||
+		      requirements[i].key == SPA_META_PROPERTY_triggerClassification) &&
 		     requirements[i].type != SPA_TYPE_Id))
 			return -EINVAL;
 		for (j = 0; j < i; j++)

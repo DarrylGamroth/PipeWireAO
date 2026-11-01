@@ -302,6 +302,7 @@ No compatibility aliases are defined.
 | `SPA_META_PROPERTIES_VERSION` | Object id 1 | Version 1 of this contract |
 | `SPA_META_FEATURE_PROPERTIES_VERSION_1` | bit 0 | ParamMeta schema capability |
 | `SPA_META_PROPERTY_opticalClassification` | key 1, POD Id | Optical classification of this payload |
+| `SPA_META_PROPERTY_triggerClassification` | key 2, POD Id | Electrical trigger classification, existing Acquisition trigger enum 0–3 |
 | `SPA_META_OPTICAL_ABSENT` | 0 | No optical classification established |
 | `SPA_META_OPTICAL_UNFRINGED` | 1 | Application classifies the payload as unfringed |
 | `SPA_META_OPTICAL_FRINGED` | 2 | Application classifies the payload as fringed |
@@ -309,6 +310,19 @@ No compatibility aliases are defined.
 
 An absent key differs from the present Id value `SPA_META_OPTICAL_ABSENT`.
 A required optical key **MUST** be present even when its value is absent.
+The trigger property adopts the existing Acquisition authority and exact enum:
+`SPA_META_ACQUISITION_TRIGGER_ABSENT` (0), `LOW` (1), `HIGH` (2), `MIXED` (3).
+It classifies the electrical trigger during this payload's acquisition; it does
+not replace canonical Acquisition identity or timing. Acquisition v1/v2 can
+coexist with the typed trigger property. A missing property remains missing;
+readers **MUST NOT** invent it from Acquisition v1/v2's zero reserved field.
+When the property and valid Acquisition v3 coexist, their electrical values
+**MUST** match. `spa_meta_properties_acquisition_is_consistent()` checks this
+relation after property validation; a missing Acquisition record or trigger
+property imposes no comparison, while a present invalid Acquisition fails.
+The ndarray boundary checks inputs before processing and completed outputs
+before publication. Acquisition v3 remains unchanged during this migration.
+
 Electrical Acquisition v3 trigger classification and optical classification
 **MUST** remain independent. An application relating them **MUST** define and
 validate its mapping, including mixed and absent values. Neither this container
@@ -321,8 +335,8 @@ The Object's POD size bounds used bytes; all property padding and all unused
 allocation bytes **MUST** be zero. At most 64 properties and 64 requirements are
 accepted. Initial values are Bool, Id, Int, Long, Float, Double, String and Bytes;
 scalar sizes are exact, Bool is 0/1, and String has one terminating NUL and no
-embedded NUL. Pointers, FDs and nested containers are excluded. The optical key
-accepts only Id values 0–3. Unknown well-formed optional keys **MUST** be skipped.
+embedded NUL. Pointers, FDs and nested containers are excluded. The optical and trigger keys
+accept only Id values 0–3. Unknown well-formed optional keys **MUST** be skipped.
 Unknown mandatory keys **MUST** fail unless explicitly understood through a
 consumer requirement. Unknown flags, duplicates, malformed bounds, unsupported
 values/types, missing required keys and required-type mismatches **MUST** fail.
@@ -408,6 +422,21 @@ starts from `6dffd8dc722013ad7c62906042a230420c4e2ecc`. Validation on 2026-11-01
   through retention, drops and reuse. The unmodified queue rejects the same
   required-properties private-core fixture with `-ENOTSUP`; all cores close.
   Nine existing queue Header/Acquisition/lifecycle tests pass.
+
+The typed-trigger migration slice additionally passed six focused tests:
+`spa-test-buffer-properties`, `pw-test-ndarray-filter-buffer-properties`,
+`pw-test-ndarray-filter-buffer-properties-remote` and
+`pw-test-ndarray-filter-trigger-properties-{v2,input-mismatch,output-mismatch}`.
+These cover all four electrical values, explicit absent versus missing, exact
+Id type/range, Acquisition v2 coexistence, matching v3, conflicts rejected before
+input processing/output publication, and the effective default v3 output record.
+The two mismatch private-core fixtures also assert no sink buffer arrives.
+The same new input-mismatch unit invariant compiled against the prior native
+ndarray implementation (`da0738ace`) fails because it accepts the input; the
+changed implementation passes. Both new unit sources passed AddressSanitizer
+and UndefinedBehaviorSanitizer again. Queue byte-copy and all three private-core
+Properties fixtures passed with typed trigger preservation added; the generic
+queue transfer code required no new field-specific handling.
 
 One parallel native regression run timed out during Version 3 client teardown
 **after** its successful data-receipt result. That test passed in isolation and

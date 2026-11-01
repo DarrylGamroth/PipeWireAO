@@ -78,9 +78,19 @@ static const struct spa_type_info spa_type_meta_optical_classification[] = {
 	{ 0, 0, NULL, NULL },
 };
 
+static const struct spa_type_info spa_type_meta_trigger_classification[] = {
+	{ SPA_META_ACQUISITION_TRIGGER_ABSENT, SPA_TYPE_Int, "Spa:Enum:TriggerClassification:absent", NULL },
+	{ SPA_META_ACQUISITION_TRIGGER_LOW, SPA_TYPE_Int, "Spa:Enum:TriggerClassification:low", NULL },
+	{ SPA_META_ACQUISITION_TRIGGER_HIGH, SPA_TYPE_Int, "Spa:Enum:TriggerClassification:high", NULL },
+	{ SPA_META_ACQUISITION_TRIGGER_MIXED, SPA_TYPE_Int, "Spa:Enum:TriggerClassification:mixed", NULL },
+	{ 0, 0, NULL, NULL },
+};
+
 static const struct spa_type_info spa_type_buffer_properties[] = {
 	{ SPA_META_PROPERTY_opticalClassification, SPA_TYPE_Id,
 		SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE "opticalClassification", spa_type_meta_optical_classification },
+	{ SPA_META_PROPERTY_triggerClassification, SPA_TYPE_Id,
+		SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE "triggerClassification", spa_type_meta_trigger_classification },
 	{ 0, 0, NULL, NULL },
 };
 
