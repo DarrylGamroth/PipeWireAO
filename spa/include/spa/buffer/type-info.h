@@ -67,6 +67,23 @@ static const struct spa_type_info spa_type_meta_videotransform_type[] = {
 	{ 0, 0, NULL, NULL },
 };
 
+#define SPA_TYPE_INFO_BufferProperties SPA_TYPE_INFO_OBJECT_BASE "BufferProperties"
+#define SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE SPA_TYPE_INFO_BufferProperties ":"
+
+static const struct spa_type_info spa_type_meta_optical_classification[] = {
+	{ SPA_META_OPTICAL_ABSENT, SPA_TYPE_Int, "Spa:Enum:OpticalClassification:absent", NULL },
+	{ SPA_META_OPTICAL_UNFRINGED, SPA_TYPE_Int, "Spa:Enum:OpticalClassification:unfringed", NULL },
+	{ SPA_META_OPTICAL_FRINGED, SPA_TYPE_Int, "Spa:Enum:OpticalClassification:fringed", NULL },
+	{ SPA_META_OPTICAL_MIXED, SPA_TYPE_Int, "Spa:Enum:OpticalClassification:mixed", NULL },
+	{ 0, 0, NULL, NULL },
+};
+
+static const struct spa_type_info spa_type_buffer_properties[] = {
+	{ SPA_META_PROPERTY_opticalClassification, SPA_TYPE_Id,
+		SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE "opticalClassification", spa_type_meta_optical_classification },
+	{ 0, 0, NULL, NULL },
+};
+
 static const struct spa_type_info spa_type_meta_type[] = {
 	{ SPA_META_Invalid, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "Invalid", NULL },
 	{ SPA_META_Header, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "Header", NULL },
@@ -78,6 +95,7 @@ static const struct spa_type_info spa_type_meta_type[] = {
 	{ SPA_META_Busy, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "Busy", NULL },
 	{ SPA_META_VideoTransform, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "VideoTransform", NULL },
 	{ SPA_META_SyncTimeline, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "SyncTimeline", NULL },
+	{ SPA_META_Properties, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "Properties", NULL },
 	{ SPA_META_Acquisition, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "Acquisition", NULL },
 	{ 0, 0, NULL, NULL },
 };

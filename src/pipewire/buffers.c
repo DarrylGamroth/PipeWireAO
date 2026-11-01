@@ -161,6 +161,14 @@ static int alloc_buffers(struct pw_mempool *pool,
 	return 0;
 }
 
+static bool is_properties_meta(const struct spa_pod *param)
+{
+	uint32_t type;
+	return param != NULL && spa_pod_parse_object(param, SPA_TYPE_OBJECT_ParamMeta,
+			NULL, SPA_PARAM_META_type, SPA_POD_Id(&type)) >= 0 &&
+		type == SPA_META_Properties;
+}
+
 static int
 param_filter(struct pw_buffers *this,
 	     struct port *in_port,
@@ -195,6 +203,8 @@ param_filter(struct pw_buffers *this,
 		pw_log_pod(SPA_LOG_LEVEL_DEBUG, iparam);
 
 		for (oidx = 0;;) {
+			struct spa_pod_builder_state state;
+			spa_pod_builder_get_state(result, &state);
 			pw_log_debug("%p: output param %d id:%d", this, oidx, id);
 			out_res = spa_node_port_enum_params_sync(out_port->node,
 						out_port->direction, out_port->port_id,
@@ -204,10 +214,17 @@ param_filter(struct pw_buffers *this,
 			if (out_res < 1)
 				break;
 
+			/* Properties needs explicit support on both peers. A missing Meta
+			 * parameter remains permissive for established metadata types. */
+			if (id == SPA_PARAM_Meta && in_res == -ENOENT && is_properties_meta(oparam)) {
+				spa_pod_builder_reset(result, &state);
+				continue;
+			}
 			pw_log_pod(SPA_LOG_LEVEL_DEBUG, oparam);
 			num++;
 		}
-		if (out_res == -ENOENT && iparam) {
+		if (out_res == -ENOENT && iparam &&
+		    !(id == SPA_PARAM_Meta && is_properties_meta(iparam))) {
 			/* no output param known but we have an input param,
 			 * use that one */
 			spa_pod_builder_raw_padded(result, iparam, SPA_POD_SIZE(iparam));
@@ -246,6 +263,7 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 	int32_t *data_strides;
 	uint32_t *data_aligns;
 	uint32_t types, *data_types;
+	bool missing_required_meta = false;
 	struct port output = { outnode, SPA_DIRECTION_OUTPUT, out_port_id };
 	struct port input = { innode, SPA_DIRECTION_INPUT, in_port_id };
 	int res;
@@ -346,9 +364,12 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 			continue;
 		}
 		for (j = 0; qmetas != 0 && j < n_metas; j++)
-			SPA_FLAG_CLEAR(qmetas, 1<<metas[j].type);
-		if (qmetas != 0)
+			if (metas[j].type < 32)
+				SPA_FLAG_CLEAR(qmetas, 1u << metas[j].type);
+		if (qmetas != 0) {
+			missing_required_meta = true;
 			continue;
+		}
 		if (qpage_size_hint > SPA_BUFFER_PAGE_SIZE_HUGE_1GB) {
 			pw_log_warn("%p: unsupported page-size hint %u", result,
 					qpage_size_hint);
@@ -371,6 +392,8 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 		break;
 	}
 	if (i == n_params) {
+		if (missing_required_meta)
+			return -ENOTSUP;
 		pw_log_warn("%p: no buffers param", result);
 		minsize = context->settings.clock_quantum_limit;
 		max_buffers = 2u;

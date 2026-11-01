@@ -32,6 +32,7 @@ extern "C" {
 #define PW_VERSION_NDARRAY_FILTER_CONFIG 0u
 #define PW_NDARRAY_FILTER_MAX_PORTS 1024u
 #define PW_NDARRAY_FILTER_NAME_MAX 255u
+#define PW_NDARRAY_FILTER_BUFFER_PROPERTIES_MAX_SIZE 3968u
 
 /** Standalone ndarray filter execution options. */
 enum pw_ndarray_filter_flags {
@@ -279,6 +280,31 @@ struct pw_ndarray_filter;
 /** Construct an unconnected filter. Calls pw_init() once on success. */
 int pw_ndarray_filter_new(const struct pw_ndarray_filter_config *config,
 		struct pw_ndarray_filter **filter);
+
+/**
+ * Opt one frame-data Port into bounded per-buffer properties before connect.
+ *
+ * The direction-local declaration index includes Parameter Ports, which cannot
+ * opt in. Capacity is 16..3968, a multiple of 8; zero disables with no required
+ * fields. An allocation too small for the required fields returns -ENOSPC.
+ * Requirements are copied and checked on every input and publication.
+ * The existing callback ABI remains unchanged. A peer must negotiate Properties
+ * metadata and the Version 1 schema feature.
+ */
+int pw_ndarray_filter_set_port_buffer_properties(struct pw_ndarray_filter *filter,
+		uint32_t direction, uint32_t port_index, uint32_t capacity,
+		const struct spa_meta_property_requirement *requirements, uint32_t n_requirements);
+
+/**
+ * Borrow opted-in metadata only during process(). Inputs are read-only.
+ * Outputs are cleared to an empty Object before each callback. The returned
+ * descriptor and its bytes must not outlive the callback; do not alter the
+ * descriptor. An unavailable input returns -ENOENT. Other threads must not call
+ * this function. Ordinary pw_stream users use the same public SPA helpers and
+ * ParamMeta negotiation directly.
+ */
+int pw_ndarray_filter_get_buffer_properties(struct pw_ndarray_filter *filter,
+		uint32_t direction, uint32_t port_index, struct spa_meta *meta);
 
 /** Add the configured node and ports to the selected PipeWire remote. */
 int pw_ndarray_filter_connect(struct pw_ndarray_filter *filter);

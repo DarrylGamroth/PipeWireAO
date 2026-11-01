@@ -15,6 +15,7 @@ test_apps = [
   'test-ndarray-filter',
   'test-ndarray-filter-admission',
   'test-ndarray-filter-acquisition-admission',
+  'test-ndarray-filter-buffer-properties',
   'test-ndarray-filter-publication',
   'test-ndarray-filter-chain-parameter',
   'test-run-control',
@@ -182,6 +183,23 @@ test(
     ndarray_filter_remote_filter.full_path(),
     ndarray_filter_remote_client.full_path(),
     '--acquisition-v3',
+  ],
+  depends: pipewire_daemon_required_modules + [
+    spa_support_lib, pipewire_exec, pwao_link,
+    ndarray_filter_remote_filter, ndarray_filter_remote_client,
+  ],
+  env: polling_remote_env,
+  timeout: 30,
+)
+
+test(
+  'pw-test-ndarray-filter-buffer-properties-remote',
+  find_program('python3'),
+  args: [
+    files('test-ndarray-filter-remote.py'),
+    pipewire_exec.full_path(), pwao_link.full_path(),
+    ndarray_filter_remote_filter.full_path(), ndarray_filter_remote_client.full_path(),
+    '--acquisition-v3', '--buffer-properties',
   ],
   depends: pipewire_daemon_required_modules + [
     spa_support_lib, pipewire_exec, pwao_link,

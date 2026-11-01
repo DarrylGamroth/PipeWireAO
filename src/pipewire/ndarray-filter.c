@@ -94,6 +94,9 @@ struct ndarray_port {
 	uint32_t *shape;
 	char *schema;
 	struct pw_ndarray_filter_format format;
+	uint32_t properties_capacity;
+	uint32_t n_property_requirements;
+	struct spa_meta_property_requirement *property_requirements;
 	size_t size;
 	int32_t stride;
 	void *filter_port;
@@ -153,6 +156,7 @@ struct pw_ndarray_filter {
 	_Atomic bool properties_pending;
 	bool initialized;
 	bool connected;
+	bool in_process;
 	int64_t last_request_token;
 	int64_t completed_token;
 	int32_t run_control_result;
@@ -392,6 +396,7 @@ static int copy_port(struct ndarray_port *destination,
 
 static void clear_port(struct ndarray_port *port)
 {
+	free(port->property_requirements);
 	free(port->schema);
 	free(port->shape);
 	free(port->name);
@@ -572,50 +577,69 @@ static struct spa_pod *build_acquisition_meta(struct spa_pod_builder *builder,
 	return spa_pod_builder_pop(builder, &frame);
 }
 
-static int add_port(struct pw_ndarray_filter *filter,
-		struct ndarray_port *port)
+static int build_port_params(struct spa_pod_builder *builder,
+		const struct ndarray_port *port, const struct spa_pod **params)
 {
-	uint8_t storage[4096];
-	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(storage, sizeof(storage));
-	const struct spa_pod *params[4];
-	struct pw_properties *properties;
-	struct port_data *data;
-	uint32_t i;
+	uint32_t n_params = 4, i;
+	struct spa_pod_frame frame;
 
-	properties = pw_properties_new(
-			PW_KEY_PORT_NAME, port->name,
-			PW_KEY_MEDIA_TYPE, "Application",
-			NULL);
-	if (properties == NULL)
-		return -ENOMEM;
-	if (port->flags & PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER)
-		pw_properties_set(properties, PW_KEY_PORT_CONTROL, "true");
-	params[0] = build_format(&builder, SPA_PARAM_EnumFormat, &port->format);
-	params[1] = spa_pod_builder_add_object(&builder,
-			SPA_TYPE_OBJECT_ParamBuffers, SPA_PARAM_Buffers,
+	params[0] = build_format(builder, SPA_PARAM_EnumFormat, &port->format);
+	spa_pod_builder_push_object(builder, &frame, SPA_TYPE_OBJECT_ParamBuffers, SPA_PARAM_Buffers);
+	spa_pod_builder_add(builder,
 			SPA_PARAM_BUFFERS_buffers, SPA_POD_CHOICE_RANGE_Int(4, 2, 64),
 			SPA_PARAM_BUFFERS_blocks, SPA_POD_Int(1),
 			SPA_PARAM_BUFFERS_size, SPA_POD_Int((int32_t)port->size),
 			SPA_PARAM_BUFFERS_stride, SPA_POD_Int(port->stride),
 			SPA_PARAM_BUFFERS_dataType,
-			SPA_POD_CHOICE_FLAGS_Int((1u << SPA_DATA_MemPtr) |
-				(1u << SPA_DATA_MemFd)));
-	params[2] = spa_pod_builder_add_object(&builder,
+			SPA_POD_CHOICE_FLAGS_Int((1u << SPA_DATA_MemPtr) | (1u << SPA_DATA_MemFd)), 0);
+	if (port->properties_capacity != 0)
+		spa_pod_builder_add(builder, SPA_PARAM_BUFFERS_metaType,
+				SPA_POD_Int(1u << SPA_META_Properties), 0);
+	params[1] = spa_pod_builder_pop(builder, &frame);
+	if (port->properties_capacity != 0) {
+		spa_pod_builder_push_object(builder, &frame, SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta);
+		spa_pod_builder_add(builder,
+				SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Properties),
+				SPA_PARAM_META_size, SPA_POD_Int(port->properties_capacity), 0);
+		spa_pod_builder_prop(builder, SPA_PARAM_META_features, SPA_POD_PROP_FLAG_MANDATORY);
+		spa_pod_builder_int(builder, SPA_META_FEATURE_PROPERTIES_VERSION_1);
+		params[n_params++] = spa_pod_builder_pop(builder, &frame);
+	}
+	params[2] = spa_pod_builder_add_object(builder,
 			SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta,
 			SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Header),
 			SPA_PARAM_META_size,
 			SPA_POD_Int(sizeof(struct spa_meta_header)));
-	params[3] = build_acquisition_meta(&builder, port->flags);
-	for (i = 0; i < SPA_N_ELEMENTS(params); i++)
-		if (params[i] == NULL) {
-			pw_properties_free(properties);
+	params[3] = build_acquisition_meta(builder, port->flags);
+	for (i = 0; i < n_params; i++)
+		if (params[i] == NULL)
 			return -ENOSPC;
-		}
+	return n_params;
+}
+
+static int add_port(struct pw_ndarray_filter *filter,
+		struct ndarray_port *port)
+{
+	uint8_t storage[4096];
+	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(storage, sizeof(storage));
+	const struct spa_pod *params[5];
+	struct pw_properties *properties;
+	struct port_data *data;
+	int n_params;
+
+	if ((n_params = build_port_params(&builder, port, params)) < 0)
+		return n_params;
+	properties = pw_properties_new(PW_KEY_PORT_NAME, port->name,
+			PW_KEY_MEDIA_TYPE, "Application", NULL);
+	if (properties == NULL)
+		return -ENOMEM;
+	if (port->flags & PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER)
+		pw_properties_set(properties, PW_KEY_PORT_CONTROL, "true");
 	data = pw_filter_add_port(filter->filter,
 			port->direction == SPA_DIRECTION_INPUT
 				? PW_DIRECTION_INPUT : PW_DIRECTION_OUTPUT,
 			PW_FILTER_PORT_FLAG_MAP_BUFFERS, sizeof(*data), properties,
-			params, SPA_N_ELEMENTS(params));
+			params, n_params);
 	if (data == NULL)
 		return errno != 0 ? -errno : -ENOMEM;
 	data->port = port;
@@ -729,6 +753,11 @@ static int collect_buffer_regions(struct pw_buffer *pw_buffer,
 		    (meta->size < sizeof(struct spa_meta_header) ||
 		     (uintptr_t)meta->data % _Alignof(struct spa_meta_header) != 0))
 			return -EINVAL;
+		if (meta->type == SPA_META_Properties &&
+		    (meta->size < SPA_META_PROPERTIES_MIN_SIZE ||
+		     meta->size > SPA_META_PROPERTIES_MAX_SIZE ||
+		     !SPA_IS_ALIGNED(meta->data, 8) || (meta->size & 7u) != 0))
+			return -EINVAL;
 		if (meta->type == SPA_META_Acquisition &&
 		    (meta->size < sizeof(struct spa_meta_acquisition) ||
 		     (uintptr_t)meta->data % _Alignof(struct spa_meta_acquisition) != 0))
@@ -836,6 +865,32 @@ static int project_buffer(struct pw_buffer *pw_buffer,
 	} else if (port->flags & PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3) {
 		return -EINVAL;
 	}
+	if (port->properties_capacity != 0) {
+		meta = spa_buffer_find_meta(buffer, SPA_META_Properties);
+		if (meta == NULL || meta->size != port->properties_capacity ||
+		    spa_buffer_find_meta(buffer, SPA_META_TYPE_FEATURES(SPA_META_Properties,
+			    SPA_META_FEATURE_PROPERTIES_VERSION_1)) == NULL)
+			return -ENOTSUP;
+		if (!output && !spa_meta_properties_is_valid(meta, port->property_requirements,
+				port->n_property_requirements)) {
+			return -EINVAL;
+		}
+		if (!output &&
+		    (view->metadata_valid & PW_NDARRAY_FILTER_METADATA_HEADER) &&
+		    (view->metadata_valid & PW_NDARRAY_FILTER_METADATA_ACQUISITION) &&
+		    (view->acquisition.flags & SPA_META_ACQUISITION_FLAG_IDENTITY_VALID) &&
+		    view->header.seq != view->acquisition.sequence)
+			return -EINVAL;
+	}
+	return 0;
+}
+
+static int initialize_output_properties(const struct ndarray_port *port,
+		struct pw_buffer *buffer)
+{
+	if (port->properties_capacity != 0 && !spa_meta_properties_init(
+			spa_buffer_find_meta(buffer->buffer, SPA_META_Properties)))
+		return -EINVAL;
 	return 0;
 }
 
@@ -878,6 +933,19 @@ static int validate_completed_output(const struct ndarray_port *port,
 		};
 		if (!spa_meta_acquisition_is_valid(&acquisition_meta) ||
 		    !acquisition_version_matches_port(port, &view->acquisition))
+			return -EINVAL;
+	}
+	if (port->properties_capacity != 0 &&
+	    !(view->flags & PW_NDARRAY_FILTER_BUFFER_FLAG_OUTPUT_UNAVAILABLE)) {
+		struct spa_meta *meta = spa_buffer_find_meta(buffer, SPA_META_Properties);
+		if (meta == NULL || meta->size != port->properties_capacity ||
+		    !spa_meta_properties_is_valid(meta, port->property_requirements,
+			    port->n_property_requirements))
+			return -EINVAL;
+		if ((view->metadata_valid & PW_NDARRAY_FILTER_METADATA_HEADER) &&
+		    (view->metadata_valid & PW_NDARRAY_FILTER_METADATA_ACQUISITION) &&
+		    (view->acquisition.flags & SPA_META_ACQUISITION_FLAG_IDENTITY_VALID) &&
+		    view->header.seq != view->acquisition.sequence)
 			return -EINVAL;
 	}
 	return 0;
@@ -1297,15 +1365,21 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 	}
 	if ((res = validate_regions(filter)) < 0)
 		goto error;
+	for (i = 0; i < filter->n_outputs; i++)
+		if ((res = initialize_output_properties(filter->outputs[i],
+				filter->output_buffers[i])) < 0)
+			goto error;
 
 	if (fifo_inputs)
 		for (i = 0; i < filter->n_data_inputs; i++)
 			if (filter->input_available[i])
 				ingress_trace_add(filter, 'G', filter->data_inputs[i],
 						filter->input_buffers[i], 0);
+	filter->in_process = true;
 	res = filter->events.process(filter->user_data,
 			filter->process_inputs, filter->n_data_inputs,
 			filter->process_outputs, filter->n_outputs);
+	filter->in_process = false;
 	if (fifo_inputs)
 		for (i = 0; i < filter->n_data_inputs; i++)
 			if (filter->input_available[i])
@@ -2108,6 +2182,111 @@ int pw_ndarray_filter_new(const struct pw_ndarray_filter_config *config,
 error:
 	free_filter(filter);
 	return res;
+}
+
+static struct ndarray_port *find_properties_port(struct pw_ndarray_filter *filter,
+		uint32_t direction, uint32_t index)
+{
+	if (direction == SPA_DIRECTION_INPUT)
+		return index < filter->n_inputs ? filter->inputs[index] : NULL;
+	if (direction == SPA_DIRECTION_OUTPUT)
+		return index < filter->n_outputs ? filter->outputs[index] : NULL;
+	return NULL;
+}
+
+SPA_EXPORT
+int pw_ndarray_filter_set_port_buffer_properties(struct pw_ndarray_filter *filter,
+		uint32_t direction, uint32_t port_index, uint32_t capacity,
+		const struct spa_meta_property_requirement *requirements, uint32_t n_requirements)
+{
+	struct ndarray_port *port;
+	struct spa_meta_property_requirement *copy = NULL;
+	uint32_t i, j, minimum_size = sizeof(struct spa_pod_object);
+
+	if (filter == NULL || filter->connected)
+		return -EINVAL;
+	port = find_properties_port(filter, direction, port_index);
+	if (port == NULL || (port->flags & PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER) ||
+	    (capacity != 0 && (capacity < SPA_META_PROPERTIES_MIN_SIZE ||
+	     capacity > PW_NDARRAY_FILTER_BUFFER_PROPERTIES_MAX_SIZE || (capacity & 7u) != 0)) ||
+	    n_requirements > SPA_META_PROPERTIES_MAX_FIELDS ||
+	    (n_requirements != 0 && (capacity == 0 || requirements == NULL ||
+	     !SPA_IS_ALIGNED(requirements, SPA_ALIGNOF(struct spa_meta_property_requirement)))))
+		return -EINVAL;
+	for (i = 0; i < n_requirements; i++) {
+		if (requirements[i].key == 0 ||
+		    !_spa_meta_property_type_is_valid(requirements[i].type) ||
+		    (requirements[i].key == SPA_META_PROPERTY_opticalClassification &&
+		     requirements[i].type != SPA_TYPE_Id))
+			return -EINVAL;
+		for (j = 0; j < i; j++)
+			if (requirements[j].key == requirements[i].key)
+				return -EEXIST;
+		minimum_size += SPA_ROUND_UP_N(sizeof(struct spa_pod_prop) +
+			(requirements[i].type == SPA_TYPE_Bytes ? 0u :
+			 requirements[i].type == SPA_TYPE_String ? 1u :
+			 requirements[i].type == SPA_TYPE_Long ||
+			 requirements[i].type == SPA_TYPE_Double ? 8u : 4u), 8);
+	}
+	if (n_requirements != 0 && minimum_size > capacity)
+		return -ENOSPC;
+	if (n_requirements != 0) {
+		copy = malloc(n_requirements * sizeof(*copy));
+		if (copy == NULL)
+			return -ENOMEM;
+		memcpy(copy, requirements, n_requirements * sizeof(*copy));
+	}
+	{
+		uint8_t storage[4096];
+		struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(storage, sizeof(storage));
+		const struct spa_pod *params[5];
+		struct ndarray_port declaration = *port;
+		int n_params, res;
+
+		declaration.properties_capacity = capacity;
+		n_params = build_port_params(&builder, &declaration, params);
+		res = n_params < 0 ? n_params : pw_filter_update_params(filter->filter,
+				port->filter_port, params, n_params);
+		if (res < 0) {
+			free(copy);
+			return res;
+		}
+	}
+	free(port->property_requirements);
+	port->property_requirements = copy;
+	port->n_property_requirements = n_requirements;
+	port->properties_capacity = capacity;
+	return 0;
+}
+
+SPA_EXPORT
+int pw_ndarray_filter_get_buffer_properties(struct pw_ndarray_filter *filter,
+		uint32_t direction, uint32_t port_index, struct spa_meta *meta)
+{
+	struct ndarray_port *port;
+	struct pw_buffer *buffer;
+	struct spa_meta *mapped;
+
+	if (filter == NULL || meta == NULL)
+		return -EINVAL;
+	memset(meta, 0, sizeof(*meta));
+	if (!filter->in_process)
+		return -EPERM;
+	port = find_properties_port(filter, direction, port_index);
+	if (port == NULL || port->properties_capacity == 0 ||
+	    (port->flags & PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER))
+		return -ENOTSUP;
+	if (direction == SPA_DIRECTION_INPUT) {
+		if (!filter->input_available[port->data_index])
+			return -ENOENT;
+		buffer = filter->input_buffers[port->data_index];
+	} else {
+		buffer = filter->output_buffers[port->index];
+	}
+	if (buffer == NULL || (mapped = spa_buffer_find_meta(buffer->buffer, SPA_META_Properties)) == NULL)
+		return -ENOENT;
+	*meta = *mapped;
+	return 0;
 }
 
 SPA_EXPORT

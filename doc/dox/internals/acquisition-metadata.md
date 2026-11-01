@@ -279,3 +279,142 @@ The implemented capabilities make the contract executable and prevent false
 cross-host matches. A deployment may claim operational multi-host joins only
 after its timestamp producer, network carriage, and join policy pass the
 corresponding verification obligations above.
+
+## Extensible per-buffer metadata: implementation plan
+
+Status: native implementation and focused CPU validation complete against PipeWireAO 1.7.2, commit
+`7a2cf5106`. Acquisition Versions 1/2/3, metadata ID 11, Header and all existing
+ndarray callback structures remain unchanged. Slot 12 remains retired.
+
+### Buffer properties contract and naming authority
+
+This section owns the following new protocol vocabulary. `Properties` follows
+SPA POD Object properties; `BufferProperties` distinguishes these per-buffer
+observations from node controls and static Port properties. `opticalClassification`
+records an optical classification supplied by the application. Its authority is
+an explicit optical model or measurement, never an electrical trigger level.
+No compatibility aliases are defined.
+
+| Name | Numeric value / representation | Meaning |
+|---|---|---|
+| `SPA_META_Properties` | 13 | One bounded POD Object in the buffer lease |
+| `SPA_TYPE_OBJECT_BufferProperties` | `0x40010` | Schema-defined per-buffer Object type |
+| `SPA_META_PROPERTIES_VERSION` | Object id 1 | Version 1 of this contract |
+| `SPA_META_FEATURE_PROPERTIES_VERSION_1` | bit 0 | ParamMeta schema capability |
+| `SPA_META_PROPERTY_opticalClassification` | key 1, POD Id | Optical classification of this payload |
+| `SPA_META_OPTICAL_ABSENT` | 0 | No optical classification established |
+| `SPA_META_OPTICAL_UNFRINGED` | 1 | Application classifies the payload as unfringed |
+| `SPA_META_OPTICAL_FRINGED` | 2 | Application classifies the payload as fringed |
+| `SPA_META_OPTICAL_MIXED` | 3 | Payload includes both optical classifications |
+
+An absent key differs from the present Id value `SPA_META_OPTICAL_ABSENT`.
+A required optical key **MUST** be present even when its value is absent.
+Electrical Acquisition v3 trigger classification and optical classification
+**MUST** remain independent. An application relating them **MUST** define and
+validate its mapping, including mixed and absent values. Neither this container
+nor its helpers infer such a mapping. Header `seq` **MUST** equal Acquisition
+`sequence` whenever both records are published with valid acquisition identity.
+
+The allocation is 16–4096 bytes, aligned to 8 bytes, and a multiple of 8. It
+contains a `spa_pod_object` followed by ascending, unique, nonzero property keys.
+The Object's POD size bounds used bytes; all property padding and all unused
+allocation bytes **MUST** be zero. At most 64 properties and 64 requirements are
+accepted. Initial values are Bool, Id, Int, Long, Float, Double, String and Bytes;
+scalar sizes are exact, Bool is 0/1, and String has one terminating NUL and no
+embedded NUL. Pointers, FDs and nested containers are excluded. The optical key
+accepts only Id values 0–3. Unknown well-formed optional keys **MUST** be skipped.
+Unknown mandatory keys **MUST** fail unless explicitly understood through a
+consumer requirement. Unknown flags, duplicates, malformed bounds, unsupported
+values/types, missing required keys and required-type mismatches **MUST** fail.
+`spa_meta_property_requirement` is exactly two uint32 fields, `key` and `type`.
+A requirement declares understanding of that key's meaning and exact POD type;
+there is no conversion or implicit default.
+
+Negotiate `SPA_PARAM_Meta` with type 13, the bounded allocation size and mandatory
+`SPA_PARAM_META_features` bit 0. Require bit 13 in
+`SPA_PARAM_BUFFERS_metaType`. These standard parameters apply to `pw_stream`,
+`pw_filter` and ndarray ports. The feature proves the container schema; each
+consumer declares its required key/type pairs locally and validates each used
+record. It does not prove a producer will supply a particular optional key.
+An unsupported metadata type or schema **MUST** fail negotiation or buffer
+admission. The public SPA helpers implement allocation-free construction,
+validation and lookup in caller-owned storage. Initialize every reused output;
+absence **MUST NOT** reuse a previous publication's value.
+
+`pw_ndarray_filter_set_port_buffer_properties()` explicitly opts one direction
+and direction-local declaration index into this contract before connect. It
+copies the bounded requirement array and rejects capacities smaller than the
+minimum required POD content with `-ENOSPC`; Parameter Ports are excluded. A second
+configuration call replaces that declaration. Capacity zero disables the
+capability only with no requirements. Existing structs, event versions and old
+streams retain their ABI. The ndarray maximum capacity is 3968 bytes, leaving
+room for Header and Acquisition within its existing aggregate metadata bound.
+`pw_ndarray_filter_get_buffer_properties()` returns a borrowed `spa_meta`
+descriptor only during the synchronous process callback. Inputs are read-only;
+outputs are writable. Each opted-in output starts with an empty Object before
+every callback, including callbacks with retained outputs. A producer may call
+`spa_meta_properties_init()` explicitly; `spa_meta_properties_add()` appends one
+bounded scalar property. Completed outputs are checked against requirements;
+unavailable outputs are not published. Consumers reject malformed or incomplete
+input before invoking the process callback. Output Header/Acquisition sequence
+consistency is checked when properties are enabled; legacy streams retain their
+previous behavior.
+
+The buffer lease owns ndarray, Acquisition and property bytes together. Unchanged
+pass-through preserves all validated properties. Derived algorithm outputs need
+application-specific physical provenance; this API does not choose an input's
+facts for a sum or join. Native queue transfer already copies matching negotiated
+metadata types of equal size; both links must negotiate this capability. Busy
+and feature-only metadata remain endpoint-local. Native POD bytes do not define
+a cross-host wire encoding. GPU source/RTC/GUI trials, device qualification and
+callback deadline measurements remain separate from CPU/private-core evidence.
+
+### Validation evidence
+
+Native branch `codex/buffer-metadata`; queue branch `codex/buffer-properties`
+starts from `6dffd8dc722013ad7c62906042a230420c4e2ecc`. Validation on 2026-11-01:
+
+- `meson setup build -Dauto_features=disabled -Dtests=enabled -Dtest=enabled
+  -Dsupport=enabled -Dspa-plugins=enabled -Dexamples=disabled`; native library,
+  support plugin and required private-core modules built successfully.
+- `meson test -C build --num-processes 1` with `spa-test-buffer-properties`,
+  `pw-test-buffers-negotiate`, `pw-test-ndarray-filter-buffer-properties`,
+  `pw-test-ndarray-filter`, `pw-test-ndarray-filter-admission`,
+  `pw-test-ndarray-filter-acquisition-admission`,
+  `pw-test-ndarray-filter-remote`, `pw-test-ndarray-filter-acquisition-v3`,
+  `pw-test-ndarray-filter-buffer-properties-remote`,
+  `pw-test-ndarray-filter-fifo` and `pw-test-ndarray-filter-buffers32`: 11/11
+  passed. Tests cover required fields/types, 129 malformed cases, 64-field
+  limits, reset, callback borrowing, optical/electrical independence, exact
+  Header/Acquisition sequence, optional-field preservation and unchanged streams.
+- The same required-properties negotiation test linked against baseline
+  `buffers.c` returns success for an unsupported peer and fails its assertion
+  (`result=0`, expected `-ENOTSUP`). The changed implementation passes all five
+  Properties negotiation cases and 256 established buffer-allocation cases.
+  A missing ParamMeta remains permissive for established metadata types;
+  Properties alone requires both peers to advertise support. Unmet required
+  metadata masks now reject instead of falling back to default buffers. Feature
+  entries cannot shift the 32-bit required-metadata mask.
+- Both new native test sources passed GCC AddressSanitizer and
+  UndefinedBehaviorSanitizer (`-O1 -g -fsanitize=address,undefined
+  -fno-omit-frame-pointer`), including copied configuration requirements. The subsequent minimum-capacity
+  admission check passed the ndarray unit and private-core property tests.
+- `meson test -C build test-spa` checks the existing Header and Acquisition ABI
+  and behavior; those assertions remain unchanged. Enumeration sentinel tests
+  include the new metadata and Object IDs.
+- Queue validation passes its byte-copy test plus private-core copy/fanout,
+  copy/queue-only and MemFd lease/queue-only tests. All four optical Id values
+  and unknown optional fields remain attached to their Acquisition sequence
+  through retention, drops and reuse. The unmodified queue rejects the same
+  required-properties private-core fixture with `-ENOTSUP`; all cores close.
+  Nine existing queue Header/Acquisition/lifecycle tests pass.
+
+One parallel native regression run timed out during Version 3 client teardown
+**after** its successful data-receipt result. That test passed in isolation and
+in the complete sequential run; no root cause is established. Minimal builds
+emit an expected missing optional D-Bus-support warning. No simulator or desktop
+core is used. GPU source/RTC/GUI integration, device qualification, and callback
+deadline measurements remain separate evidence. Independent review is recorded
+by the owning integration workstream.
+Higher-rate scheduling, asynchronous joins and shared-DM attribution remain
+separate work.

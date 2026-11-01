@@ -82,6 +82,8 @@ static const struct spa_type_info spa_types[] = {
 	{ SPA_TYPE_OBJECT_PeerParam, SPA_TYPE_Object, SPA_TYPE_INFO_PeerParam, spa_type_peer_param },
 	{ SPA_TYPE_OBJECT_ParamDict, SPA_TYPE_Object, SPA_TYPE_INFO_PARAM_Dict, spa_type_param_dict },
 
+	{ SPA_TYPE_OBJECT_BufferProperties, SPA_TYPE_Object, SPA_TYPE_INFO_BufferProperties, spa_type_buffer_properties },
+
 	{ 0, 0, NULL, NULL }
 };
 
