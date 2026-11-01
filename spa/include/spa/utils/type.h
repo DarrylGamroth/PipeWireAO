@@ -90,6 +90,7 @@ enum {
 	SPA_TYPE_OBJECT_ParamTag,
 	SPA_TYPE_OBJECT_PeerParam,
 	SPA_TYPE_OBJECT_ParamDict,
+	SPA_TYPE_OBJECT_BufferProperties = 0x40010,
 	_SPA_TYPE_OBJECT_LAST,			/**< not part of ABI */
 
 	/* vendor extensions */

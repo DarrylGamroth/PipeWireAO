@@ -44,7 +44,8 @@ enum spa_meta_type {
 	SPA_META_Acquisition = 11,	/**< struct spa_meta_acquisition */
 	/* Slot 12 was published for the removed ndarray progress metadata.
 	 * Keep it unassigned so a later metadata type cannot reuse that ABI ID. */
-	_SPA_META_LAST = 13,		/**< not part of ABI/API */
+	SPA_META_Properties = 13,	/**< bounded BufferProperties POD Object */
+	_SPA_META_LAST = 14,		/**< not part of ABI/API */
 
 	SPA_META_START_custom		= 0x200,
 
@@ -619,6 +620,242 @@ SPA_API_META bool spa_meta_acquisition_times_match(
 	else
 		limit += tolerance_nsec;
 	return distance <= limit;
+}
+
+/** Version 1 per-buffer property schema. See acquisition-metadata.md. */
+enum spa_meta_properties_constant {
+	SPA_META_PROPERTIES_VERSION = 1u,
+	SPA_META_FEATURE_PROPERTIES_VERSION_1 = (1u << 0),
+	SPA_META_PROPERTIES_MIN_SIZE = 16u,
+	SPA_META_PROPERTIES_MAX_SIZE = 4096u,
+	SPA_META_PROPERTIES_MAX_FIELDS = 64u,
+};
+
+enum spa_meta_property {
+	SPA_META_PROPERTY_opticalClassification = 1u,
+};
+
+enum spa_meta_optical_classification {
+	SPA_META_OPTICAL_ABSENT = 0u,
+	SPA_META_OPTICAL_UNFRINGED = 1u,
+	SPA_META_OPTICAL_FRINGED = 2u,
+	SPA_META_OPTICAL_MIXED = 3u,
+};
+
+struct spa_meta_property_requirement {
+	uint32_t key;
+	uint32_t type;
+};
+
+SPA_STATIC_ASSERT(SPA_META_Properties == 13u, "buffer properties metadata ABI");
+SPA_STATIC_ASSERT(SPA_TYPE_OBJECT_BufferProperties == 0x40010u,
+		"buffer properties object ABI");
+SPA_STATIC_ASSERT(sizeof(struct spa_meta_property_requirement) == 8u,
+		"buffer property requirement ABI");
+
+static inline bool _spa_meta_properties_storage_is_valid(const struct spa_meta *meta)
+{
+	return meta != NULL && meta->type == SPA_META_Properties &&
+		meta->data != NULL && SPA_IS_ALIGNED(meta->data, 8) &&
+		meta->size >= SPA_META_PROPERTIES_MIN_SIZE &&
+		meta->size <= SPA_META_PROPERTIES_MAX_SIZE && (meta->size & 7u) == 0;
+}
+
+static inline bool _spa_meta_property_type_is_valid(uint32_t type)
+{
+	switch (type) {
+	case SPA_TYPE_Bool: case SPA_TYPE_Id: case SPA_TYPE_Int:
+	case SPA_TYPE_Long: case SPA_TYPE_Float: case SPA_TYPE_Double:
+	case SPA_TYPE_String: case SPA_TYPE_Bytes:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static inline bool _spa_meta_property_value_is_valid(uint32_t key,
+		uint32_t type, uint32_t size, const void *value)
+{
+	uint32_t scalar;
+
+	if (key == 0 || !_spa_meta_property_type_is_valid(type) ||
+	    (size > 0 && value == NULL))
+		return false;
+	if (type == SPA_TYPE_String) {
+		if (size == 0 || memchr(value, '\0', size) !=
+		    SPA_PTROFF(value, size - 1u, const void))
+			return false;
+	} else if (type != SPA_TYPE_Bytes) {
+		uint32_t expected = (type == SPA_TYPE_Long || type == SPA_TYPE_Double) ? 8u : 4u;
+		if (size != expected)
+			return false;
+		if (type == SPA_TYPE_Bool) {
+			memcpy(&scalar, value, sizeof(scalar));
+			if (scalar > 1u)
+				return false;
+		}
+	}
+	if (key == SPA_META_PROPERTY_opticalClassification) {
+		if (type != SPA_TYPE_Id || size != sizeof(scalar))
+			return false;
+		memcpy(&scalar, value, sizeof(scalar));
+		if (scalar > SPA_META_OPTICAL_MIXED)
+			return false;
+	}
+	return true;
+}
+
+/** Validate the complete allocation and the consumer's required key/type pairs. */
+SPA_API_META bool spa_meta_properties_is_valid(const struct spa_meta *meta,
+		const struct spa_meta_property_requirement *requirements, uint32_t n_requirements)
+{
+	const struct spa_pod_object *object;
+	uint32_t offset, end, previous = 0, count = 0, i, j;
+	uint64_t found = 0;
+
+	if (!_spa_meta_properties_storage_is_valid(meta) ||
+	    n_requirements > SPA_META_PROPERTIES_MAX_FIELDS ||
+	    (n_requirements != 0 && (requirements == NULL ||
+	     !SPA_IS_ALIGNED(requirements, SPA_ALIGNOF(struct spa_meta_property_requirement)))))
+		return false;
+	for (i = 0; i < n_requirements; i++) {
+		if (requirements[i].key == 0 ||
+		    !_spa_meta_property_type_is_valid(requirements[i].type) ||
+		    (requirements[i].key == SPA_META_PROPERTY_opticalClassification &&
+		     requirements[i].type != SPA_TYPE_Id))
+			return false;
+		for (j = 0; j < i; j++)
+			if (requirements[i].key == requirements[j].key)
+				return false;
+	}
+	object = (const struct spa_pod_object *)meta->data;
+	if (object->pod.type != SPA_TYPE_Object ||
+	    object->body.type != SPA_TYPE_OBJECT_BufferProperties ||
+	    object->body.id != SPA_META_PROPERTIES_VERSION ||
+	    object->pod.size < sizeof(object->body) ||
+	    object->pod.size > meta->size - sizeof(struct spa_pod))
+		return false;
+	end = sizeof(struct spa_pod) + object->pod.size;
+	if ((end & 7u) != 0)
+		return false;
+	for (offset = sizeof(*object); offset < end;) {
+		const struct spa_pod_prop *prop;
+		uint32_t size, padded;
+		bool understood;
+
+		if (++count > SPA_META_PROPERTIES_MAX_FIELDS ||
+		    end - offset < sizeof(*prop))
+			return false;
+		prop = SPA_PTROFF(object, offset, const struct spa_pod_prop);
+		if (prop->key <= previous || prop->value.size > end - offset - sizeof(*prop) ||
+		    (prop->flags & ~SPA_POD_PROP_FLAG_MANDATORY) != 0 ||
+		    !_spa_meta_property_value_is_valid(prop->key, prop->value.type,
+			    prop->value.size, SPA_POD_BODY_CONST(&prop->value)))
+			return false;
+		size = sizeof(*prop) + prop->value.size;
+		padded = SPA_ROUND_UP_N(size, 8);
+		if (padded > end - offset ||
+		    !_spa_meta_acquisition_bytes_are_zero(SPA_PTROFF(prop, size, const uint8_t),
+			    padded - size))
+			return false;
+		understood = prop->key == SPA_META_PROPERTY_opticalClassification;
+		for (i = 0; i < n_requirements; i++) {
+			if (requirements[i].key != prop->key)
+				continue;
+			if (requirements[i].type != prop->value.type)
+				return false;
+			found |= (uint64_t)1 << i;
+			understood = true;
+		}
+		if (!understood && (prop->flags & SPA_POD_PROP_FLAG_MANDATORY))
+			return false;
+		previous = prop->key;
+		offset += padded;
+	}
+	return (n_requirements == 64 ? found == UINT64_MAX :
+		found == (((uint64_t)1 << n_requirements) - 1u)) &&
+		_spa_meta_acquisition_bytes_are_zero(SPA_PTROFF(object, end, const uint8_t),
+				meta->size - end);
+}
+
+/** Clear every byte of caller-owned storage and initialize an empty Object. */
+SPA_API_META bool spa_meta_properties_init(struct spa_meta *meta)
+{
+	struct spa_pod_object *object;
+
+	if (!_spa_meta_properties_storage_is_valid(meta))
+		return false;
+	memset(meta->data, 0, meta->size);
+	object = (struct spa_pod_object *)meta->data;
+	object->pod.size = sizeof(object->body);
+	object->pod.type = SPA_TYPE_Object;
+	object->body.type = SPA_TYPE_OBJECT_BufferProperties;
+	object->body.id = SPA_META_PROPERTIES_VERSION;
+	return true;
+}
+
+/** Borrow a value after successful validation; never retain it past the buffer lease. */
+SPA_API_META const struct spa_pod *spa_meta_properties_find(const struct spa_meta *meta,
+		uint32_t key)
+{
+	const struct spa_pod_object *object;
+	uint32_t offset, end;
+
+	if (!_spa_meta_properties_storage_is_valid(meta))
+		return NULL;
+	object = (const struct spa_pod_object *)meta->data;
+	if (object->pod.size > meta->size - sizeof(struct spa_pod))
+		return NULL;
+	end = sizeof(struct spa_pod) + object->pod.size;
+	for (offset = sizeof(*object); offset < end;) {
+		const struct spa_pod_prop *prop;
+		uint32_t size;
+		if (end - offset < sizeof(*prop))
+			return NULL;
+		prop = SPA_PTROFF(object, offset, const struct spa_pod_prop);
+		if (prop->value.size > end - offset - sizeof(*prop))
+			return NULL;
+		size = SPA_ROUND_UP_N(sizeof(*prop) + prop->value.size, 8);
+		if (size > end - offset)
+			return NULL;
+		if (prop->key == key)
+			return &prop->value;
+		offset += size;
+	}
+	return NULL;
+}
+
+/** Append one optional scalar property in ascending key order. No allocation. */
+SPA_API_META bool spa_meta_properties_add(struct spa_meta *meta, uint32_t key,
+		uint32_t type, uint32_t size, const void *value)
+{
+	struct spa_pod_object *object;
+	struct spa_pod_prop *prop;
+	uint32_t offset, end, count = 0, previous = 0, padded;
+
+	if (!spa_meta_properties_is_valid(meta, NULL, 0) ||
+	    size > meta->size || !_spa_meta_property_value_is_valid(key, type, size, value))
+		return false;
+	object = (struct spa_pod_object *)meta->data;
+	end = sizeof(struct spa_pod) + object->pod.size;
+	for (offset = sizeof(*object); offset < end;) {
+		prop = SPA_PTROFF(object, offset, struct spa_pod_prop);
+		previous = prop->key;
+		count++;
+		offset += SPA_ROUND_UP_N(sizeof(*prop) + prop->value.size, 8);
+	}
+	padded = SPA_ROUND_UP_N(sizeof(*prop) + size, 8);
+	if (count == SPA_META_PROPERTIES_MAX_FIELDS || key <= previous || padded > meta->size - end)
+		return false;
+	prop = SPA_PTROFF(object, end, struct spa_pod_prop);
+	if (size != 0)
+		memmove(SPA_POD_BODY(&prop->value), value, size);
+	prop->key = key;
+	prop->flags = 0;
+	prop->value.size = size;
+	prop->value.type = type;
+	object->pod.size += padded;
+	return true;
 }
 
 /**

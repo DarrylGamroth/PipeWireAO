@@ -129,7 +129,8 @@ PWTEST(utils_abi)
 	pwtest_int_eq(SPA_TYPE_OBJECT_ParamTag, 0x4000d);
 	pwtest_int_eq(SPA_TYPE_OBJECT_PeerParam, 0x4000e);
 	pwtest_int_eq(SPA_TYPE_OBJECT_ParamDict, 0x4000f);
-	pwtest_int_eq(_SPA_TYPE_OBJECT_LAST, 0x40010);
+	pwtest_int_eq(SPA_TYPE_OBJECT_BufferProperties, 0x40010);
+	pwtest_int_eq(_SPA_TYPE_OBJECT_LAST, 0x40011);
 
 	pwtest_int_eq(SPA_TYPE_VENDOR_PipeWire, 0x02000000);
 	pwtest_int_eq(SPA_TYPE_VENDOR_Other, 0x7f000000);

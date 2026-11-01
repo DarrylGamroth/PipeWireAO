@@ -24,6 +24,7 @@ struct test_data {
 	atomic_uint callbacks;
 	atomic_bool retained;
 	bool acquisition_v3;
+	bool buffer_properties;
 };
 
 static int prepare_process_thread(void *userdata SPA_UNUSED)
@@ -61,6 +62,20 @@ static int process(void *userdata,
 	    (data->acquisition_v3 && input->acquisition.reserved2 !=
 		    SPA_META_ACQUISITION_TRIGGER_HIGH))
 		return -EINVAL;
+	if (data->buffer_properties) {
+		struct spa_meta input_properties, output_properties;
+		const struct spa_pod *optical;
+		if (pw_ndarray_filter_get_buffer_properties(data->filter, SPA_DIRECTION_INPUT,
+				0, &input_properties) < 0 ||
+		    pw_ndarray_filter_get_buffer_properties(data->filter, SPA_DIRECTION_OUTPUT,
+				0, &output_properties) < 0 ||
+		    spa_meta_properties_find(&output_properties, SPA_META_PROPERTY_opticalClassification) != NULL ||
+		    (optical = spa_meta_properties_find(&input_properties, SPA_META_PROPERTY_opticalClassification)) == NULL ||
+		    optical->type != SPA_TYPE_Id || input_properties.size != output_properties.size)
+			return -EINVAL;
+		/* Preserve every field, including the unknown optional fixture key. */
+		memcpy(output_properties.data, input_properties.data, input_properties.size);
+	}
 	memcpy(&input_value, input->data, sizeof(input_value));
 	callback = atomic_fetch_add_explicit(&data->callbacks, 1,
 			memory_order_relaxed) + 1;
@@ -172,6 +187,8 @@ int main(int argc, char *argv[])
 			data.acquisition_v3 = true;
 			for (uint32_t p = 0; p < SPA_N_ELEMENTS(ports); p++)
 				ports[p].flags |= PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3;
+		} else if (spa_streq(argv[i], "--buffer-properties")) {
+			data.buffer_properties = true;
 		} else {
 			fprintf(stderr, "unknown argument: %s\n", argv[i]);
 			return 2;
@@ -190,6 +207,18 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "could not create ndarray filter: %s\n",
 				spa_strerror(result));
 		return 1;
+	}
+	if (data.buffer_properties) {
+		const struct spa_meta_property_requirement required = {
+			SPA_META_PROPERTY_opticalClassification, SPA_TYPE_Id };
+		for (uint32_t direction = SPA_DIRECTION_INPUT; direction <= SPA_DIRECTION_OUTPUT; direction++) {
+			result = pw_ndarray_filter_set_port_buffer_properties(data.filter, direction,
+					0, 128, &required, 1);
+			if (result < 0) {
+				fprintf(stderr, "could not configure buffer properties: %s\n", spa_strerror(result));
+				goto done;
+			}
+		}
 	}
 	if ((result = pw_ndarray_filter_connect(data.filter)) < 0) {
 		fprintf(stderr, "could not connect ndarray filter: %s\n",

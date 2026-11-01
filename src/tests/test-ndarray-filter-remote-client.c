@@ -38,6 +38,7 @@ struct test_data {
 	atomic_bool streaming_reported;
 	bool buffers32;
 	bool acquisition_v3;
+	bool buffer_properties;
 	uint32_t source_buffer_count;
 	int result;
 };
@@ -179,6 +180,19 @@ static void source_process(void *userdata)
 		quit_with_error(data, "source Acquisition metadata is unavailable");
 		return;
 	}
+	if (data->buffer_properties) {
+		struct spa_meta *properties = spa_buffer_find_meta(buffer->buffer, SPA_META_Properties);
+		uint32_t optical = sequence == 1 ? SPA_META_OPTICAL_FRINGED : SPA_META_OPTICAL_UNFRINGED;
+		int64_t optional = sequence * 111;
+		if (!spa_meta_properties_init(properties) ||
+		    !spa_meta_properties_add(properties, SPA_META_PROPERTY_opticalClassification,
+				SPA_TYPE_Id, sizeof(optical), &optical) ||
+		    !spa_meta_properties_add(properties, 17, SPA_TYPE_Long, sizeof(optional), &optional)) {
+			(void)pw_stream_queue_buffer(data->source, buffer);
+			quit_with_error(data, "could not publish buffer properties");
+			return;
+		}
+	}
 	(void)pw_stream_queue_buffer(data->source, buffer);
 	printf("SOURCE %u\n", sequence);
 	fflush(stdout);
@@ -233,6 +247,30 @@ static void sink_process(void *userdata)
 		(void)pw_stream_queue_buffer(data->sink, buffer);
 		quit_with_error(data, "sink received an unexpected Acquisition record");
 		return;
+	}
+	if (data->buffer_properties) {
+		const struct spa_meta *properties = spa_buffer_find_meta(buffer->buffer, SPA_META_Properties);
+		const struct spa_meta_property_requirement required = {
+			SPA_META_PROPERTY_opticalClassification, SPA_TYPE_Id };
+		const struct spa_pod *optical, *optional;
+		uint32_t classification;
+		int64_t optional_value;
+		if (!spa_meta_properties_is_valid(properties, &required, 1) ||
+		    (optical = spa_meta_properties_find(properties, 1)) == NULL ||
+		    (optional = spa_meta_properties_find(properties, 17)) == NULL) {
+			(void)pw_stream_queue_buffer(data->sink, buffer);
+			quit_with_error(data, "sink received invalid buffer properties");
+			return;
+		}
+		memcpy(&classification, SPA_POD_BODY_CONST(optical), sizeof(classification));
+		memcpy(&optional_value, SPA_POD_BODY_CONST(optional), sizeof(optional_value));
+		if (classification != SPA_META_OPTICAL_UNFRINGED || optional->type != SPA_TYPE_Long ||
+		    optional->size != sizeof(optional_value) || optional_value != 222) {
+			(void)pw_stream_queue_buffer(data->sink, buffer);
+			quit_with_error(data, "sink received stale optical or optional properties");
+			return;
+		}
+		puts("PROPERTIES optical=unfringed optional=222 acquisition=2");
 	}
 	if (atomic_fetch_add_explicit(&data->received, 1,
 			memory_order_relaxed) != 0) {
@@ -346,6 +384,17 @@ static struct spa_pod *build_acquisition_meta(struct spa_pod_builder *builder,
 	return spa_pod_builder_pop(builder, &frame);
 }
 
+static struct spa_pod *build_properties_meta(struct spa_pod_builder *builder)
+{
+	struct spa_pod_frame frame;
+	spa_pod_builder_push_object(builder, &frame, SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta);
+	spa_pod_builder_add(builder, SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Properties),
+			SPA_PARAM_META_size, SPA_POD_Int(128), 0);
+	spa_pod_builder_prop(builder, SPA_PARAM_META_features, SPA_POD_PROP_FLAG_MANDATORY);
+	spa_pod_builder_int(builder, SPA_META_FEATURE_PROPERTIES_VERSION_1);
+	return spa_pod_builder_pop(builder, &frame);
+}
+
 static struct spa_pod *build_source_buffers(struct spa_pod_builder *builder)
 {
 	return spa_pod_builder_add_object(builder,
@@ -366,7 +415,8 @@ int main(int argc, char *argv[])
 	struct test_data data = { .result = 0 };
 	struct pw_properties *context_props, *source_props, *sink_props;
 	struct spa_pod_builder source_builder, sink_builder;
-	struct spa_pod *source_params[4], *sink_params[3];
+	struct spa_pod *source_params[5], *sink_params[4];
+	uint32_t n_source_params = 3, n_sink_params = 3;
 	struct timespec timeout_value = { .tv_sec = 10 };
 	uint8_t source_pods[768], sink_pods[768];
 	int result;
@@ -377,6 +427,8 @@ int main(int argc, char *argv[])
 			data.buffers32 = true;
 		else if (strcmp(argv[i], "--acquisition-v3") == 0)
 			data.acquisition_v3 = true;
+		else if (strcmp(argv[i], "--buffer-properties") == 0)
+			data.buffer_properties = true;
 		else {
 			fprintf(stderr, "unknown argument: %s\n", argv[i]);
 			return 2;
@@ -435,11 +487,15 @@ int main(int argc, char *argv[])
 	source_params[1] = build_header_meta(&source_builder);
 	source_params[2] = build_acquisition_meta(&source_builder, data.acquisition_v3);
 	if (data.buffers32)
-		source_params[3] = build_source_buffers(&source_builder);
+		source_params[n_source_params++] = build_source_buffers(&source_builder);
 	spa_pod_builder_init(&sink_builder, sink_pods, sizeof(sink_pods));
 	sink_params[0] = build_format(&sink_builder);
 	sink_params[1] = build_header_meta(&sink_builder);
 	sink_params[2] = build_acquisition_meta(&sink_builder, data.acquisition_v3);
+	if (data.buffer_properties) {
+		source_params[n_source_params++] = build_properties_meta(&source_builder);
+		sink_params[n_sink_params++] = build_properties_meta(&sink_builder);
+	}
 	if (source_params[0] == NULL || source_params[1] == NULL ||
 	    source_params[2] == NULL ||
 	    (data.buffers32 && source_params[3] == NULL) || sink_params[0] == NULL ||
@@ -452,7 +508,7 @@ int main(int argc, char *argv[])
 			PW_STREAM_FLAG_DRIVER | PW_STREAM_FLAG_MAP_BUFFERS |
 			PW_STREAM_FLAG_RT_PROCESS | PW_STREAM_FLAG_NO_CONVERT,
 			(const struct spa_pod **)source_params,
-			data.buffers32 ? 4 : 3);
+			n_source_params);
 	if (result < 0) {
 		fprintf(stderr, "could not connect source: %s\n", spa_strerror(result));
 		data.result = 1;
@@ -462,7 +518,7 @@ int main(int argc, char *argv[])
 			PW_STREAM_FLAG_MAP_BUFFERS | PW_STREAM_FLAG_RT_PROCESS |
 			PW_STREAM_FLAG_NO_CONVERT,
 			(const struct spa_pod **)sink_params,
-			SPA_N_ELEMENTS(sink_params));
+			n_sink_params);
 	if (result < 0) {
 		fprintf(stderr, "could not connect sink: %s\n", spa_strerror(result));
 		data.result = 1;

@@ -68,7 +68,7 @@ def link_nodes(link, environment, source, sink):
 def main():
     options = sys.argv[5:]
     if (len(sys.argv) < 5 or
-            any(option not in ("--fifo-inputs", "--buffers32", "--acquisition-v3") for option in options) or
+            any(option not in ("--fifo-inputs", "--buffers32", "--acquisition-v3", "--buffer-properties") for option in options) or
             len(set(options)) != len(options)):
         return 2
     paths = {
@@ -137,6 +137,8 @@ def main():
             filter_command.append("--fifo-inputs")
         if "--acquisition-v3" in options:
             filter_command.append("--acquisition-v3")
+        if "--buffer-properties" in options:
+            filter_command.append("--buffer-properties")
         filter_process = subprocess.Popen(
             filter_command,
             env=environment,
@@ -149,6 +151,8 @@ def main():
             client_command.append("--buffers32")
         if "--acquisition-v3" in options:
             client_command.append("--acquisition-v3")
+        if "--buffer-properties" in options:
+            client_command.append("--buffer-properties")
         client_process = subprocess.Popen(
             client_command,
             env=environment,
@@ -203,6 +207,9 @@ def main():
             raise TestFailure(
                 f"endpoint client failed ({client_result}):\n{client_text}"
             )
+
+        if "--buffer-properties" in options and "PROPERTIES optical=unfringed optional=222 acquisition=2" not in client_text:
+            raise TestFailure("missing buffer-properties preservation evidence")
 
         filter_process.send_signal(signal.SIGTERM)
         try:

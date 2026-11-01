@@ -28,6 +28,7 @@ if find.found()
 endif
 
 test_apps = [
+  ['test-buffer-properties', []],
   ['test-ump-utils', []],
 ]
 

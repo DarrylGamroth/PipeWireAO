@@ -51,7 +51,8 @@ PWTEST(buffer_abi_types)
 	pwtest_int_eq(SPA_META_SyncTimeline, 9);
 	pwtest_int_eq(SPA_META_Acquisition, 11);
 	/* Metadata ID 12 remains reserved after removing ndarray progress. */
-	pwtest_int_eq(_SPA_META_LAST, 13);
+	pwtest_int_eq(SPA_META_Properties, 13);
+	pwtest_int_eq(_SPA_META_LAST, 14);
 	pwtest_str_eq(spa_debug_type_find_name(spa_type_meta_type,
 			SPA_META_Acquisition), SPA_TYPE_INFO_META_BASE "Acquisition");
 

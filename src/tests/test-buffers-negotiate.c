@@ -14,6 +14,8 @@ struct test_node {
 	struct spa_node node;
 	struct spa_hook_list hooks;
 	uint32_t requested;
+	uint32_t required_meta;
+	uint32_t property_features;
 };
 
 static int add_listener(void *object, struct spa_hook *listener,
@@ -30,24 +32,42 @@ static int enum_params(void *object, int seq, enum spa_direction direction SPA_U
 		const struct spa_pod *filter)
 {
 	struct test_node *node = object;
-	uint8_t storage[256], filtered[256];
+	uint8_t storage[512], filtered[512];
 	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(storage, sizeof(storage));
 	struct spa_pod_builder result_builder = SPA_POD_BUILDER_INIT(filtered, sizeof(filtered));
 	struct spa_result_node_params result = { .id = id, .index = start, .next = 1 };
 	struct spa_pod *param;
 	int res;
 
-	if (id != SPA_PARAM_Buffers || port_id != 0)
+	if ((id != SPA_PARAM_Buffers && id != SPA_PARAM_Meta) || port_id != 0)
 		return -ENOENT;
 	if (start != 0 || num == 0)
 		return 0;
-	param = spa_pod_builder_add_object(&builder,
-		SPA_TYPE_OBJECT_ParamBuffers, id,
-		SPA_PARAM_BUFFERS_buffers, SPA_POD_Int(node->requested),
-		SPA_PARAM_BUFFERS_blocks, SPA_POD_Int(1),
-		SPA_PARAM_BUFFERS_size, SPA_POD_Int(64),
-		SPA_PARAM_BUFFERS_stride, SPA_POD_Int(4),
-		SPA_PARAM_BUFFERS_dataType, SPA_POD_Int((1 << SPA_DATA_MemPtr) | (1 << SPA_DATA_MemFd)));
+	if (id == SPA_PARAM_Meta) {
+		struct spa_pod_frame frame;
+		if (node->property_features == 0)
+			return -ENOENT;
+		spa_pod_builder_push_object(&builder, &frame, SPA_TYPE_OBJECT_ParamMeta, id);
+		spa_pod_builder_add(&builder, SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Properties),
+				SPA_PARAM_META_size, SPA_POD_Int(128), 0);
+		spa_pod_builder_prop(&builder, SPA_PARAM_META_features, SPA_POD_PROP_FLAG_MANDATORY);
+		spa_pod_builder_int(&builder, node->property_features);
+		param = spa_pod_builder_pop(&builder, &frame);
+	} else {
+		struct spa_pod_frame frame;
+		spa_pod_builder_push_object(&builder, &frame, SPA_TYPE_OBJECT_ParamBuffers, id);
+		spa_pod_builder_add(&builder,
+			SPA_PARAM_BUFFERS_buffers, SPA_POD_Int(node->requested),
+			SPA_PARAM_BUFFERS_blocks, SPA_POD_Int(1),
+			SPA_PARAM_BUFFERS_size, SPA_POD_Int(64),
+			SPA_PARAM_BUFFERS_stride, SPA_POD_Int(4),
+			SPA_PARAM_BUFFERS_dataType,
+			SPA_POD_Int((1 << SPA_DATA_MemPtr) | (1 << SPA_DATA_MemFd)), 0);
+		if (node->required_meta != 0)
+			spa_pod_builder_add(&builder, SPA_PARAM_BUFFERS_metaType,
+					SPA_POD_Int(node->required_meta), 0);
+		param = spa_pod_builder_pop(&builder, &frame);
+	}
 	if ((res = spa_pod_filter(&result_builder, &result.param, param, filter)) < 0)
 		return res;
 	spa_node_emit_result(&node->hooks, seq, 0, SPA_RESULT_TYPE_NODE_PARAMS, &result);
@@ -89,6 +109,33 @@ static void check_negotiate(struct pw_context *context, uint32_t flags,
 	spa_assert_se(buffers.n_buffers == 0 && buffers.buffers == NULL && buffers.mem == NULL);
 }
 
+static void check_properties_negotiate(struct pw_context *context,
+		uint32_t output_features, uint32_t input_features, int expected)
+{
+	struct test_node output = { .requested = 2, .property_features = output_features };
+	struct test_node input = { .requested = 2, .property_features = input_features,
+		.required_meta = 1u << SPA_META_Properties };
+	struct pw_buffers buffers = { 0 };
+	int result;
+
+	spa_hook_list_init(&output.hooks);
+	spa_hook_list_init(&input.hooks);
+	output.node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node, SPA_VERSION_NODE, &methods, &output);
+	input.node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node, SPA_VERSION_NODE, &methods, &input);
+	result = pw_buffers_negotiate(context, 0, &output.node, 0, &input.node, 0, &buffers);
+	if (result != expected)
+		fprintf(stderr, "properties features=%u/%u result=%d expected=%d\n",
+				output_features, input_features, result, expected);
+	spa_assert_se(result == expected);
+	if (result == 0) {
+		spa_assert_se(buffers.n_buffers == 2);
+		spa_assert_se(spa_buffer_find_meta(buffers.buffers[0], SPA_META_Properties) != NULL);
+		spa_assert_se(spa_buffer_find_meta(buffers.buffers[0],
+			SPA_META_TYPE_FEATURES(SPA_META_Properties, SPA_META_FEATURE_PROPERTIES_VERSION_1)) != NULL);
+	}
+	pw_buffers_clear(&buffers);
+}
+
 int main(int argc, char *argv[])
 {
 	struct pw_context context = { 0 };
@@ -119,6 +166,12 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+	check_properties_negotiate(&context, 1, 1, 0);
+	check_properties_negotiate(&context, 0, 1, -ENOTSUP);
+	check_properties_negotiate(&context, 1, 0, -ENOTSUP);
+	check_properties_negotiate(&context, 2, 1, -ENOTSUP);
+	check_properties_negotiate(&context, 0, 0, -ENOTSUP);
+	puts("5 required buffer-properties negotiation cases passed");
 	pw_mempool_destroy(context.pool);
 	pw_properties_free(context.properties);
 	pw_deinit();
