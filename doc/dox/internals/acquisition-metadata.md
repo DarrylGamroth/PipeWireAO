@@ -447,3 +447,10 @@ deadline measurements remain separate evidence. Independent review is recorded
 by the owning integration workstream.
 Higher-rate scheduling, asynchronous joins and shared-DM attribution remain
 separate work.
+
+Final release review finding NATIVE-R1 identified that an output callback could
+omit Header validity while supplying a nonzero valid Acquisition sequence.
+Validation now compares the Header sequence that will actually be published,
+including its zero default. The added regression failed before the fix and passed
+after it with `meson test -C build pw-test-ndarray-filter-buffer-properties`;
+it also accepts a valid zero Acquisition sequence with the default Header.
