@@ -68,7 +68,7 @@ def link_nodes(link, environment, source, sink):
 def main():
     options = sys.argv[5:]
     if (len(sys.argv) < 5 or
-            any(option not in ("--fifo-inputs", "--buffers32", "--acquisition-v3", "--buffer-properties") for option in options) or
+            any(option not in ("--fifo-inputs", "--buffers32", "--acquisition-v3", "--buffer-properties", "--trigger-mismatch-input", "--trigger-mismatch-output") for option in options) or
             len(set(options)) != len(options)):
         return 2
     paths = {
@@ -139,6 +139,8 @@ def main():
             filter_command.append("--acquisition-v3")
         if "--buffer-properties" in options:
             filter_command.append("--buffer-properties")
+        if "--trigger-mismatch-output" in options:
+            filter_command.append("--trigger-mismatch-output")
         filter_process = subprocess.Popen(
             filter_command,
             env=environment,
@@ -153,6 +155,8 @@ def main():
             client_command.append("--acquisition-v3")
         if "--buffer-properties" in options:
             client_command.append("--buffer-properties")
+        if "--trigger-mismatch-input" in options:
+            client_command.append("--trigger-mismatch-input")
         client_process = subprocess.Popen(
             client_command,
             env=environment,
@@ -183,6 +187,18 @@ def main():
         assert client_process.stdin is not None
         client_process.stdin.write("1")
         client_process.stdin.flush()
+        if "--trigger-mismatch-input" in options:
+            try:
+                result = filter_process.wait(timeout=5)
+            except subprocess.TimeoutExpired as error:
+                raise TestFailure("mismatched input did not terminate before process") from error
+            filter_text, client_text = read_log(logs["filter"]), read_log(logs["client"])
+            if result == 0 or "DEFERRED" in filter_text or "COMPLETE" in filter_text or "SINK_BUFFER" in client_text:
+                raise TestFailure("mismatched input trigger reached processing/publication")
+            if "SOURCE 1" not in client_text:
+                raise TestFailure("mismatched input fixture did not publish a source buffer")
+            print("mismatched typed input trigger rejected before process")
+            return 0
         wait_for_text(filter_process, logs["filter"], "DEFERRED", 5)
         client_text = read_log(logs["client"])
         if client_process.poll() is not None:
@@ -198,6 +214,15 @@ def main():
 
         client_process.stdin.write("2")
         client_process.stdin.flush()
+        if "--trigger-mismatch-output" in options:
+            try:
+                result = filter_process.wait(timeout=5)
+            except subprocess.TimeoutExpired as error:
+                raise TestFailure("mismatched output did not terminate before publication") from error
+            if result == 0 or "COMPLETE" not in read_log(logs["filter"]) or "SINK_BUFFER" in read_log(logs["client"]):
+                raise TestFailure("mismatched output trigger was not rejected before publication")
+            print("mismatched typed output trigger rejected before publication")
+            return 0
         try:
             client_result = client_process.wait(timeout=5)
         except subprocess.TimeoutExpired as error:

@@ -25,6 +25,7 @@ struct test_data {
 	atomic_bool retained;
 	bool acquisition_v3;
 	bool buffer_properties;
+	bool trigger_mismatch_output;
 };
 
 static int prepare_process_thread(void *userdata SPA_UNUSED)
@@ -111,6 +112,16 @@ static int process(void *userdata,
 	output->metadata_valid |= PW_NDARRAY_FILTER_METADATA_HEADER;
 	output->acquisition = input->acquisition;
 	output->metadata_valid |= PW_NDARRAY_FILTER_METADATA_ACQUISITION;
+	if (data->trigger_mismatch_output) {
+		struct spa_meta properties;
+		const struct spa_pod *trigger;
+		uint32_t low = SPA_META_ACQUISITION_TRIGGER_LOW;
+		if (pw_ndarray_filter_get_buffer_properties(data->filter, SPA_DIRECTION_OUTPUT,
+				0, &properties) < 0 ||
+		    (trigger = spa_meta_properties_find(&properties, SPA_META_PROPERTY_triggerClassification)) == NULL)
+			return -EINVAL;
+		memcpy(SPA_POD_BODY((struct spa_pod *)trigger), &low, sizeof(low));
+	}
 	printf("COMPLETE\n");
 	fflush(stdout);
 	return 0;
@@ -187,6 +198,8 @@ int main(int argc, char *argv[])
 			data.acquisition_v3 = true;
 			for (uint32_t p = 0; p < SPA_N_ELEMENTS(ports); p++)
 				ports[p].flags |= PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3;
+		} else if (spa_streq(argv[i], "--trigger-mismatch-output")) {
+			data.trigger_mismatch_output = true;
 		} else if (spa_streq(argv[i], "--buffer-properties")) {
 			data.buffer_properties = true;
 		} else {

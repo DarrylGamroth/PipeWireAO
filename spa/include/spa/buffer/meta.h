@@ -633,6 +633,7 @@ enum spa_meta_properties_constant {
 
 enum spa_meta_property {
 	SPA_META_PROPERTY_opticalClassification = 1u,
+	SPA_META_PROPERTY_triggerClassification = 2u,
 };
 
 enum spa_meta_optical_classification {
@@ -695,11 +696,13 @@ static inline bool _spa_meta_property_value_is_valid(uint32_t key,
 				return false;
 		}
 	}
-	if (key == SPA_META_PROPERTY_opticalClassification) {
+	if (key == SPA_META_PROPERTY_opticalClassification ||
+	    key == SPA_META_PROPERTY_triggerClassification) {
 		if (type != SPA_TYPE_Id || size != sizeof(scalar))
 			return false;
 		memcpy(&scalar, value, sizeof(scalar));
-		if (scalar > SPA_META_OPTICAL_MIXED)
+		if (scalar > (key == SPA_META_PROPERTY_opticalClassification ?
+			SPA_META_OPTICAL_MIXED : SPA_META_ACQUISITION_TRIGGER_MIXED))
 			return false;
 	}
 	return true;
@@ -721,7 +724,8 @@ SPA_API_META bool spa_meta_properties_is_valid(const struct spa_meta *meta,
 	for (i = 0; i < n_requirements; i++) {
 		if (requirements[i].key == 0 ||
 		    !_spa_meta_property_type_is_valid(requirements[i].type) ||
-		    (requirements[i].key == SPA_META_PROPERTY_opticalClassification &&
+		    ((requirements[i].key == SPA_META_PROPERTY_opticalClassification ||
+		      requirements[i].key == SPA_META_PROPERTY_triggerClassification) &&
 		     requirements[i].type != SPA_TYPE_Id))
 			return false;
 		for (j = 0; j < i; j++)
@@ -758,7 +762,8 @@ SPA_API_META bool spa_meta_properties_is_valid(const struct spa_meta *meta,
 		    !_spa_meta_acquisition_bytes_are_zero(SPA_PTROFF(prop, size, const uint8_t),
 			    padded - size))
 			return false;
-		understood = prop->key == SPA_META_PROPERTY_opticalClassification;
+		understood = prop->key == SPA_META_PROPERTY_opticalClassification ||
+			prop->key == SPA_META_PROPERTY_triggerClassification;
 		for (i = 0; i < n_requirements; i++) {
 			if (requirements[i].key != prop->key)
 				continue;
@@ -823,6 +828,34 @@ SPA_API_META const struct spa_pod *spa_meta_properties_find(const struct spa_met
 		offset += size;
 	}
 	return NULL;
+}
+
+/**
+ * Check electrical trigger consistency after successful property validation.
+ * A missing record/property imposes no comparison. Present Acquisition must be
+ * valid; Versions 1/2 can accompany any valid typed trigger value. Version 3
+ * must agree with the typed trigger. Optical classification is independent.
+ */
+SPA_API_META bool spa_meta_properties_acquisition_is_consistent(
+		const struct spa_meta *properties, const struct spa_meta *acquisition)
+{
+	const struct spa_pod *trigger;
+	const struct spa_meta_acquisition *record;
+	uint32_t value;
+
+	if (acquisition != NULL && !spa_meta_acquisition_is_valid(acquisition))
+		return false;
+	trigger = spa_meta_properties_find(properties, SPA_META_PROPERTY_triggerClassification);
+	if (trigger == NULL)
+		return true;
+	if (!_spa_meta_property_value_is_valid(SPA_META_PROPERTY_triggerClassification,
+			trigger->type, trigger->size, SPA_POD_BODY_CONST(trigger)))
+		return false;
+	if (acquisition == NULL)
+		return true;
+	record = (const struct spa_meta_acquisition *)acquisition->data;
+	memcpy(&value, SPA_POD_BODY_CONST(trigger), sizeof(value));
+	return record->version != SPA_META_ACQUISITION_VERSION_3 || record->reserved2 == value;
 }
 
 /** Append one optional scalar property in ascending key order. No allocation. */

@@ -9,6 +9,44 @@
 
 #define CHECK(expr) spa_assert_se(expr)
 
+static void test_trigger_consistency(void)
+{
+	uint64_t storage[16];
+	struct spa_meta properties = { SPA_META_Properties, sizeof(storage), storage };
+	struct spa_meta_acquisition record;
+	struct spa_meta acquisition = { SPA_META_Acquisition, sizeof(record), &record };
+	struct spa_meta_property_requirement required = { SPA_META_PROPERTY_triggerClassification, SPA_TYPE_Id };
+	uint32_t trigger, invalid = 4;
+
+	CHECK(spa_meta_acquisition_init(&record));
+	CHECK(spa_meta_properties_init(&properties));
+	CHECK(!spa_meta_properties_is_valid(&properties, &required, 1));
+	CHECK(spa_meta_properties_acquisition_is_consistent(&properties, &acquisition));
+	CHECK(spa_meta_properties_find(&properties, required.key) == NULL);
+	CHECK(!spa_meta_properties_add(&properties, required.key, SPA_TYPE_Id, 4, &invalid));
+	CHECK(!spa_meta_properties_add(&properties, required.key, SPA_TYPE_Int, 4, &invalid));
+	for (trigger = SPA_META_ACQUISITION_TRIGGER_ABSENT;
+	     trigger <= SPA_META_ACQUISITION_TRIGGER_MIXED; trigger++) {
+		CHECK(spa_meta_properties_init(&properties));
+		CHECK(spa_meta_properties_add(&properties, required.key, SPA_TYPE_Id, 4, &trigger));
+		CHECK(spa_meta_properties_is_valid(&properties, &required, 1));
+		CHECK(spa_meta_properties_acquisition_is_consistent(&properties, NULL));
+		CHECK(spa_meta_acquisition_init(&record));
+		CHECK(spa_meta_properties_acquisition_is_consistent(&properties, &acquisition));
+		CHECK(spa_meta_acquisition_set_trigger_classification(&record, trigger));
+		CHECK(spa_meta_properties_acquisition_is_consistent(&properties, &acquisition));
+		CHECK(spa_meta_acquisition_set_trigger_classification(&record, (trigger + 1) % 4));
+		CHECK(!spa_meta_properties_acquisition_is_consistent(&properties, &acquisition));
+		CHECK(spa_meta_properties_find(&properties, SPA_META_PROPERTY_opticalClassification) == NULL);
+	}
+	record.version = 99;
+	CHECK(!spa_meta_properties_acquisition_is_consistent(&properties, &acquisition));
+	((struct spa_pod_prop *)SPA_PTROFF(storage, 16, void))->value.type = SPA_TYPE_Int;
+	CHECK(!spa_meta_properties_is_valid(&properties, &required, 1));
+	CHECK(!spa_meta_properties_acquisition_is_consistent(&properties, NULL));
+	puts("typed trigger: exact range/type, missing value, v2 coexistence and v3 match/mismatch passed");
+}
+
 int main(void)
 {
 	uint64_t storage[512], saved[512];
@@ -101,6 +139,7 @@ int main(void)
 	meta.size = 16;
 	CHECK(spa_meta_properties_is_valid(&meta, NULL, 0));
 	CHECK(!spa_meta_properties_add(&meta, 2, SPA_TYPE_Id, 4, &classification));
+	test_trigger_consistency();
 	printf("buffer properties: scalar lookup, requirements, reset, limits and %u malformed cases passed\n", cases);
 	return 0;
 }

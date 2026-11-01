@@ -39,6 +39,7 @@ struct test_data {
 	bool buffers32;
 	bool acquisition_v3;
 	bool buffer_properties;
+	bool trigger_mismatch_input;
 	uint32_t source_buffer_count;
 	int result;
 };
@@ -184,9 +185,13 @@ static void source_process(void *userdata)
 		struct spa_meta *properties = spa_buffer_find_meta(buffer->buffer, SPA_META_Properties);
 		uint32_t optical = sequence == 1 ? SPA_META_OPTICAL_FRINGED : SPA_META_OPTICAL_UNFRINGED;
 		int64_t optional = sequence * 111;
+		uint32_t trigger = data->trigger_mismatch_input ?
+			SPA_META_ACQUISITION_TRIGGER_LOW : SPA_META_ACQUISITION_TRIGGER_HIGH;
 		if (!spa_meta_properties_init(properties) ||
 		    !spa_meta_properties_add(properties, SPA_META_PROPERTY_opticalClassification,
 				SPA_TYPE_Id, sizeof(optical), &optical) ||
+		    !spa_meta_properties_add(properties, SPA_META_PROPERTY_triggerClassification,
+				SPA_TYPE_Id, sizeof(trigger), &trigger) ||
 		    !spa_meta_properties_add(properties, 17, SPA_TYPE_Long, sizeof(optional), &optional)) {
 			(void)pw_stream_queue_buffer(data->source, buffer);
 			quit_with_error(data, "could not publish buffer properties");
@@ -211,6 +216,10 @@ static void sink_process(void *userdata)
 	buffer = pw_stream_dequeue_buffer(data->sink);
 	if (buffer == NULL)
 		return;
+	if (data->buffer_properties) {
+		puts("SINK_BUFFER");
+		fflush(stdout);
+	}
 	block = &buffer->buffer->datas[0];
 	if (block->data == NULL || block->chunk == NULL ||
 	    block->chunk->offset > block->maxsize ||
@@ -252,19 +261,24 @@ static void sink_process(void *userdata)
 		const struct spa_meta *properties = spa_buffer_find_meta(buffer->buffer, SPA_META_Properties);
 		const struct spa_meta_property_requirement required = {
 			SPA_META_PROPERTY_opticalClassification, SPA_TYPE_Id };
-		const struct spa_pod *optical, *optional;
+		const struct spa_pod *optical, *optional, *trigger;
+		uint32_t electrical;
 		uint32_t classification;
 		int64_t optional_value;
 		if (!spa_meta_properties_is_valid(properties, &required, 1) ||
 		    (optical = spa_meta_properties_find(properties, 1)) == NULL ||
-		    (optional = spa_meta_properties_find(properties, 17)) == NULL) {
+		    (optional = spa_meta_properties_find(properties, 17)) == NULL ||
+		    (trigger = spa_meta_properties_find(properties, SPA_META_PROPERTY_triggerClassification)) == NULL ||
+		    !spa_meta_properties_acquisition_is_consistent(properties, acquisition_meta)) {
 			(void)pw_stream_queue_buffer(data->sink, buffer);
 			quit_with_error(data, "sink received invalid buffer properties");
 			return;
 		}
+		memcpy(&electrical, SPA_POD_BODY_CONST(trigger), sizeof(electrical));
 		memcpy(&classification, SPA_POD_BODY_CONST(optical), sizeof(classification));
 		memcpy(&optional_value, SPA_POD_BODY_CONST(optional), sizeof(optional_value));
-		if (classification != SPA_META_OPTICAL_UNFRINGED || optional->type != SPA_TYPE_Long ||
+		if (electrical != SPA_META_ACQUISITION_TRIGGER_HIGH ||
+		    classification != SPA_META_OPTICAL_UNFRINGED || optional->type != SPA_TYPE_Long ||
 		    optional->size != sizeof(optional_value) || optional_value != 222) {
 			(void)pw_stream_queue_buffer(data->sink, buffer);
 			quit_with_error(data, "sink received stale optical or optional properties");
@@ -427,6 +441,8 @@ int main(int argc, char *argv[])
 			data.buffers32 = true;
 		else if (strcmp(argv[i], "--acquisition-v3") == 0)
 			data.acquisition_v3 = true;
+		else if (strcmp(argv[i], "--trigger-mismatch-input") == 0)
+			data.trigger_mismatch_input = true;
 		else if (strcmp(argv[i], "--buffer-properties") == 0)
 			data.buffer_properties = true;
 		else {
