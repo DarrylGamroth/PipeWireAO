@@ -955,10 +955,11 @@ static int validate_completed_output(const struct ndarray_port *port,
 				metadata_available & PW_NDARRAY_FILTER_METADATA_ACQUISITION ?
 				&acquisition_meta : NULL))
 			return -EINVAL;
-		if ((view->metadata_valid & PW_NDARRAY_FILTER_METADATA_HEADER) &&
+		if ((metadata_available & PW_NDARRAY_FILTER_METADATA_HEADER) &&
 		    (view->metadata_valid & PW_NDARRAY_FILTER_METADATA_ACQUISITION) &&
 		    (view->acquisition.flags & SPA_META_ACQUISITION_FLAG_IDENTITY_VALID) &&
-		    view->header.seq != view->acquisition.sequence)
+		    (view->metadata_valid & PW_NDARRAY_FILTER_METADATA_HEADER ?
+			view->header.seq : 0) != view->acquisition.sequence)
 			return -EINVAL;
 	}
 	return 0;

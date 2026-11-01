@@ -149,6 +149,13 @@ int main(void)
 		memcpy(SPA_POD_BODY((struct spa_pod *)property), &trigger, sizeof(trigger));
 		spa_assert_se(validate_completed_output(&port, &native, &view) == 0);
 	}
+	/* An omitted Header is published as zero, regardless of the callback view. */
+	view.metadata_valid &= ~PW_NDARRAY_FILTER_METADATA_HEADER;
+	spa_assert_se(validate_completed_output(&port, &native, &view) == -EINVAL);
+	view.acquisition.sequence = 0;
+	spa_assert_se(validate_completed_output(&port, &native, &view) == 0);
+	view.acquisition.sequence = view.header.seq;
+	view.metadata_valid |= PW_NDARRAY_FILTER_METADATA_HEADER;
 	view.metadata_valid &= ~PW_NDARRAY_FILTER_METADATA_ACQUISITION;
 	spa_assert_se(validate_completed_output(&port, &native, &view) == -EINVAL);
 	view.metadata_valid |= PW_NDARRAY_FILTER_METADATA_ACQUISITION;
