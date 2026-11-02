@@ -16,6 +16,7 @@
 #include <spa/utils/result.h>
 
 #include <pipewire/impl.h>
+#include "buffer-properties-fixture.h"
 
 enum source_phase {
 	SOURCE_IDLE,
@@ -73,8 +74,8 @@ static int connect_sink(struct test_data *data)
 {
 	struct pw_properties *properties;
 	struct spa_pod_builder builder;
-	struct spa_pod *params[1];
-	uint8_t buffer[256];
+	struct spa_pod *params[3];
+	uint8_t buffer[512];
 
 	properties = pw_properties_new(PW_KEY_NODE_NAME,
 			"ndarray-buffer-removal-sink", PW_KEY_MEDIA_TYPE, "Application",
@@ -84,6 +85,8 @@ static int connect_sink(struct test_data *data)
 		return -errno;
 	spa_pod_builder_init(&builder, buffer, sizeof(buffer));
 	params[0] = build_format(&builder);
+	if (!test_build_frame_metadata(&builder, params + 1))
+		return -ENOSPC;
 	if (params[0] == NULL)
 		return -ENOSPC;
 	return pw_stream_connect(data->sink, PW_DIRECTION_INPUT, PW_ID_ANY,
@@ -154,6 +157,10 @@ static void source_process(void *userdata)
 	if (block->data == NULL || block->chunk == NULL ||
 	    block->maxsize < sizeof(value)) {
 		fail(data, "source received an invalid buffer after pool replacement");
+		return;
+	}
+	if (!test_init_frame_metadata(buffer->buffer)) {
+		fail(data, "required frame metadata is unavailable");
 		return;
 	}
 	memcpy(block->data, &value, sizeof(value));
@@ -290,9 +297,9 @@ int main(int argc, char *argv[])
 	struct test_data data = { 0 };
 	struct pw_properties *source_properties;
 	struct spa_pod_builder builder;
-	struct spa_pod *params[1];
+	struct spa_pod *params[3];
 	struct timespec deadline = { .tv_sec = 10 };
-	uint8_t buffer[256];
+	uint8_t buffer[512];
 	char *args;
 
 	if (argc != 2)
@@ -337,6 +344,8 @@ int main(int argc, char *argv[])
 	pw_stream_add_listener(data.source, &data.source_listener, &source_events, &data);
 	spa_pod_builder_init(&builder, buffer, sizeof(buffer));
 	params[0] = build_format(&builder);
+	if (!test_build_frame_metadata(&builder, params + 1))
+		return -ENOSPC;
 	if (params[0] == NULL || pw_stream_connect(data.source,
 			PW_DIRECTION_OUTPUT, PW_ID_ANY, PW_STREAM_FLAG_DRIVER |
 			PW_STREAM_FLAG_MAP_BUFFERS | PW_STREAM_FLAG_RT_PROCESS |

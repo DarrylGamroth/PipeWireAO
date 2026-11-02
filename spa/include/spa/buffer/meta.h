@@ -41,9 +41,7 @@ enum spa_meta_type {
 	/* Metadata types are negotiated in a 32-bit mask. Reserve these low
 	 * PipeWireAO slots explicitly instead of following upstream implicitly. */
 	SPA_META_START_PipeWireAO = 10,
-	SPA_META_Acquisition = 11,	/**< struct spa_meta_acquisition */
-	/* Slot 12 was published for the removed ndarray progress metadata.
-	 * Keep it unassigned so a later metadata type cannot reuse that ABI ID. */
+	/* Slots 11 (Acquisition) and 12 (ndarray progress) are retired. */
 	SPA_META_Properties = 13,	/**< bounded BufferProperties POD Object */
 	_SPA_META_LAST = 14,		/**< not part of ABI/API */
 
@@ -53,9 +51,6 @@ enum spa_meta_type {
 							 * type in the upper 16 bits and a bitmask in
 							 * the lower 16 bits with type specific features. */
 };
-
-SPA_STATIC_ASSERT(SPA_META_Acquisition == 11,
-		"PipeWireAO acquisition metadata ABI");
 
 #define SPA_META_TYPE_FEATURES(type,features)	(((type)<<16)|(features))
 
@@ -215,411 +210,45 @@ struct spa_meta_sync_timeline {
 						  *  be signaled when the data is no longer accessed. */
 };
 
-/** Acquisition metadata ABI constants. */
-enum spa_meta_acquisition_constant {
-	SPA_META_ACQUISITION_VERSION_1 = 1u,
-	SPA_META_ACQUISITION_VERSION_2 = 2u,
-	SPA_META_ACQUISITION_VERSION_3 = 3u,
-	SPA_META_ACQUISITION_VERSION = SPA_META_ACQUISITION_VERSION_2,
-	SPA_META_ACQUISITION_SIZE = 96u,
-	SPA_META_ACQUISITION_DOMAIN_SIZE = 16u,
-	SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE = 8u,
-	SPA_META_FEATURE_ACQUISITION_VERSION_1 = (1u << 0),
-	SPA_META_FEATURE_ACQUISITION_VERSION_2 = (1u << 1),
-	SPA_META_FEATURE_ACQUISITION_VERSION_3 = (1u << 2),
-	SPA_META_FEATURE_ACQUISITION_CURRENT = SPA_META_FEATURE_ACQUISITION_VERSION_2,
+/** Owned acquisition facts; not metadata allocations or wire records. */
+enum spa_acquisition_constant {
+	SPA_ACQUISITION_DOMAIN_SIZE = 16u,
+	SPA_EXPOSURE_PTP_CLOCK_ID_SIZE = 8u,
 };
 
-enum spa_meta_acquisition_flag {
-	SPA_META_ACQUISITION_FLAG_IDENTITY_VALID = (1u << 0),
-	SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID = (1u << 1),
-	SPA_META_ACQUISITION_FLAG_EXPOSURE_DURATION_VALID = (1u << 2),
-	SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID = (1u << 3),
-	SPA_META_ACQUISITION_FLAG_ALL = ((1u << 4) - 1u),
+enum spa_exposure_timebase {
+	SPA_EXPOSURE_TIMEBASE_MONOTONIC = 1u,
+	SPA_EXPOSURE_TIMEBASE_TAI = 2u,
 };
 
-enum spa_meta_acquisition_timebase {
-	SPA_META_ACQUISITION_TIMEBASE_NONE,
-	SPA_META_ACQUISITION_TIMEBASE_MONOTONIC,
-	SPA_META_ACQUISITION_TIMEBASE_TAI,
+enum spa_meta_trigger_classification {
+	SPA_META_TRIGGER_ABSENT = 0u,
+	SPA_META_TRIGGER_LOW = 1u,
+	SPA_META_TRIGGER_HIGH = 2u,
+	SPA_META_TRIGGER_MIXED = 3u,
 };
 
-enum spa_meta_acquisition_trigger_classification {
-	SPA_META_ACQUISITION_TRIGGER_ABSENT = 0u,
-	SPA_META_ACQUISITION_TRIGGER_LOW = 1u,
-	SPA_META_ACQUISITION_TRIGGER_HIGH = 2u,
-	SPA_META_ACQUISITION_TRIGGER_MIXED = 3u,
-};
-
-/**
- * Physical acquisition identity and qualified exposure time.
- *
- * The producer initializes this structure before publishing a complete buffer.
- * It remains immutable until every producer and consumer lease on that buffer
- * ends.
- *
- * Identity is the complete (domain, generation, sequence) tuple. The domain is
- * opaque and compared bytewise. Version 1 exposure timestamps are in the local
- * Linux CLOCK_MONOTONIC domain and are never comparable across hosts.
- *
- * Version 2 makes the timebase explicit. Cross-host timestamps use CLOCK_TAI
- * nanoseconds and identify the PTP grandmaster and PTP domain that established
- * the mapping. timestamp_uncertainty_nsec is an inclusive error bound for the
- * exposure-start mapping. A PTP time is comparable only with another valid
- * Version 2 or 3 PTP time carrying the same grandmaster identity and domain number.
- * Version 3 encodes trigger classification in reserved2; all upper bits are zero.
- */
-struct SPA_ALIGNED(8) spa_meta_acquisition {
-	uint32_t version;
-	uint32_t abi_size;
-	uint32_t flags;
-	uint32_t timebase;
-	uint8_t domain[SPA_META_ACQUISITION_DOMAIN_SIZE];
+struct spa_acquisition_identity {
+	uint8_t domain[SPA_ACQUISITION_DOMAIN_SIZE];
 	uint64_t generation;
 	uint64_t sequence;
-	int64_t exposure_start_nsec;
-	uint64_t exposure_duration_nsec;
-	uint64_t timestamp_uncertainty_nsec;
-	uint8_t ptp_grandmaster_id[SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE];
-	uint8_t ptp_domain_number;
-	uint8_t reserved[7];
-	uint64_t reserved2;	/**< Version 3 trigger classification; zero in Versions 1/2. */
 };
 
-SPA_STATIC_ASSERT(sizeof(struct spa_meta_acquisition) == SPA_META_ACQUISITION_SIZE,
-		"spa_meta_acquisition ABI size");
-SPA_STATIC_ASSERT(SPA_ALIGNOF(struct spa_meta_acquisition) == 8u,
-		"spa_meta_acquisition ABI alignment");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, timebase) == 12u,
-		"spa_meta_acquisition timebase offset");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, domain) == 16u,
-		"spa_meta_acquisition domain offset");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, generation) == 32u,
-		"spa_meta_acquisition generation offset");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, sequence) == 40u,
-		"spa_meta_acquisition sequence offset");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, exposure_start_nsec) == 48u,
-		"spa_meta_acquisition exposure-start offset");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, exposure_duration_nsec) == 56u,
-		"spa_meta_acquisition exposure-duration offset");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, timestamp_uncertainty_nsec) == 64u,
-		"spa_meta_acquisition timestamp-uncertainty offset");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, ptp_grandmaster_id) == 72u,
-		"spa_meta_acquisition PTP grandmaster offset");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, ptp_domain_number) == 80u,
-		"spa_meta_acquisition PTP domain offset");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition, reserved2) == 88u,
-		"spa_meta_acquisition final reserved offset");
+struct spa_exposure_start {
+	int64_t nsec;
+	uint64_t uncertainty_nsec;
+	uint32_t timebase;
+	uint8_t ptp_grandmaster_identity[SPA_EXPOSURE_PTP_CLOCK_ID_SIZE];
+	uint8_t ptp_domain_number;
+};
 
-static inline bool _spa_meta_acquisition_domain_is_zero(
-		const uint8_t domain[SPA_META_ACQUISITION_DOMAIN_SIZE])
+static inline bool _spa_meta_bytes_are_zero(const uint8_t *data, uint32_t size)
 {
 	uint8_t value = 0;
 	uint32_t i;
-
-	for (i = 0; i < SPA_META_ACQUISITION_DOMAIN_SIZE; i++)
-		value |= domain[i];
-	return value == 0;
-}
-
-static inline bool _spa_meta_acquisition_bytes_are_zero(const uint8_t *data,
-		uint32_t size)
-{
-	uint8_t value = 0;
-	uint32_t i;
-
 	for (i = 0; i < size; i++)
 		value |= data[i];
 	return value == 0;
-}
-
-static inline bool _spa_meta_acquisition_fields_are_valid(
-		const struct spa_meta_acquisition *acquisition)
-{
-	bool identity_valid, start_valid, duration_valid, ptp_valid;
-
-	if (acquisition == NULL || !SPA_IS_ALIGNED(acquisition, 8) ||
-	    (acquisition->version != SPA_META_ACQUISITION_VERSION_1 &&
-	     acquisition->version != SPA_META_ACQUISITION_VERSION_2 &&
-	     acquisition->version != SPA_META_ACQUISITION_VERSION_3) ||
-	    acquisition->abi_size != SPA_META_ACQUISITION_SIZE ||
-	    (acquisition->flags & ~SPA_META_ACQUISITION_FLAG_ALL) != 0 ||
-	    !_spa_meta_acquisition_bytes_are_zero(acquisition->reserved,
-		    sizeof(acquisition->reserved)) ||
-	    (acquisition->version == SPA_META_ACQUISITION_VERSION_3
-		    ? acquisition->reserved2 > SPA_META_ACQUISITION_TRIGGER_MIXED
-		    : acquisition->reserved2 != 0))
-		return false;
-	if (acquisition->version == SPA_META_ACQUISITION_VERSION_1 &&
-	    (acquisition->timebase != SPA_META_ACQUISITION_TIMEBASE_NONE ||
-	     SPA_FLAG_IS_SET(acquisition->flags,
-		     SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID) ||
-	     !_spa_meta_acquisition_bytes_are_zero(acquisition->ptp_grandmaster_id,
-		     sizeof(acquisition->ptp_grandmaster_id)) ||
-	     acquisition->ptp_domain_number != 0))
-		return false;
-
-	identity_valid = SPA_FLAG_IS_SET(acquisition->flags,
-			SPA_META_ACQUISITION_FLAG_IDENTITY_VALID);
-	if (identity_valid) {
-		if (_spa_meta_acquisition_domain_is_zero(acquisition->domain))
-			return false;
-	} else if (!_spa_meta_acquisition_domain_is_zero(acquisition->domain) ||
-		   acquisition->generation != 0 || acquisition->sequence != 0) {
-		return false;
-	}
-
-	start_valid = SPA_FLAG_IS_SET(acquisition->flags,
-			SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID);
-	if (start_valid) {
-		if (acquisition->exposure_start_nsec < 0)
-			return false;
-	} else if (acquisition->exposure_start_nsec != SPA_TIME_INVALID ||
-		   acquisition->timestamp_uncertainty_nsec != 0) {
-		return false;
-	}
-
-	ptp_valid = SPA_FLAG_IS_SET(acquisition->flags,
-			SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID);
-	if (acquisition->version != SPA_META_ACQUISITION_VERSION_1) {
-		if (!start_valid) {
-			if (acquisition->timebase != SPA_META_ACQUISITION_TIMEBASE_NONE)
-				return false;
-		} else if (acquisition->timebase !=
-				SPA_META_ACQUISITION_TIMEBASE_MONOTONIC &&
-			   acquisition->timebase != SPA_META_ACQUISITION_TIMEBASE_TAI) {
-			return false;
-		}
-		if (ptp_valid) {
-			if (!start_valid || acquisition->timebase !=
-					SPA_META_ACQUISITION_TIMEBASE_TAI ||
-			    _spa_meta_acquisition_bytes_are_zero(
-					acquisition->ptp_grandmaster_id,
-					sizeof(acquisition->ptp_grandmaster_id)))
-				return false;
-		} else if (!_spa_meta_acquisition_bytes_are_zero(
-				acquisition->ptp_grandmaster_id,
-				sizeof(acquisition->ptp_grandmaster_id)) ||
-			   acquisition->ptp_domain_number != 0 ||
-			   acquisition->timebase == SPA_META_ACQUISITION_TIMEBASE_TAI) {
-			return false;
-		}
-	}
-
-	duration_valid = SPA_FLAG_IS_SET(acquisition->flags,
-			SPA_META_ACQUISITION_FLAG_EXPOSURE_DURATION_VALID);
-	if (duration_valid) {
-		if (acquisition->exposure_duration_nsec == 0)
-			return false;
-	} else if (acquisition->exposure_duration_nsec != 0) {
-		return false;
-	}
-	return true;
-}
-
-/** Initialize reusable acquisition metadata with no valid identity or time. */
-SPA_API_META bool spa_meta_acquisition_init(struct spa_meta_acquisition *acquisition)
-{
-	if (acquisition == NULL || !SPA_IS_ALIGNED(acquisition, 8))
-		return false;
-
-	memset(acquisition, 0, sizeof(*acquisition));
-	acquisition->version = SPA_META_ACQUISITION_VERSION;
-	acquisition->abi_size = SPA_META_ACQUISITION_SIZE;
-	acquisition->exposure_start_nsec = SPA_TIME_INVALID;
-	return true;
-}
-
-/** Establish the acquisition identity tuple. */
-SPA_API_META bool spa_meta_acquisition_set_identity(
-		struct spa_meta_acquisition *acquisition,
-		const uint8_t domain[SPA_META_ACQUISITION_DOMAIN_SIZE],
-		uint64_t generation, uint64_t sequence)
-{
-	if (!_spa_meta_acquisition_fields_are_valid(acquisition) || domain == NULL ||
-	    _spa_meta_acquisition_domain_is_zero(domain))
-		return false;
-
-	memcpy(acquisition->domain, domain, sizeof(acquisition->domain));
-	acquisition->generation = generation;
-	acquisition->sequence = sequence;
-	SPA_FLAG_SET(acquisition->flags, SPA_META_ACQUISITION_FLAG_IDENTITY_VALID);
-	return true;
-}
-
-/** Establish a host-local CLOCK_MONOTONIC exposure-start mapping. */
-SPA_API_META bool spa_meta_acquisition_set_exposure_start(
-		struct spa_meta_acquisition *acquisition, int64_t exposure_start_nsec,
-		uint64_t timestamp_uncertainty_nsec)
-{
-	if (!_spa_meta_acquisition_fields_are_valid(acquisition) || exposure_start_nsec < 0)
-		return false;
-
-	acquisition->exposure_start_nsec = exposure_start_nsec;
-	acquisition->timestamp_uncertainty_nsec = timestamp_uncertainty_nsec;
-	if (acquisition->version != SPA_META_ACQUISITION_VERSION_1) {
-		acquisition->timebase = SPA_META_ACQUISITION_TIMEBASE_MONOTONIC;
-		memset(acquisition->ptp_grandmaster_id, 0,
-				sizeof(acquisition->ptp_grandmaster_id));
-		acquisition->ptp_domain_number = 0;
-		SPA_FLAG_CLEAR(acquisition->flags,
-				SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID);
-	}
-	SPA_FLAG_SET(acquisition->flags,
-			SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID);
-	return true;
-}
-
-/** Establish a PTP-qualified CLOCK_TAI exposure-start mapping. */
-SPA_API_META bool spa_meta_acquisition_set_exposure_start_ptp(
-		struct spa_meta_acquisition *acquisition, int64_t exposure_start_nsec,
-		uint64_t timestamp_uncertainty_nsec,
-		const uint8_t ptp_grandmaster_id[SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE],
-		uint8_t ptp_domain_number)
-{
-	if (!_spa_meta_acquisition_fields_are_valid(acquisition) ||
-	    acquisition->version == SPA_META_ACQUISITION_VERSION_1 ||
-	    exposure_start_nsec < 0 || ptp_grandmaster_id == NULL ||
-	    _spa_meta_acquisition_bytes_are_zero(ptp_grandmaster_id,
-		    SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE))
-		return false;
-
-	acquisition->exposure_start_nsec = exposure_start_nsec;
-	acquisition->timestamp_uncertainty_nsec = timestamp_uncertainty_nsec;
-	acquisition->timebase = SPA_META_ACQUISITION_TIMEBASE_TAI;
-	memcpy(acquisition->ptp_grandmaster_id, ptp_grandmaster_id,
-			sizeof(acquisition->ptp_grandmaster_id));
-	acquisition->ptp_domain_number = ptp_domain_number;
-	SPA_FLAG_SET(acquisition->flags,
-			SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID |
-			SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID);
-	return true;
-}
-
-/** Establish a positive exposure duration. */
-SPA_API_META bool spa_meta_acquisition_set_exposure_duration(
-		struct spa_meta_acquisition *acquisition, uint64_t exposure_duration_nsec)
-{
-	if (!_spa_meta_acquisition_fields_are_valid(acquisition) ||
-	    exposure_duration_nsec == 0)
-		return false;
-
-	acquisition->exposure_duration_nsec = exposure_duration_nsec;
-	SPA_FLAG_SET(acquisition->flags,
-			SPA_META_ACQUISITION_FLAG_EXPOSURE_DURATION_VALID);
-	return true;
-}
-
-/** Read trigger classification; valid Versions 1/2 report absent. */
-SPA_API_META bool spa_meta_acquisition_get_trigger_classification(
-		const struct spa_meta_acquisition *acquisition,
-		enum spa_meta_acquisition_trigger_classification *classification)
-{
-	if (!_spa_meta_acquisition_fields_are_valid(acquisition) || classification == NULL)
-		return false;
-
-	*classification = (enum spa_meta_acquisition_trigger_classification)
-		acquisition->reserved2;
-	return true;
-}
-
-/** Set trigger classification, upgrading valid Version 2 metadata to Version 3. */
-SPA_API_META bool spa_meta_acquisition_set_trigger_classification(
-		struct spa_meta_acquisition *acquisition,
-		enum spa_meta_acquisition_trigger_classification classification)
-{
-	if (!_spa_meta_acquisition_fields_are_valid(acquisition) ||
-	    acquisition->version == SPA_META_ACQUISITION_VERSION_1 ||
-	    (uint32_t)classification > SPA_META_ACQUISITION_TRIGGER_MIXED)
-		return false;
-
-	acquisition->version = SPA_META_ACQUISITION_VERSION_3;
-	acquisition->reserved2 = classification;
-	return true;
-}
-
-/** Validate a mapped Version 1, 2 or 3 acquisition metadata allocation. */
-SPA_API_META bool spa_meta_acquisition_is_valid(const struct spa_meta *meta)
-{
-	return meta != NULL && meta->type == SPA_META_Acquisition &&
-		meta->data != NULL && meta->size >= sizeof(struct spa_meta_acquisition) &&
-		_spa_meta_acquisition_fields_are_valid(
-				(const struct spa_meta_acquisition *)meta->data);
-}
-
-/** Compare two complete, valid acquisition identity tuples. */
-SPA_API_META bool spa_meta_acquisition_identity_equal(
-		const struct spa_meta_acquisition *a,
-		const struct spa_meta_acquisition *b)
-{
-	if (!_spa_meta_acquisition_fields_are_valid(a) ||
-	    !_spa_meta_acquisition_fields_are_valid(b) ||
-	    !SPA_FLAG_IS_SET(a->flags, SPA_META_ACQUISITION_FLAG_IDENTITY_VALID) ||
-	    !SPA_FLAG_IS_SET(b->flags, SPA_META_ACQUISITION_FLAG_IDENTITY_VALID))
-		return false;
-
-	return a->generation == b->generation && a->sequence == b->sequence &&
-		memcmp(a->domain, b->domain, sizeof(a->domain)) == 0;
-}
-
-/**
- * Compare PTP-qualified time domains and return a - b with their summed error.
- *
- * The returned uncertainty saturates at UINT64_MAX. Join policy remains with
- * the caller; this helper only proves that the two timestamps are comparable.
- */
-SPA_API_META bool spa_meta_acquisition_time_difference(
-		const struct spa_meta_acquisition *a,
-		const struct spa_meta_acquisition *b,
-		int64_t *difference_nsec, uint64_t *combined_uncertainty_nsec)
-{
-	uint64_t uncertainty;
-
-	if (!_spa_meta_acquisition_fields_are_valid(a) ||
-	    !_spa_meta_acquisition_fields_are_valid(b) ||
-	    a->version == SPA_META_ACQUISITION_VERSION_1 ||
-	    b->version == SPA_META_ACQUISITION_VERSION_1 ||
-	    !SPA_FLAG_IS_SET(a->flags,
-		    SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID |
-		    SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID) ||
-	    !SPA_FLAG_IS_SET(b->flags,
-		    SPA_META_ACQUISITION_FLAG_EXPOSURE_START_VALID |
-		    SPA_META_ACQUISITION_FLAG_PTP_REFERENCE_VALID) ||
-	    a->timebase != SPA_META_ACQUISITION_TIMEBASE_TAI ||
-	    b->timebase != SPA_META_ACQUISITION_TIMEBASE_TAI ||
-	    a->ptp_domain_number != b->ptp_domain_number ||
-	    memcmp(a->ptp_grandmaster_id, b->ptp_grandmaster_id,
-		    sizeof(a->ptp_grandmaster_id)) != 0)
-		return false;
-
-	if (difference_nsec != NULL)
-		*difference_nsec = a->exposure_start_nsec - b->exposure_start_nsec;
-	uncertainty = a->timestamp_uncertainty_nsec;
-	if (~(uint64_t)0 - uncertainty < b->timestamp_uncertainty_nsec)
-		uncertainty = ~(uint64_t)0;
-	else
-		uncertainty += b->timestamp_uncertainty_nsec;
-	if (combined_uncertainty_nsec != NULL)
-		*combined_uncertainty_nsec = uncertainty;
-	return true;
-}
-
-/** Test whether comparable PTP times overlap within an additional tolerance. */
-SPA_API_META bool spa_meta_acquisition_times_match(
-		const struct spa_meta_acquisition *a,
-		const struct spa_meta_acquisition *b, uint64_t tolerance_nsec)
-{
-	int64_t difference;
-	uint64_t distance, limit;
-
-	if (!spa_meta_acquisition_time_difference(a, b, &difference, &limit))
-		return false;
-	distance = difference < 0 ? (uint64_t)-difference : (uint64_t)difference;
-	if (~(uint64_t)0 - limit < tolerance_nsec)
-		limit = ~(uint64_t)0;
-	else
-		limit += tolerance_nsec;
-	return distance <= limit;
 }
 
 /** Version 1 per-buffer property schema. See acquisition-metadata.md. */
@@ -634,6 +263,15 @@ enum spa_meta_properties_constant {
 enum spa_meta_property {
 	SPA_META_PROPERTY_opticalClassification = 1u,
 	SPA_META_PROPERTY_triggerClassification = 2u,
+	SPA_META_PROPERTY_acquisitionDomain = 3u,
+	SPA_META_PROPERTY_acquisitionGeneration = 4u,
+	SPA_META_PROPERTY_acquisitionSequence = 5u,
+	SPA_META_PROPERTY_exposureDuration = 6u,
+	SPA_META_PROPERTY_exposureStart = 7u,
+	SPA_META_PROPERTY_exposureTimebase = 8u,
+	SPA_META_PROPERTY_timestampUncertainty = 9u,
+	SPA_META_PROPERTY_ptpGrandmasterIdentity = 10u,
+	SPA_META_PROPERTY_ptpDomainNumber = 11u,
 };
 
 enum spa_meta_optical_classification {
@@ -674,13 +312,46 @@ static inline bool _spa_meta_property_type_is_valid(uint32_t type)
 	}
 }
 
+static inline uint32_t _spa_meta_property_known_type(uint32_t key)
+{
+	switch (key) {
+	case SPA_META_PROPERTY_opticalClassification:
+	case SPA_META_PROPERTY_triggerClassification:
+	case SPA_META_PROPERTY_exposureTimebase:
+	case SPA_META_PROPERTY_ptpDomainNumber:
+		return SPA_TYPE_Id;
+	case SPA_META_PROPERTY_acquisitionDomain:
+	case SPA_META_PROPERTY_acquisitionGeneration:
+	case SPA_META_PROPERTY_acquisitionSequence:
+	case SPA_META_PROPERTY_exposureDuration:
+	case SPA_META_PROPERTY_timestampUncertainty:
+	case SPA_META_PROPERTY_ptpGrandmasterIdentity:
+		return SPA_TYPE_Bytes;
+	case SPA_META_PROPERTY_exposureStart:
+		return SPA_TYPE_Long;
+	default:
+		return 0;
+	}
+}
+
+static inline uint64_t _spa_meta_uint64_read(const void *value)
+{
+	const uint8_t *bytes = (const uint8_t *)value;
+	uint64_t result = 0;
+	uint32_t i;
+	for (i = 0; i < 8; i++)
+		result |= (uint64_t)bytes[i] << (8u * i);
+	return result;
+}
+
 static inline bool _spa_meta_property_value_is_valid(uint32_t key,
 		uint32_t type, uint32_t size, const void *value)
 {
-	uint32_t scalar;
+	uint32_t scalar, known = _spa_meta_property_known_type(key);
+	int64_t start;
 
 	if (key == 0 || !_spa_meta_property_type_is_valid(type) ||
-	    (size > 0 && value == NULL))
+	    (size > 0 && value == NULL) || (known != 0 && type != known))
 		return false;
 	if (type == SPA_TYPE_String) {
 		if (size == 0 || memchr(value, '\0', size) !=
@@ -696,21 +367,31 @@ static inline bool _spa_meta_property_value_is_valid(uint32_t key,
 				return false;
 		}
 	}
-	if (key == SPA_META_PROPERTY_opticalClassification ||
-	    key == SPA_META_PROPERTY_triggerClassification) {
-		if (type != SPA_TYPE_Id || size != sizeof(scalar))
+	if (known == SPA_TYPE_Bytes) {
+		if (size != (key == SPA_META_PROPERTY_acquisitionDomain ? 16u : 8u))
 			return false;
+		if ((key == SPA_META_PROPERTY_acquisitionDomain ||
+		     key == SPA_META_PROPERTY_ptpGrandmasterIdentity) &&
+		    _spa_meta_bytes_are_zero((const uint8_t *)value, size))
+			return false;
+		if (key == SPA_META_PROPERTY_exposureDuration && _spa_meta_uint64_read(value) == 0)
+			return false;
+	} else if (known == SPA_TYPE_Id) {
 		memcpy(&scalar, value, sizeof(scalar));
-		if (scalar > (key == SPA_META_PROPERTY_opticalClassification ?
-			SPA_META_OPTICAL_MIXED : SPA_META_ACQUISITION_TRIGGER_MIXED))
-			return false;
+		if (key == SPA_META_PROPERTY_exposureTimebase)
+			return scalar == SPA_EXPOSURE_TIMEBASE_MONOTONIC || scalar == SPA_EXPOSURE_TIMEBASE_TAI;
+		return scalar <= (key == SPA_META_PROPERTY_ptpDomainNumber ? 255u : 3u);
+	} else if (key == SPA_META_PROPERTY_exposureStart) {
+		memcpy(&start, value, sizeof(start));
+		return start >= 0;
 	}
 	return true;
 }
 
-/** Validate the complete allocation and the consumer's required key/type pairs. */
-SPA_API_META bool spa_meta_properties_is_valid(const struct spa_meta *meta,
-		const struct spa_meta_property_requirement *requirements, uint32_t n_requirements)
+/** Validate builder structure, values and required key/type pairs. */
+static inline bool _spa_meta_properties_is_structurally_valid(const struct spa_meta *meta,
+		const struct spa_meta_property_requirement *requirements, uint32_t n_requirements,
+		bool reject_unknown_mandatory)
 {
 	const struct spa_pod_object *object;
 	uint32_t offset, end, previous = 0, count = 0, i, j;
@@ -724,9 +405,8 @@ SPA_API_META bool spa_meta_properties_is_valid(const struct spa_meta *meta,
 	for (i = 0; i < n_requirements; i++) {
 		if (requirements[i].key == 0 ||
 		    !_spa_meta_property_type_is_valid(requirements[i].type) ||
-		    ((requirements[i].key == SPA_META_PROPERTY_opticalClassification ||
-		      requirements[i].key == SPA_META_PROPERTY_triggerClassification) &&
-		     requirements[i].type != SPA_TYPE_Id))
+		    (_spa_meta_property_known_type(requirements[i].key) != 0 &&
+		     requirements[i].type != _spa_meta_property_known_type(requirements[i].key)))
 			return false;
 		for (j = 0; j < i; j++)
 			if (requirements[i].key == requirements[j].key)
@@ -753,17 +433,18 @@ SPA_API_META bool spa_meta_properties_is_valid(const struct spa_meta *meta,
 		prop = SPA_PTROFF(object, offset, const struct spa_pod_prop);
 		if (prop->key <= previous || prop->value.size > end - offset - sizeof(*prop) ||
 		    (prop->flags & ~SPA_POD_PROP_FLAG_MANDATORY) != 0 ||
+		    (prop->key >= 3 && prop->key <= 11 &&
+		     prop->flags != SPA_POD_PROP_FLAG_MANDATORY) ||
 		    !_spa_meta_property_value_is_valid(prop->key, prop->value.type,
 			    prop->value.size, SPA_POD_BODY_CONST(&prop->value)))
 			return false;
 		size = sizeof(*prop) + prop->value.size;
 		padded = SPA_ROUND_UP_N(size, 8);
 		if (padded > end - offset ||
-		    !_spa_meta_acquisition_bytes_are_zero(SPA_PTROFF(prop, size, const uint8_t),
+		    !_spa_meta_bytes_are_zero(SPA_PTROFF(prop, size, const uint8_t),
 			    padded - size))
 			return false;
-		understood = prop->key == SPA_META_PROPERTY_opticalClassification ||
-			prop->key == SPA_META_PROPERTY_triggerClassification;
+		understood = _spa_meta_property_known_type(prop->key) != 0;
 		for (i = 0; i < n_requirements; i++) {
 			if (requirements[i].key != prop->key)
 				continue;
@@ -772,14 +453,14 @@ SPA_API_META bool spa_meta_properties_is_valid(const struct spa_meta *meta,
 			found |= (uint64_t)1 << i;
 			understood = true;
 		}
-		if (!understood && (prop->flags & SPA_POD_PROP_FLAG_MANDATORY))
+		if (reject_unknown_mandatory && !understood && (prop->flags & SPA_POD_PROP_FLAG_MANDATORY))
 			return false;
 		previous = prop->key;
 		offset += padded;
 	}
 	return (n_requirements == 64 ? found == UINT64_MAX :
 		found == (((uint64_t)1 << n_requirements) - 1u)) &&
-		_spa_meta_acquisition_bytes_are_zero(SPA_PTROFF(object, end, const uint8_t),
+		_spa_meta_bytes_are_zero(SPA_PTROFF(object, end, const uint8_t),
 				meta->size - end);
 }
 
@@ -830,43 +511,48 @@ SPA_API_META const struct spa_pod *spa_meta_properties_find(const struct spa_met
 	return NULL;
 }
 
-/**
- * Check electrical trigger consistency after successful property validation.
- * A missing record/property imposes no comparison. Present Acquisition must be
- * valid; Versions 1/2 can accompany any valid typed trigger value. Version 3
- * must agree with the typed trigger. Optical classification is independent.
- */
-SPA_API_META bool spa_meta_properties_acquisition_is_consistent(
-		const struct spa_meta *properties, const struct spa_meta *acquisition)
+/** Validate the complete Object, including atomic acquisition and clock groups. */
+static inline bool _spa_meta_properties_complete_is_valid(const struct spa_meta *meta,
+		const struct spa_meta_property_requirement *requirements, uint32_t n_requirements,
+		bool reject_unknown_mandatory)
 {
-	const struct spa_pod *trigger;
-	const struct spa_meta_acquisition *record;
-	uint32_t value;
-
-	if (acquisition != NULL && !spa_meta_acquisition_is_valid(acquisition))
+	const struct spa_pod *timebase;
+	uint32_t mask = 0, key, value;
+	if (!_spa_meta_properties_is_structurally_valid(meta, requirements, n_requirements, reject_unknown_mandatory))
 		return false;
-	trigger = spa_meta_properties_find(properties, SPA_META_PROPERTY_triggerClassification);
-	if (trigger == NULL)
-		return true;
-	if (!_spa_meta_property_value_is_valid(SPA_META_PROPERTY_triggerClassification,
-			trigger->type, trigger->size, SPA_POD_BODY_CONST(trigger)))
+	for (key = 3; key <= 11; key++)
+		if (spa_meta_properties_find(meta, key) != NULL)
+			mask |= 1u << key;
+	if ((mask & 0x38u) != 0 && (mask & 0x38u) != 0x38u)
 		return false;
-	if (acquisition == NULL)
-		return true;
-	record = (const struct spa_meta_acquisition *)acquisition->data;
-	memcpy(&value, SPA_POD_BODY_CONST(trigger), sizeof(value));
-	return record->version != SPA_META_ACQUISITION_VERSION_3 || record->reserved2 == value;
+	if ((mask & 0x380u) != 0 && (mask & 0x380u) != 0x380u)
+		return false;
+	timebase = spa_meta_properties_find(meta, SPA_META_PROPERTY_exposureTimebase);
+	if (timebase == NULL)
+		return (mask & 0xc00u) == 0;
+	memcpy(&value, SPA_POD_BODY_CONST(timebase), sizeof(value));
+	return value == SPA_EXPOSURE_TIMEBASE_TAI ?
+		(mask & 0xc00u) == 0xc00u : (mask & 0xc00u) == 0;
 }
 
-/** Append one optional scalar property in ascending key order. No allocation. */
+/** Validate complete facts and the consumer's understanding of mandatory keys. */
+SPA_API_META bool spa_meta_properties_is_valid(const struct spa_meta *meta,
+		const struct spa_meta_property_requirement *requirements, uint32_t n_requirements)
+{
+	return _spa_meta_properties_complete_is_valid(meta, requirements, n_requirements, true);
+}
+
+/** Append a scalar in ascending key order. Private groups may be incomplete. */
 SPA_API_META bool spa_meta_properties_add(struct spa_meta *meta, uint32_t key,
-		uint32_t type, uint32_t size, const void *value)
+		uint32_t flags, uint32_t type, uint32_t size, const void *value)
 {
 	struct spa_pod_object *object;
 	struct spa_pod_prop *prop;
 	uint32_t offset, end, count = 0, previous = 0, padded;
 
-	if (!spa_meta_properties_is_valid(meta, NULL, 0) ||
+	if (!_spa_meta_properties_is_structurally_valid(meta, NULL, 0, false) ||
+	    (flags & ~SPA_POD_PROP_FLAG_MANDATORY) != 0 ||
+	    (key >= 3 && key <= 11 && flags != SPA_POD_PROP_FLAG_MANDATORY) ||
 	    size > meta->size || !_spa_meta_property_value_is_valid(key, type, size, value))
 		return false;
 	object = (struct spa_pod_object *)meta->data;
@@ -884,11 +570,128 @@ SPA_API_META bool spa_meta_properties_add(struct spa_meta *meta, uint32_t key,
 	if (size != 0)
 		memmove(SPA_POD_BODY(&prop->value), value, size);
 	prop->key = key;
-	prop->flags = 0;
+	prop->flags = flags;
 	prop->value.size = size;
 	prop->value.type = type;
 	object->pod.size += padded;
 	return true;
+}
+
+/** Append one unsigned integer as exactly eight little-endian Bytes. */
+SPA_API_META bool spa_meta_properties_add_uint64(struct spa_meta *meta,
+		uint32_t key, uint32_t flags, uint64_t value)
+{
+	uint8_t bytes[8];
+	uint32_t i;
+	for (i = 0; i < 8; i++)
+		bytes[i] = (uint8_t)(value >> (8u * i));
+	return spa_meta_properties_add(meta, key, flags, SPA_TYPE_Bytes, sizeof(bytes), bytes);
+}
+
+/**
+ * Read facts after complete admission with the consumer's requirements.
+ * These getters recheck values and complete groups, but do not establish
+ * understanding of application-defined mandatory keys. As with find(), the
+ * caller MUST first call spa_meta_properties_is_valid(meta, requirements, n).
+ */
+SPA_API_META bool spa_meta_properties_get_uint64(const struct spa_meta *meta,
+		uint32_t key, uint64_t *value)
+{
+	const struct spa_pod *pod;
+	if (value == NULL || !_spa_meta_properties_complete_is_valid(meta, NULL, 0, false) ||
+	    (pod = spa_meta_properties_find(meta, key)) == NULL ||
+	    pod->type != SPA_TYPE_Bytes || pod->size != 8)
+		return false;
+	*value = _spa_meta_uint64_read(SPA_POD_BODY_CONST(pod));
+	return true;
+}
+
+SPA_API_META bool spa_meta_properties_get_acquisition_identity(const struct spa_meta *meta,
+		struct spa_acquisition_identity *identity)
+{
+	const struct spa_pod *domain;
+	struct spa_acquisition_identity value;
+	if (identity == NULL || !_spa_meta_properties_complete_is_valid(meta, NULL, 0, false) ||
+	    (domain = spa_meta_properties_find(meta, SPA_META_PROPERTY_acquisitionDomain)) == NULL)
+		return false;
+	memcpy(value.domain, SPA_POD_BODY_CONST(domain), sizeof(value.domain));
+	spa_meta_properties_get_uint64(meta, SPA_META_PROPERTY_acquisitionGeneration, &value.generation);
+	spa_meta_properties_get_uint64(meta, SPA_META_PROPERTY_acquisitionSequence, &value.sequence);
+	*identity = value;
+	return true;
+}
+
+SPA_API_META bool spa_meta_properties_get_exposure_duration(const struct spa_meta *meta,
+		uint64_t *duration_nsec)
+{
+	return spa_meta_properties_get_uint64(meta, SPA_META_PROPERTY_exposureDuration, duration_nsec);
+}
+
+SPA_API_META bool spa_meta_properties_get_exposure_start(const struct spa_meta *meta,
+		struct spa_exposure_start *start)
+{
+	const struct spa_pod *pod;
+	struct spa_exposure_start value = { 0 };
+	uint32_t domain;
+	if (start == NULL || !_spa_meta_properties_complete_is_valid(meta, NULL, 0, false) ||
+	    (pod = spa_meta_properties_find(meta, SPA_META_PROPERTY_exposureStart)) == NULL)
+		return false;
+	memcpy(&value.nsec, SPA_POD_BODY_CONST(pod), sizeof(value.nsec));
+	pod = spa_meta_properties_find(meta, SPA_META_PROPERTY_exposureTimebase);
+	memcpy(&value.timebase, SPA_POD_BODY_CONST(pod), sizeof(value.timebase));
+	spa_meta_properties_get_uint64(meta, SPA_META_PROPERTY_timestampUncertainty, &value.uncertainty_nsec);
+	if (value.timebase == SPA_EXPOSURE_TIMEBASE_TAI) {
+		pod = spa_meta_properties_find(meta, SPA_META_PROPERTY_ptpGrandmasterIdentity);
+		memcpy(value.ptp_grandmaster_identity, SPA_POD_BODY_CONST(pod), sizeof(value.ptp_grandmaster_identity));
+		pod = spa_meta_properties_find(meta, SPA_META_PROPERTY_ptpDomainNumber);
+		memcpy(&domain, SPA_POD_BODY_CONST(pod), sizeof(domain));
+		value.ptp_domain_number = (uint8_t)domain;
+	}
+	*start = value;
+	return true;
+}
+
+SPA_API_META bool spa_acquisition_identity_equal(const struct spa_acquisition_identity *a,
+		const struct spa_acquisition_identity *b)
+{
+	return a != NULL && b != NULL &&
+		!_spa_meta_bytes_are_zero(a->domain, sizeof(a->domain)) &&
+		!_spa_meta_bytes_are_zero(b->domain, sizeof(b->domain)) &&
+		a->generation == b->generation && a->sequence == b->sequence &&
+		memcmp(a->domain, b->domain, sizeof(a->domain)) == 0;
+}
+
+SPA_API_META bool spa_exposure_start_time_difference(const struct spa_exposure_start *a,
+		const struct spa_exposure_start *b, int64_t *difference_nsec,
+		uint64_t *combined_uncertainty_nsec)
+{
+	uint64_t uncertainty;
+	if (a == NULL || b == NULL || a->nsec < 0 || b->nsec < 0 ||
+	    a->timebase != SPA_EXPOSURE_TIMEBASE_TAI || b->timebase != SPA_EXPOSURE_TIMEBASE_TAI ||
+	    _spa_meta_bytes_are_zero(a->ptp_grandmaster_identity, sizeof(a->ptp_grandmaster_identity)) ||
+	    a->ptp_domain_number != b->ptp_domain_number ||
+	    memcmp(a->ptp_grandmaster_identity, b->ptp_grandmaster_identity,
+		    sizeof(a->ptp_grandmaster_identity)) != 0)
+		return false;
+	uncertainty = UINT64_MAX - a->uncertainty_nsec < b->uncertainty_nsec ?
+		UINT64_MAX : a->uncertainty_nsec + b->uncertainty_nsec;
+	if (difference_nsec != NULL)
+		*difference_nsec = a->nsec - b->nsec;
+	if (combined_uncertainty_nsec != NULL)
+		*combined_uncertainty_nsec = uncertainty;
+	return true;
+}
+
+SPA_API_META bool spa_exposure_start_times_match(const struct spa_exposure_start *a,
+		const struct spa_exposure_start *b, uint64_t tolerance_nsec)
+{
+	int64_t difference;
+	uint64_t limit, distance;
+	if (!spa_exposure_start_time_difference(a, b, &difference, &limit))
+		return false;
+	distance = difference < 0 ? (uint64_t)-difference : (uint64_t)difference;
+	limit = UINT64_MAX - limit < tolerance_nsec ? UINT64_MAX : limit + tolerance_nsec;
+	return distance <= limit;
 }
 
 /**

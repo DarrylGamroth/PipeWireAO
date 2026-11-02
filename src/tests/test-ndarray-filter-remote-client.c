@@ -14,6 +14,7 @@
 
 #include <spa/buffer/buffer.h>
 #include <spa/buffer/meta.h>
+#include "buffer-properties-fixture.h"
 #include <spa/param/buffers.h>
 #include <spa/param/ndarray-utils.h>
 #include <spa/pod/builder.h>
@@ -37,7 +38,6 @@ struct test_data {
 	atomic_uint received;
 	atomic_bool streaming_reported;
 	bool buffers32;
-	bool acquisition_v3;
 	bool buffer_properties;
 	bool trigger_mismatch_input;
 	uint32_t source_buffer_count;
@@ -128,8 +128,7 @@ static void source_process(void *userdata)
 	struct pw_buffer *buffer;
 	struct spa_data *block;
 	struct spa_meta_header *header;
-	struct spa_meta_acquisition *acquisition;
-	static const uint8_t domain[SPA_META_ACQUISITION_DOMAIN_SIZE] = { 1 };
+	struct spa_meta *properties;
 	uint32_t sequence;
 	float value;
 
@@ -169,34 +168,35 @@ static void source_process(void *userdata)
 		.dts_offset = 0,
 		.seq = sequence,
 	};
-	acquisition = spa_buffer_find_meta_data(buffer->buffer,
-			SPA_META_Acquisition, sizeof(*acquisition));
-	if (acquisition == NULL || !spa_meta_acquisition_init(acquisition) ||
-	    !spa_meta_acquisition_set_identity(acquisition, domain, 7, sequence) ||
-	    !spa_meta_acquisition_set_exposure_start(acquisition,
-			100000 + sequence, 50) ||
-	    (data->acquisition_v3 && !spa_meta_acquisition_set_trigger_classification(
-		    acquisition, SPA_META_ACQUISITION_TRIGGER_HIGH))) {
-		(void)pw_stream_queue_buffer(data->source, buffer);
-		quit_with_error(data, "source Acquisition metadata is unavailable");
+	properties = spa_buffer_find_meta(buffer->buffer, SPA_META_Properties);
+	if (!spa_meta_properties_init(properties)) {
+		quit_with_error(data, "source Properties are unavailable");
 		return;
 	}
 	if (data->buffer_properties) {
-		struct spa_meta *properties = spa_buffer_find_meta(buffer->buffer, SPA_META_Properties);
 		uint32_t optical = sequence == 1 ? SPA_META_OPTICAL_FRINGED : SPA_META_OPTICAL_UNFRINGED;
-		int64_t optional = sequence * 111;
-		uint32_t trigger = data->trigger_mismatch_input ?
-			SPA_META_ACQUISITION_TRIGGER_LOW : SPA_META_ACQUISITION_TRIGGER_HIGH;
-		if (!spa_meta_properties_init(properties) ||
-		    !spa_meta_properties_add(properties, SPA_META_PROPERTY_opticalClassification,
-				SPA_TYPE_Id, sizeof(optical), &optical) ||
-		    !spa_meta_properties_add(properties, SPA_META_PROPERTY_triggerClassification,
-				SPA_TYPE_Id, sizeof(trigger), &trigger) ||
-		    !spa_meta_properties_add(properties, 17, SPA_TYPE_Long, sizeof(optional), &optional)) {
-			(void)pw_stream_queue_buffer(data->source, buffer);
-			quit_with_error(data, "could not publish buffer properties");
+		uint32_t trigger = SPA_META_TRIGGER_HIGH;
+		if (!spa_meta_properties_add(properties, 1, 0, SPA_TYPE_Id, 4, &optical) ||
+		    !spa_meta_properties_add(properties, 2, 0, SPA_TYPE_Id, 4, &trigger)) {
+			quit_with_error(data, "could not publish classification Properties");
 			return;
 		}
+	}
+	if (!test_add_acquisition(properties, sequence, 100000 + sequence)) {
+		quit_with_error(data, "could not publish acquisition Properties");
+		return;
+	}
+	if (data->buffer_properties) {
+		int64_t optional = sequence * 111;
+		if (!spa_meta_properties_add(properties, 17, 0, SPA_TYPE_Long, sizeof(optional), &optional)) {
+			quit_with_error(data, "could not append optional Properties");
+			return;
+		}
+	}
+	if (data->trigger_mismatch_input) {
+		const struct spa_pod *trigger = spa_meta_properties_find(properties, 2);
+		uint32_t invalid = 4;
+		memcpy(SPA_POD_BODY((struct spa_pod *)trigger), &invalid, sizeof(invalid));
 	}
 	(void)pw_stream_queue_buffer(data->source, buffer);
 	printf("SOURCE %u\n", sequence);
@@ -210,7 +210,6 @@ static void sink_process(void *userdata)
 	struct spa_data *block;
 	struct spa_meta_header *header;
 	struct spa_meta *acquisition_meta;
-	const struct spa_meta_acquisition *acquisition;
 	float value;
 
 	buffer = pw_stream_dequeue_buffer(data->sink);
@@ -234,8 +233,7 @@ static void sink_process(void *userdata)
 	header = spa_buffer_find_meta_data(buffer->buffer, SPA_META_Header,
 			sizeof(*header));
 	acquisition_meta = spa_buffer_find_meta(buffer->buffer,
-			SPA_META_Acquisition);
-	acquisition = acquisition_meta != NULL ? acquisition_meta->data : NULL;
+			SPA_META_Properties);
 	if (value != 3.0f || header == NULL || header->seq != 2 ||
 	    header->offset != 22 || header->pts != 2002 ||
 	    header->dts_offset != 0 ||
@@ -245,16 +243,9 @@ static void sink_process(void *userdata)
 		quit_with_error(data, "sink received an unexpected artifact");
 		return;
 	}
-	if (!spa_meta_acquisition_is_valid(acquisition_meta) ||
-	    acquisition->version != (data->acquisition_v3
-		    ? SPA_META_ACQUISITION_VERSION_3 : SPA_META_ACQUISITION_VERSION_2) ||
-	    acquisition->reserved2 != (data->acquisition_v3
-		    ? SPA_META_ACQUISITION_TRIGGER_HIGH : SPA_META_ACQUISITION_TRIGGER_ABSENT) ||
-	    acquisition->generation != 7 || acquisition->sequence != 2 ||
-	    acquisition->exposure_start_nsec != 100002 ||
-	    acquisition->timestamp_uncertainty_nsec != 50) {
+	if (!test_check_acquisition(acquisition_meta, 2, 100002)) {
 		(void)pw_stream_queue_buffer(data->sink, buffer);
-		quit_with_error(data, "sink received an unexpected Acquisition record");
+		quit_with_error(data, "sink received unexpected acquisition Properties");
 		return;
 	}
 	if (data->buffer_properties) {
@@ -268,8 +259,7 @@ static void sink_process(void *userdata)
 		if (!spa_meta_properties_is_valid(properties, &required, 1) ||
 		    (optical = spa_meta_properties_find(properties, 1)) == NULL ||
 		    (optional = spa_meta_properties_find(properties, 17)) == NULL ||
-		    (trigger = spa_meta_properties_find(properties, SPA_META_PROPERTY_triggerClassification)) == NULL ||
-		    !spa_meta_properties_acquisition_is_consistent(properties, acquisition_meta)) {
+		    (trigger = spa_meta_properties_find(properties, SPA_META_PROPERTY_triggerClassification)) == NULL) {
 			(void)pw_stream_queue_buffer(data->sink, buffer);
 			quit_with_error(data, "sink received invalid buffer properties");
 			return;
@@ -277,7 +267,7 @@ static void sink_process(void *userdata)
 		memcpy(&electrical, SPA_POD_BODY_CONST(trigger), sizeof(electrical));
 		memcpy(&classification, SPA_POD_BODY_CONST(optical), sizeof(classification));
 		memcpy(&optional_value, SPA_POD_BODY_CONST(optional), sizeof(optional_value));
-		if (electrical != SPA_META_ACQUISITION_TRIGGER_HIGH ||
+		if (electrical != SPA_META_TRIGGER_HIGH ||
 		    classification != SPA_META_OPTICAL_UNFRINGED || optional->type != SPA_TYPE_Long ||
 		    optional->size != sizeof(optional_value) || optional_value != 222) {
 			(void)pw_stream_queue_buffer(data->sink, buffer);
@@ -378,32 +368,12 @@ static struct spa_pod *build_header_meta(struct spa_pod_builder *builder)
 			SPA_POD_Int(sizeof(struct spa_meta_header)));
 }
 
-static struct spa_pod *build_acquisition_meta(struct spa_pod_builder *builder,
-		bool acquisition_v3)
-{
-	struct spa_pod_frame frame;
-
-	spa_pod_builder_push_object(builder, &frame,
-			SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta);
-	spa_pod_builder_add(builder,
-			SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Acquisition),
-			SPA_PARAM_META_size,
-			SPA_POD_Int(sizeof(struct spa_meta_acquisition)),
-			0);
-	spa_pod_builder_prop(builder, SPA_PARAM_META_features,
-			SPA_POD_PROP_FLAG_MANDATORY);
-	spa_pod_builder_int(builder, acquisition_v3
-			? SPA_META_FEATURE_ACQUISITION_VERSION_3
-			: SPA_META_FEATURE_ACQUISITION_VERSION_2);
-	return spa_pod_builder_pop(builder, &frame);
-}
-
 static struct spa_pod *build_properties_meta(struct spa_pod_builder *builder)
 {
 	struct spa_pod_frame frame;
 	spa_pod_builder_push_object(builder, &frame, SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta);
 	spa_pod_builder_add(builder, SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Properties),
-			SPA_PARAM_META_size, SPA_POD_Int(128), 0);
+			SPA_PARAM_META_size, SPA_POD_Int(512), 0);
 	spa_pod_builder_prop(builder, SPA_PARAM_META_features, SPA_POD_PROP_FLAG_MANDATORY);
 	spa_pod_builder_int(builder, SPA_META_FEATURE_PROPERTIES_VERSION_1);
 	return spa_pod_builder_pop(builder, &frame);
@@ -439,9 +409,7 @@ int main(int argc, char *argv[])
 	for (i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "--buffers32") == 0)
 			data.buffers32 = true;
-		else if (strcmp(argv[i], "--acquisition-v3") == 0)
-			data.acquisition_v3 = true;
-		else if (strcmp(argv[i], "--trigger-mismatch-input") == 0)
+		else if (strcmp(argv[i], "--malformed-input") == 0)
 			data.trigger_mismatch_input = true;
 		else if (strcmp(argv[i], "--buffer-properties") == 0)
 			data.buffer_properties = true;
@@ -501,17 +469,13 @@ int main(int argc, char *argv[])
 	spa_pod_builder_init(&source_builder, source_pods, sizeof(source_pods));
 	source_params[0] = build_format(&source_builder);
 	source_params[1] = build_header_meta(&source_builder);
-	source_params[2] = build_acquisition_meta(&source_builder, data.acquisition_v3);
+	source_params[2] = build_properties_meta(&source_builder);
 	if (data.buffers32)
 		source_params[n_source_params++] = build_source_buffers(&source_builder);
 	spa_pod_builder_init(&sink_builder, sink_pods, sizeof(sink_pods));
 	sink_params[0] = build_format(&sink_builder);
 	sink_params[1] = build_header_meta(&sink_builder);
-	sink_params[2] = build_acquisition_meta(&sink_builder, data.acquisition_v3);
-	if (data.buffer_properties) {
-		source_params[n_source_params++] = build_properties_meta(&source_builder);
-		sink_params[n_sink_params++] = build_properties_meta(&sink_builder);
-	}
+	sink_params[2] = build_properties_meta(&sink_builder);
 	if (source_params[0] == NULL || source_params[1] == NULL ||
 	    source_params[2] == NULL ||
 	    (data.buffers32 && source_params[3] == NULL) || sink_params[0] == NULL ||

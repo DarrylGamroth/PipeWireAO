@@ -318,6 +318,10 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 			continue;
 		}
 
+		/* Retired PipeWireAO allocations must never re-enter a native pool. */
+		if (type == 11 || type == 12)
+			return -ENOTSUP;
+
 		pw_log_debug("%p: enable meta %s size:%d", result,
 				spa_debug_type_find_name(spa_type_meta_type, type), size);
 

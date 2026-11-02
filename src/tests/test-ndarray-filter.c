@@ -181,10 +181,7 @@ static void test_valid_config(void)
 	spa_assert_se(PW_NDARRAY_FILTER_BUFFER_FLAG_INPUT_UNAVAILABLE == (1u << 1));
 	spa_assert_se(PW_NDARRAY_FILTER_PORT_FLAG_NONE == 0);
 	spa_assert_se(PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER == (1u << 0));
-	spa_assert_se(PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3 == (1u << 1));
-	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS_V1 == 1);
-	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS_V2 == 2);
-	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS == 3);
+	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS == 4);
 	spa_assert_se(SPA_PROP_INFO_visibility == 9);
 	spa_assert_se(SPA_PROP_INFO_displayName == 10);
 	spa_assert_se(spa_type_prop_info[10].type == SPA_PROP_INFO_displayName);
@@ -205,18 +202,19 @@ static void test_valid_config(void)
 	spa_assert_se(pw_ndarray_filter_run(filter) == -EINVAL);
 	pw_ndarray_filter_destroy(filter);
 	pw_ndarray_filter_destroy(NULL);
-	/* A v2 caller owns only the original prefix, with no apply_props tail. */
+	/* Old callback versions fail before the library reads the event tail. */
 	{
 		size_t size = offsetof(struct pw_ndarray_filter_events, apply_props);
 		void *v2 = malloc(size);
-		uint32_t version = PW_VERSION_NDARRAY_FILTER_EVENTS_V2;
+		uint32_t version = 2;
 
 		spa_assert_se(v2 != NULL);
 		memcpy(v2, &events, size);
 		memcpy(v2, &version, sizeof(version));
 		config.events = v2;
 		filter = NULL;
-		spa_assert_se(pw_ndarray_filter_new(&config, &filter) == 0);
+		spa_assert_se(pw_ndarray_filter_new(&config, &filter) == -EINVAL);
+		spa_assert_se(filter == NULL);
 		free(v2);
 		pw_ndarray_filter_destroy(filter);
 		config.events = &events;
@@ -318,7 +316,7 @@ static void test_config_validation(void)
 	config = saved_config;
 	config.flags = PW_NDARRAY_FILTER_FLAG_OWNER_PROPERTIES;
 	missing_property = events;
-	missing_property.version = PW_VERSION_NDARRAY_FILTER_EVENTS_V1;
+	missing_property.version = 1;
 	config.events = &missing_property;
 	expect_new_error(-EINVAL);
 	config = saved_config;
@@ -326,16 +324,11 @@ static void test_config_validation(void)
 	ports[0].struct_size = 0;
 	expect_new_error(-EINVAL);
 	ports[0] = saved_port;
-	ports[0].flags = PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3 << 1;
+	ports[0].flags = (1u << 2);
 	expect_new_error(-EINVAL);
 	ports[0] = saved_port;
-	ports[0].flags = PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3;
-	{
-		struct pw_ndarray_filter *filter = NULL;
-
-		spa_assert_se(pw_ndarray_filter_new(&config, &filter) == 0);
-		pw_ndarray_filter_destroy(filter);
-	}
+	ports[0].flags = (1u << 1);
+	expect_new_error(-EINVAL);
 	ports[0] = saved_port;
 	ports[0].flags = PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER;
 	ports[0].format.rate_num = 0;

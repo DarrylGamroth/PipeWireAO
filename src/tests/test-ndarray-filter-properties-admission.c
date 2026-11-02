@@ -27,7 +27,6 @@ int main(int argc, char *argv[])
 			.struct_size = sizeof(struct pw_ndarray_filter_port),
 			.direction = SPA_DIRECTION_INPUT,
 			.name = "input",
-			.flags = PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3,
 			.format = {
 				.element_type = SPA_ELEMENT_TYPE_F32_LE,
 				.layout = SPA_NDARRAY_LAYOUT_COLUMN_MAJOR,
@@ -50,7 +49,7 @@ int main(int argc, char *argv[])
 	const struct pw_ndarray_filter_config config = {
 		.struct_size = sizeof(config),
 		.version = PW_VERSION_NDARRAY_FILTER_CONFIG,
-		.node_name = "acquisition-v3-admission",
+		.node_name = "properties-abi-admission",
 		.n_ports = SPA_N_ELEMENTS(ports),
 		.ports = ports,
 		.events = &events,
@@ -64,7 +63,7 @@ int main(int argc, char *argv[])
 		return 2;
 	result = pw_ndarray_filter_new(&config, &filter);
 	valid_result = expect_unsupported ? filter == NULL : filter != NULL;
-	printf("Acquisition V3 admission: result=%d expected=%d result_null=%d\n",
+	printf("Properties callback ABI admission: result=%d expected=%d result_null=%d\n",
 			result, expected, filter == NULL);
 	if (result == 0)
 		pw_ndarray_filter_destroy(filter);

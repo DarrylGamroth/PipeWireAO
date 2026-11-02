@@ -79,10 +79,10 @@ static const struct spa_type_info spa_type_meta_optical_classification[] = {
 };
 
 static const struct spa_type_info spa_type_meta_trigger_classification[] = {
-	{ SPA_META_ACQUISITION_TRIGGER_ABSENT, SPA_TYPE_Int, "Spa:Enum:TriggerClassification:absent", NULL },
-	{ SPA_META_ACQUISITION_TRIGGER_LOW, SPA_TYPE_Int, "Spa:Enum:TriggerClassification:low", NULL },
-	{ SPA_META_ACQUISITION_TRIGGER_HIGH, SPA_TYPE_Int, "Spa:Enum:TriggerClassification:high", NULL },
-	{ SPA_META_ACQUISITION_TRIGGER_MIXED, SPA_TYPE_Int, "Spa:Enum:TriggerClassification:mixed", NULL },
+	{ SPA_META_TRIGGER_ABSENT, SPA_TYPE_Int, "Spa:Enum:TriggerClassification:absent", NULL },
+	{ SPA_META_TRIGGER_LOW, SPA_TYPE_Int, "Spa:Enum:TriggerClassification:low", NULL },
+	{ SPA_META_TRIGGER_HIGH, SPA_TYPE_Int, "Spa:Enum:TriggerClassification:high", NULL },
+	{ SPA_META_TRIGGER_MIXED, SPA_TYPE_Int, "Spa:Enum:TriggerClassification:mixed", NULL },
 	{ 0, 0, NULL, NULL },
 };
 
@@ -91,6 +91,24 @@ static const struct spa_type_info spa_type_buffer_properties[] = {
 		SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE "opticalClassification", spa_type_meta_optical_classification },
 	{ SPA_META_PROPERTY_triggerClassification, SPA_TYPE_Id,
 		SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE "triggerClassification", spa_type_meta_trigger_classification },
+	{ SPA_META_PROPERTY_acquisitionDomain, SPA_TYPE_Bytes,
+		SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE "acquisitionDomain", NULL },
+	{ SPA_META_PROPERTY_acquisitionGeneration, SPA_TYPE_Bytes,
+		SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE "acquisitionGeneration", NULL },
+	{ SPA_META_PROPERTY_acquisitionSequence, SPA_TYPE_Bytes,
+		SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE "acquisitionSequence", NULL },
+	{ SPA_META_PROPERTY_exposureDuration, SPA_TYPE_Bytes,
+		SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE "exposureDuration", NULL },
+	{ SPA_META_PROPERTY_exposureStart, SPA_TYPE_Long,
+		SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE "exposureStart", NULL },
+	{ SPA_META_PROPERTY_exposureTimebase, SPA_TYPE_Id,
+		SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE "exposureTimebase", NULL },
+	{ SPA_META_PROPERTY_timestampUncertainty, SPA_TYPE_Bytes,
+		SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE "timestampUncertainty", NULL },
+	{ SPA_META_PROPERTY_ptpGrandmasterIdentity, SPA_TYPE_Bytes,
+		SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE "ptpGrandmasterIdentity", NULL },
+	{ SPA_META_PROPERTY_ptpDomainNumber, SPA_TYPE_Id,
+		SPA_TYPE_INFO_BUFFER_PROPERTIES_BASE "ptpDomainNumber", NULL },
 	{ 0, 0, NULL, NULL },
 };
 
@@ -106,7 +124,6 @@ static const struct spa_type_info spa_type_meta_type[] = {
 	{ SPA_META_VideoTransform, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "VideoTransform", NULL },
 	{ SPA_META_SyncTimeline, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "SyncTimeline", NULL },
 	{ SPA_META_Properties, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "Properties", NULL },
-	{ SPA_META_Acquisition, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "Acquisition", NULL },
 	{ 0, 0, NULL, NULL },
 };
 

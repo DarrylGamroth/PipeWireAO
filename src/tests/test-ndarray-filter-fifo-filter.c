@@ -16,6 +16,7 @@
 #include <spa/utils/result.h>
 
 #include <pipewire/ndarray-filter.h>
+#include "buffer-properties-fixture.h"
 
 /* Observe opaque public handles; all calls still use the native implementation. */
 static struct pw_filter *native_filter;
@@ -103,22 +104,17 @@ static int fifo_process(void *userdata,
 	float value;
 	uint64_t sequence = 100 + (packet - 1) / 4;
 	uint32_t row = ((packet - 1) % 4) * 2;
-	static const uint8_t domain[SPA_META_ACQUISITION_DOMAIN_SIZE] = { 1 };
-	struct spa_meta_acquisition expected;
-	spa_meta_acquisition_init(&expected);
-	spa_meta_acquisition_set_identity(&expected, domain, 7, sequence);
-	spa_meta_acquisition_set_exposure_start(&expected, 100000 + packet, 50);
 
 	if (n_inputs != 1 || n_outputs != 1 || packet > 8 ||
 	    input->size != sizeof(value) || output->size != sizeof(value) ||
 	    input->data == NULL || output->data == NULL ||
 	    (input->metadata_valid & PW_NDARRAY_FILTER_METADATA_HEADER) == 0 ||
-	    (input->metadata_valid & PW_NDARRAY_FILTER_METADATA_ACQUISITION) == 0 ||
+	    (input->metadata_valid & PW_NDARRAY_FILTER_METADATA_PROPERTIES) == 0 ||
 	    input->header.seq != sequence || input->header.offset != row ||
 	    input->header.pts != 1000 + (int64_t)sequence ||
 	    input->header.dts_offset != 0 ||
 	    input->header.flags != (packet % 4 == 0 ? SPA_META_HEADER_FLAG_MARKER : 0) ||
-	    memcmp(&input->acquisition, &expected, sizeof(expected)) != 0)
+	    !test_check_acquisition(&input->properties, sequence, 100000 + packet))
 		return -EINVAL;
 	memcpy(&value, input->data, sizeof(value));
 	if (value != (float)packet)
@@ -140,9 +136,9 @@ static int fifo_process(void *userdata,
 		value = (float)packet;
 		memcpy(output->data, &value, sizeof(value));
 		output->header = input->header;
-		output->acquisition = input->acquisition;
+		memcpy(output->properties.data, input->properties.data, input->properties.size);
 		output->metadata_valid |= PW_NDARRAY_FILTER_METADATA_HEADER |
-			PW_NDARRAY_FILTER_METADATA_ACQUISITION;
+			PW_NDARRAY_FILTER_METADATA_PROPERTIES;
 	}
 	fflush(stdout);
 	return 0;

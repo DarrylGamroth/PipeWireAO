@@ -32,7 +32,7 @@ struct test_buffer {
 	struct spa_chunk chunk;
 	struct spa_meta metas[2];
 	struct spa_meta_header header;
-	struct spa_meta_acquisition acquisition;
+	uint64_t properties[64];
 	float values[5];
 };
 
@@ -92,10 +92,10 @@ static void init_buffer(struct test_buffer *buffer)
 	buffer->metas[0].type = SPA_META_Header;
 	buffer->metas[0].size = sizeof(buffer->header);
 	buffer->metas[0].data = &buffer->header;
-	assert(spa_meta_acquisition_init(&buffer->acquisition));
-	buffer->metas[1].type = SPA_META_Acquisition;
-	buffer->metas[1].size = sizeof(buffer->acquisition);
-	buffer->metas[1].data = &buffer->acquisition;
+	buffer->metas[1].type = SPA_META_Properties;
+	buffer->metas[1].size = sizeof(buffer->properties);
+	buffer->metas[1].data = buffer->properties;
+	assert(spa_meta_properties_init(&buffer->metas[1]));
 	buffer->buffer.n_metas = SPA_N_ELEMENTS(buffer->metas);
 	buffer->buffer.metas = buffer->metas;
 	buffer->buffer.n_datas = 1;
@@ -1494,8 +1494,8 @@ int main(int argc, char *argv[])
 	void *saved_data;
 	struct spa_meta *saved_metas;
 	uint32_t saved_maxsize, saved_n_metas;
-	const uint8_t acquisition_domain[SPA_META_ACQUISITION_DOMAIN_SIZE] = { 1 };
-	const uint8_t grandmaster_id[SPA_META_ACQUISITION_PTP_CLOCK_ID_SIZE] = { 2 };
+	const uint8_t acquisition_domain[SPA_ACQUISITION_DOMAIN_SIZE] = { 1 };
+	const uint8_t grandmaster_id[SPA_EXPOSURE_PTP_CLOCK_ID_SIZE] = { 2 };
 	uint32_t i;
 	int res;
 
@@ -1636,10 +1636,18 @@ int main(int argc, char *argv[])
 		input.values[i] = (float)i + 1.0f;
 	input.header.seq = 42;
 	input.header.pts = 1234567;
-	assert(spa_meta_acquisition_set_identity(&input.acquisition,
-			acquisition_domain, 7, 42));
-	assert(spa_meta_acquisition_set_exposure_start_ptp(&input.acquisition,
-			123456789, 100, grandmaster_id, 3));
+	{
+		uint32_t flags = SPA_POD_PROP_FLAG_MANDATORY, timebase = SPA_EXPOSURE_TIMEBASE_TAI, domain = 3;
+		int64_t start = 123456789;
+		assert(spa_meta_properties_add(&input.metas[1], 3, flags, SPA_TYPE_Bytes, 16, acquisition_domain));
+		assert(spa_meta_properties_add_uint64(&input.metas[1], 4, flags, 7));
+		assert(spa_meta_properties_add_uint64(&input.metas[1], 5, flags, 42));
+		assert(spa_meta_properties_add(&input.metas[1], 7, flags, SPA_TYPE_Long, 8, &start));
+		assert(spa_meta_properties_add(&input.metas[1], 8, flags, SPA_TYPE_Id, 4, &timebase));
+		assert(spa_meta_properties_add_uint64(&input.metas[1], 9, flags, 100));
+		assert(spa_meta_properties_add(&input.metas[1], 10, flags, SPA_TYPE_Bytes, 8, grandmaster_id));
+		assert(spa_meta_properties_add(&input.metas[1], 11, flags, SPA_TYPE_Id, 4, &domain));
+	}
 	inputs[0] = &input.buffer;
 	inputs[1] = NULL;
 	outputs[0] = &output.buffer;
@@ -1653,8 +1661,8 @@ int main(int argc, char *argv[])
 		assert(output.values[i] == input.values[i] * 6.0f);
 	assert(output.header.seq == input.header.seq);
 	assert(output.header.pts == input.header.pts);
-	assert(memcmp(&output.acquisition, &input.acquisition,
-			sizeof(input.acquisition)) == 0);
+	assert(memcmp(output.properties, input.properties,
+			sizeof(input.properties)) == 0);
 
 	/* External output offsets are caller-owned and survive graph processing. */
 	output.values[0] = -123.0f;

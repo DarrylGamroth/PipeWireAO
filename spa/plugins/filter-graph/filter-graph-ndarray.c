@@ -55,7 +55,7 @@ struct fgn_storage {
 	struct spa_chunk chunk;
 	struct spa_meta metas[2];
 	struct spa_meta_header header;
-	struct spa_meta_acquisition acquisition;
+	uint64_t properties[(SPA_FGN_MAX_META_BYTES - sizeof(struct spa_meta_header)) / sizeof(uint64_t)];
 	void *memory;
 };
 
@@ -244,12 +244,12 @@ static int storage_init(struct fgn_storage *storage,
 		.size = sizeof(storage->header),
 		.data = &storage->header,
 	};
-	spa_meta_acquisition_init(&storage->acquisition);
 	storage->metas[1] = (struct spa_meta) {
-		.type = SPA_META_Acquisition,
-		.size = sizeof(storage->acquisition),
-		.data = &storage->acquisition,
+		.type = SPA_META_Properties,
+		.size = sizeof(storage->properties),
+		.data = storage->properties,
 	};
+	spa_meta_properties_init(&storage->metas[1]);
 	storage->buffer.n_metas = SPA_N_ELEMENTS(storage->metas);
 	storage->buffer.metas = storage->metas;
 	storage->buffer.n_datas = 1;
@@ -2397,9 +2397,10 @@ static int validate_buffer(struct spa_buffer *buffer,
 		    (meta->size < sizeof(struct spa_meta_header) ||
 		     (uintptr_t)meta->data % _Alignof(struct spa_meta_header) != 0))
 			return -EINVAL;
-		if (meta->type == SPA_META_Acquisition &&
-		    (meta->size < sizeof(struct spa_meta_acquisition) ||
-		     (uintptr_t)meta->data % _Alignof(struct spa_meta_acquisition) != 0))
+		if ((meta->type == 11 || meta->type == 12) ||
+		    (meta->type == SPA_META_Properties &&
+		     (output ? !_spa_meta_properties_storage_is_valid(meta) :
+		      !spa_meta_properties_is_valid(meta, NULL, 0))))
 			return -EINVAL;
 	}
 	return 0;
@@ -2669,6 +2670,10 @@ static int validate_completed_output(struct spa_buffer *buffer,
 	    data->chunk->offset >= data->maxsize ||
 	    data->maxsize - data->chunk->offset < payload_size)
 		return -EMSGSIZE;
+	for (uint32_t i = 0; i < buffer->n_metas; i++)
+		if (buffer->metas[i].type == SPA_META_Properties &&
+		    !spa_meta_properties_is_valid(&buffer->metas[i], NULL, 0))
+			return -EINVAL;
 	return 0;
 }
 
@@ -2693,6 +2698,7 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		for (j = 0; j < node->n_outputs; j++) {
 			node->outputs[j]->storage.chunk.offset = 0;
 			node->outputs[j]->storage.chunk.size = 0;
+			spa_meta_properties_init(&node->outputs[j]->storage.metas[1]);
 			node->outputs[j]->cycle_buffer = &node->outputs[j]->storage.buffer;
 			node->outputs[j]->cycle_offset = 0;
 		}
@@ -2723,8 +2729,11 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		return res;
 	for (i = 0; i < n_outputs; i++) {
 		struct spa_data *data = &outputs[i]->datas[0];
+		struct spa_meta *properties = spa_buffer_find_meta(outputs[i], SPA_META_Properties);
 		data->chunk->size = 0;
 		data->chunk->flags = 0;
+		if (properties != NULL && !spa_meta_properties_init(properties))
+			return -EINVAL;
 		graph->outputs[i]->cycle_buffer = outputs[i];
 		graph->outputs[i]->cycle_offset = data->chunk->offset;
 	}
