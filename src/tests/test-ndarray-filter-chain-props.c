@@ -18,6 +18,7 @@
 #include <spa/pod/parser.h>
 
 #include <pipewire/impl.h>
+#include "buffer-properties-fixture.h"
 
 enum test_mode {
 	TEST_BACK_PRESSURE,
@@ -96,7 +97,7 @@ static void fail(struct test_data *data, const char *message)
 
 static void set_gain(struct test_data *data, float gain)
 {
-	uint8_t buffer[256];
+	uint8_t buffer[512];
 	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
 	struct spa_pod_frame object, values;
 	struct spa_pod *props;
@@ -299,6 +300,10 @@ static void source_process(void *userdata)
 		fail(data, "source received an invalid or unexpected buffer");
 		return;
 	}
+	if (!test_init_frame_metadata(buffer->buffer)) {
+		fail(data, "required frame metadata is unavailable");
+		return;
+	}
 	memcpy(block->data, &value, sizeof(value));
 	*block->chunk = (struct spa_chunk) { .size = sizeof(value), .stride = sizeof(value) };
 	pw_stream_queue_buffer(data->source, buffer);
@@ -372,7 +377,7 @@ int main(int argc, char *argv[])
 	struct pw_loop *loop;
 	struct spa_source *timer;
 	struct spa_pod_builder builder;
-	struct spa_pod *params[1];
+	struct spa_pod *params[3];
 	struct timespec deadline = { .tv_sec = 10 };
 	const struct spa_ndarray_info format = SPA_NDARRAY_INFO_INIT(
 		.element_type = SPA_ELEMENT_TYPE_F32_LE,
@@ -451,6 +456,7 @@ int main(int argc, char *argv[])
 	pw_stream_add_listener(data.source, &data.source_listener, &source_events, &data);
 	spa_pod_builder_init(&builder, buffer, sizeof(buffer));
 	params[0] = spa_format_ndarray_build(&builder, SPA_PARAM_EnumFormat, &format);
+	spa_assert_se(test_build_frame_metadata(&builder, params + 1));
 	spa_assert_se(params[0] != NULL);
 	spa_assert_se(pw_stream_connect(data.source, PW_DIRECTION_OUTPUT, PW_ID_ANY,
 			PW_STREAM_FLAG_DRIVER | PW_STREAM_FLAG_MAP_BUFFERS |

@@ -16,6 +16,7 @@ struct test_node {
 	uint32_t requested;
 	uint32_t required_meta;
 	uint32_t property_features;
+	uint32_t metadata_type;
 };
 
 static int add_listener(void *object, struct spa_hook *listener,
@@ -48,7 +49,7 @@ static int enum_params(void *object, int seq, enum spa_direction direction SPA_U
 		if (node->property_features == 0)
 			return -ENOENT;
 		spa_pod_builder_push_object(&builder, &frame, SPA_TYPE_OBJECT_ParamMeta, id);
-		spa_pod_builder_add(&builder, SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Properties),
+		spa_pod_builder_add(&builder, SPA_PARAM_META_type, SPA_POD_Id(node->metadata_type ? node->metadata_type : SPA_META_Properties),
 				SPA_PARAM_META_size, SPA_POD_Int(128), 0);
 		spa_pod_builder_prop(&builder, SPA_PARAM_META_features, SPA_POD_PROP_FLAG_MANDATORY);
 		spa_pod_builder_int(&builder, node->property_features);
@@ -110,11 +111,12 @@ static void check_negotiate(struct pw_context *context, uint32_t flags,
 }
 
 static void check_properties_negotiate(struct pw_context *context,
-		uint32_t output_features, uint32_t input_features, int expected)
+		uint32_t output_features, uint32_t input_features, int expected, uint32_t metadata_type)
 {
-	struct test_node output = { .requested = 2, .property_features = output_features };
+	struct test_node output = { .requested = 2, .property_features = output_features,
+		.metadata_type = metadata_type };
 	struct test_node input = { .requested = 2, .property_features = input_features,
-		.required_meta = 1u << SPA_META_Properties };
+		.required_meta = 1u << metadata_type, .metadata_type = metadata_type };
 	struct pw_buffers buffers = { 0 };
 	int result;
 
@@ -166,12 +168,14 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	check_properties_negotiate(&context, 1, 1, 0);
-	check_properties_negotiate(&context, 0, 1, -ENOTSUP);
-	check_properties_negotiate(&context, 1, 0, -ENOTSUP);
-	check_properties_negotiate(&context, 2, 1, -ENOTSUP);
-	check_properties_negotiate(&context, 0, 0, -ENOTSUP);
-	puts("5 required buffer-properties negotiation cases passed");
+	check_properties_negotiate(&context, 1, 1, 0, SPA_META_Properties);
+	check_properties_negotiate(&context, 0, 1, -ENOTSUP, SPA_META_Properties);
+	check_properties_negotiate(&context, 1, 0, -ENOTSUP, SPA_META_Properties);
+	check_properties_negotiate(&context, 2, 1, -ENOTSUP, SPA_META_Properties);
+	check_properties_negotiate(&context, 0, 0, -ENOTSUP, SPA_META_Properties);
+	check_properties_negotiate(&context, 1, 1, -ENOTSUP, 11);
+	check_properties_negotiate(&context, 1, 1, -ENOTSUP, 12);
+	puts("5 required Properties and 2 retired metadata rejection cases passed");
 	pw_mempool_destroy(context.pool);
 	pw_properties_free(context.properties);
 	pw_deinit();

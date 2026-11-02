@@ -9,42 +9,113 @@
 
 #define CHECK(expr) spa_assert_se(expr)
 
-static void test_trigger_consistency(void)
+static void test_acquisition_facts(void)
 {
-	uint64_t storage[16];
-	struct spa_meta properties = { SPA_META_Properties, sizeof(storage), storage };
-	struct spa_meta_acquisition record;
-	struct spa_meta acquisition = { SPA_META_Acquisition, sizeof(record), &record };
-	struct spa_meta_property_requirement required = { SPA_META_PROPERTY_triggerClassification, SPA_TYPE_Id };
-	uint32_t trigger, invalid = 4;
+	uint64_t storage[64], decoded;
+	struct spa_meta meta = { SPA_META_Properties, sizeof(storage), storage };
+	struct spa_acquisition_identity identity, same;
+	struct spa_exposure_start start, peer;
+	const uint8_t domain[16] = { 1 }, grandmaster[8] = { 2 };
+	uint32_t timebase = SPA_EXPOSURE_TIMEBASE_TAI, ptp_domain = 255;
+	int64_t nsec = INT64_MAX;
+	int64_t difference;
+	uint64_t uncertainty;
+	uint32_t mandatory = SPA_POD_PROP_FLAG_MANDATORY;
 
-	CHECK(spa_meta_acquisition_init(&record));
-	CHECK(spa_meta_properties_init(&properties));
-	CHECK(!spa_meta_properties_is_valid(&properties, &required, 1));
-	CHECK(spa_meta_properties_acquisition_is_consistent(&properties, &acquisition));
-	CHECK(spa_meta_properties_find(&properties, required.key) == NULL);
-	CHECK(!spa_meta_properties_add(&properties, required.key, SPA_TYPE_Id, 4, &invalid));
-	CHECK(!spa_meta_properties_add(&properties, required.key, SPA_TYPE_Int, 4, &invalid));
-	for (trigger = SPA_META_ACQUISITION_TRIGGER_ABSENT;
-	     trigger <= SPA_META_ACQUISITION_TRIGGER_MIXED; trigger++) {
-		CHECK(spa_meta_properties_init(&properties));
-		CHECK(spa_meta_properties_add(&properties, required.key, SPA_TYPE_Id, 4, &trigger));
-		CHECK(spa_meta_properties_is_valid(&properties, &required, 1));
-		CHECK(spa_meta_properties_acquisition_is_consistent(&properties, NULL));
-		CHECK(spa_meta_acquisition_init(&record));
-		CHECK(spa_meta_properties_acquisition_is_consistent(&properties, &acquisition));
-		CHECK(spa_meta_acquisition_set_trigger_classification(&record, trigger));
-		CHECK(spa_meta_properties_acquisition_is_consistent(&properties, &acquisition));
-		CHECK(spa_meta_acquisition_set_trigger_classification(&record, (trigger + 1) % 4));
-		CHECK(!spa_meta_properties_acquisition_is_consistent(&properties, &acquisition));
-		CHECK(spa_meta_properties_find(&properties, SPA_META_PROPERTY_opticalClassification) == NULL);
+	CHECK(spa_meta_properties_init(&meta));
+	CHECK(!spa_meta_properties_get_acquisition_identity(&meta, &identity));
+	CHECK(!spa_meta_properties_add(&meta, 3, 0, SPA_TYPE_Bytes, 16, domain));
+	CHECK(spa_meta_properties_add(&meta, 3, mandatory, SPA_TYPE_Bytes, 16, domain));
+	CHECK(!spa_meta_properties_is_valid(&meta, NULL, 0));
+	CHECK(spa_meta_properties_add_uint64(&meta, 4, mandatory, UINT64_MAX));
+	CHECK(!spa_meta_properties_is_valid(&meta, NULL, 0));
+	CHECK(spa_meta_properties_add_uint64(&meta, 5, mandatory, UINT64_MAX));
+	CHECK(spa_meta_properties_is_valid(&meta, NULL, 0));
+	CHECK(!spa_meta_properties_add_uint64(&meta, 6, mandatory, 0));
+	CHECK(spa_meta_properties_add_uint64(&meta, 6, mandatory, UINT64_MAX));
+	CHECK(spa_meta_properties_add(&meta, 7, mandatory, SPA_TYPE_Long, 8, &nsec));
+	CHECK(!spa_meta_properties_is_valid(&meta, NULL, 0));
+	CHECK(spa_meta_properties_add(&meta, 8, mandatory, SPA_TYPE_Id, 4, &timebase));
+	CHECK(spa_meta_properties_add_uint64(&meta, 9, mandatory, UINT64_MAX));
+	CHECK(!spa_meta_properties_is_valid(&meta, NULL, 0));
+	CHECK(spa_meta_properties_add(&meta, 10, mandatory, SPA_TYPE_Bytes, 8, grandmaster));
+	CHECK(!spa_meta_properties_is_valid(&meta, NULL, 0));
+	CHECK(spa_meta_properties_add(&meta, 11, mandatory, SPA_TYPE_Id, 4, &ptp_domain));
+	CHECK(spa_meta_properties_is_valid(&meta, NULL, 0));
+	{
+		struct spa_meta_property_requirement required = { 19, SPA_TYPE_Id };
+		uint32_t custom = 0;
+		CHECK(spa_meta_properties_add(&meta, 19, mandatory, SPA_TYPE_Id, 4, &custom));
+		CHECK(!spa_meta_properties_is_valid(&meta, NULL, 0));
+		CHECK(spa_meta_properties_is_valid(&meta, &required, 1));
 	}
-	record.version = 99;
-	CHECK(!spa_meta_properties_acquisition_is_consistent(&properties, &acquisition));
-	((struct spa_pod_prop *)SPA_PTROFF(storage, 16, void))->value.type = SPA_TYPE_Int;
-	CHECK(!spa_meta_properties_is_valid(&properties, &required, 1));
-	CHECK(!spa_meta_properties_acquisition_is_consistent(&properties, NULL));
-	puts("typed trigger: exact range/type, missing value, v2 coexistence and v3 match/mismatch passed");
+	CHECK(spa_meta_properties_get_uint64(&meta, 4, &decoded) && decoded == UINT64_MAX);
+	CHECK(spa_meta_properties_get_acquisition_identity(&meta, &identity));
+	CHECK(identity.generation == UINT64_MAX && identity.sequence == UINT64_MAX);
+	same = identity;
+	CHECK(spa_acquisition_identity_equal(&identity, &same));
+	same.sequence = 0;
+	CHECK(!spa_acquisition_identity_equal(&identity, &same));
+	CHECK(spa_meta_properties_get_exposure_duration(&meta, &decoded) && decoded == UINT64_MAX);
+	CHECK(spa_meta_properties_get_exposure_start(&meta, &start));
+	CHECK(start.nsec == INT64_MAX && start.uncertainty_nsec == UINT64_MAX);
+	peer = start;
+	peer.nsec = 0;
+	CHECK(spa_exposure_start_time_difference(&start, &peer, &difference, &uncertainty));
+	CHECK(difference == INT64_MAX && uncertainty == UINT64_MAX);
+	CHECK(spa_exposure_start_times_match(&start, &peer, UINT64_MAX));
+	start.uncertainty_nsec = peer.uncertainty_nsec = 0;
+	CHECK(!spa_exposure_start_times_match(&start, &peer, INT64_MAX - 1u));
+	CHECK(spa_exposure_start_times_match(&start, &peer, INT64_MAX));
+	peer.ptp_domain_number--;
+	CHECK(!spa_exposure_start_time_difference(&start, &peer, NULL, NULL));
+	peer = start;
+	peer.timebase = SPA_EXPOSURE_TIMEBASE_MONOTONIC;
+	CHECK(!spa_exposure_start_time_difference(&start, &peer, NULL, NULL));
+	CHECK(spa_meta_properties_init(&meta));
+	CHECK(!spa_meta_properties_get_acquisition_identity(&meta, &identity));
+	CHECK(!spa_meta_properties_get_exposure_start(&meta, &start));
+	CHECK(!spa_meta_properties_get_exposure_duration(&meta, &decoded));
+	puts("acquisition facts: complete groups, full unsigned range, clocks and reuse passed");
+}
+
+static void test_fact_ranges(void)
+{
+	uint64_t storage[64], value;
+	struct spa_meta meta = { SPA_META_Properties, sizeof(storage), storage };
+	const uint32_t flags = SPA_POD_PROP_FLAG_MANDATORY;
+	uint8_t zero[16] = { 0 }, bytes[8] = { 0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01 };
+	const uint64_t values[] = { 0, INT64_MAX, UINT64_C(1) << 63, UINT64_MAX };
+	int64_t negative = -1, start = 0;
+	uint32_t invalid = 256, monotonic = SPA_EXPOSURE_TIMEBASE_MONOTONIC;
+	CHECK(spa_meta_properties_init(&meta));
+	CHECK(!spa_meta_properties_add(&meta, 3, flags, SPA_TYPE_Bytes, 16, zero));
+	CHECK(!spa_meta_properties_add(&meta, 4, flags, SPA_TYPE_Bytes, 7, bytes));
+	CHECK(!spa_meta_properties_add(&meta, 4, flags, SPA_TYPE_Long, 8, bytes));
+	CHECK(!spa_meta_properties_add(&meta, 7, flags, SPA_TYPE_Long, 8, &negative));
+	CHECK(!spa_meta_properties_add(&meta, 8, flags, SPA_TYPE_Id, 4, &invalid));
+	CHECK(!spa_meta_properties_add(&meta, 10, flags, SPA_TYPE_Bytes, 8, zero));
+	CHECK(!spa_meta_properties_add(&meta, 11, flags, SPA_TYPE_Id, 4, &invalid));
+	for (uint32_t i = 0; i < SPA_N_ELEMENTS(values); i++) {
+		CHECK(spa_meta_properties_init(&meta));
+		CHECK(spa_meta_properties_add_uint64(&meta, 17, 0, values[i]));
+		CHECK(spa_meta_properties_get_uint64(&meta, 17, &value) && value == values[i]);
+	}
+	CHECK(spa_meta_properties_init(&meta));
+	CHECK(spa_meta_properties_add_uint64(&meta, 17, 0, UINT64_C(0x0102030405060708)));
+	CHECK(memcmp(SPA_POD_BODY_CONST(spa_meta_properties_find(&meta, 17)), bytes, 8) == 0);
+	CHECK(spa_meta_properties_init(&meta));
+	CHECK(spa_meta_properties_add(&meta, 7, flags, SPA_TYPE_Long, 8, &start));
+	CHECK(spa_meta_properties_add(&meta, 8, flags, SPA_TYPE_Id, 4, &monotonic));
+	CHECK(spa_meta_properties_add_uint64(&meta, 9, flags, 0));
+	CHECK(spa_meta_properties_is_valid(&meta, NULL, 0));
+	bytes[0] = 1;
+	CHECK(spa_meta_properties_add(&meta, 10, flags, SPA_TYPE_Bytes, 8, bytes));
+	CHECK(!spa_meta_properties_is_valid(&meta, NULL, 0));
+	CHECK(spa_meta_properties_init(&meta));
+	CHECK(spa_meta_properties_add(&meta, 10, flags, SPA_TYPE_Bytes, 8, bytes));
+	CHECK(!spa_meta_properties_is_valid(&meta, NULL, 0));
+	puts("fact ranges: unsigned boundaries/little-endian bytes, exact types and clock groups passed");
 }
 
 int main(void)
@@ -70,13 +141,13 @@ int main(void)
 	CHECK(spa_meta_properties_is_valid(&meta, NULL, 0));
 	CHECK(!spa_meta_properties_is_valid(&meta, required, 1));
 	CHECK(spa_meta_properties_find(&meta, 1) == NULL);
-	CHECK(!spa_meta_properties_add(&meta, 1, SPA_TYPE_Id, sizeof(bad), &bad));
-	CHECK(!spa_meta_properties_add(&meta, 1, SPA_TYPE_Int, sizeof(classification), &classification));
-	CHECK(spa_meta_properties_add(&meta, 1, SPA_TYPE_Id, sizeof(classification), &classification));
-	CHECK(!spa_meta_properties_add(&meta, 1, SPA_TYPE_Id, sizeof(classification), &classification));
-	CHECK(spa_meta_properties_add(&meta, 17, SPA_TYPE_Long, sizeof(number), &number));
-	CHECK(spa_meta_properties_add(&meta, 18, SPA_TYPE_String, 4, "abc"));
-	CHECK(spa_meta_properties_add(&meta, 19, SPA_TYPE_Bytes, 0, NULL));
+	CHECK(!spa_meta_properties_add(&meta, 1, 0, SPA_TYPE_Id, sizeof(bad), &bad));
+	CHECK(!spa_meta_properties_add(&meta, 1, 0, SPA_TYPE_Int, sizeof(classification), &classification));
+	CHECK(spa_meta_properties_add(&meta, 1, 0, SPA_TYPE_Id, sizeof(classification), &classification));
+	CHECK(!spa_meta_properties_add(&meta, 1, 0, SPA_TYPE_Id, sizeof(classification), &classification));
+	CHECK(spa_meta_properties_add(&meta, 17, 0, SPA_TYPE_Long, sizeof(number), &number));
+	CHECK(spa_meta_properties_add(&meta, 18, 0, SPA_TYPE_String, 4, "abc"));
+	CHECK(spa_meta_properties_add(&meta, 19, 0, SPA_TYPE_Bytes, 0, NULL));
 	CHECK(spa_meta_properties_is_valid(&meta, required, 2));
 	CHECK(!spa_meta_properties_is_valid(&meta, invalid, 2));
 	invalid[1] = (struct spa_meta_property_requirement){17, SPA_TYPE_Double};
@@ -126,20 +197,21 @@ int main(void)
 		cases++;
 	}
 	CHECK(spa_meta_properties_init(&meta));
-	for (uint32_t key = 2; key <= 65; key++) {
-		all_required[key - 2] = (struct spa_meta_property_requirement){key, SPA_TYPE_Id};
-		CHECK(spa_meta_properties_add(&meta, key, SPA_TYPE_Id, 4, &classification));
+	for (uint32_t key = 16; key <= 79; key++) {
+		all_required[key - 16] = (struct spa_meta_property_requirement){key, SPA_TYPE_Id};
+		CHECK(spa_meta_properties_add(&meta, key, 0, SPA_TYPE_Id, 4, &classification));
 	}
 	CHECK(spa_meta_properties_is_valid(&meta, all_required, 64));
-	CHECK(!spa_meta_properties_add(&meta, 66, SPA_TYPE_Id, 4, &classification));
+	CHECK(!spa_meta_properties_add(&meta, 80, 0, SPA_TYPE_Id, 4, &classification));
 	CHECK(spa_meta_properties_init(&meta));
 	CHECK(spa_meta_properties_find(&meta, 17) == NULL);
-	CHECK(!spa_meta_properties_add(&meta, 2, SPA_TYPE_Bool, 4, &bad));
-	CHECK(!spa_meta_properties_add(&meta, 2, SPA_TYPE_String, 3, "abc"));
+	CHECK(!spa_meta_properties_add(&meta, 2, 0, SPA_TYPE_Bool, 4, &bad));
+	CHECK(!spa_meta_properties_add(&meta, 2, 0, SPA_TYPE_String, 3, "abc"));
 	meta.size = 16;
 	CHECK(spa_meta_properties_is_valid(&meta, NULL, 0));
-	CHECK(!spa_meta_properties_add(&meta, 2, SPA_TYPE_Id, 4, &classification));
-	test_trigger_consistency();
+	CHECK(!spa_meta_properties_add(&meta, 2, 0, SPA_TYPE_Id, 4, &classification));
+	test_acquisition_facts();
+	test_fact_ranges();
 	printf("buffer properties: scalar lookup, requirements, reset, limits and %u malformed cases passed\n", cases);
 	return 0;
 }

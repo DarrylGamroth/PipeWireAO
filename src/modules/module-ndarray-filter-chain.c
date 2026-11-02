@@ -823,20 +823,20 @@ static struct spa_pod *build_format(struct spa_pod_builder *builder,
 	return spa_pod_builder_pop(builder, &object);
 }
 
-static struct spa_pod *build_acquisition_meta(struct spa_pod_builder *builder)
+static struct spa_pod *build_properties_meta(struct spa_pod_builder *builder)
 {
 	struct spa_pod_frame frame;
 
 	spa_pod_builder_push_object(builder, &frame,
 			SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta);
 	spa_pod_builder_add(builder,
-			SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Acquisition),
+			SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Properties),
 			SPA_PARAM_META_size,
-			SPA_POD_Int(sizeof(struct spa_meta_acquisition)),
+			SPA_POD_Int(512),
 			0);
 	spa_pod_builder_prop(builder, SPA_PARAM_META_features,
 			SPA_POD_PROP_FLAG_MANDATORY);
-	spa_pod_builder_int(builder, SPA_META_FEATURE_ACQUISITION_VERSION_2);
+	spa_pod_builder_int(builder, SPA_META_FEATURE_PROPERTIES_VERSION_1);
 	return spa_pod_builder_pop(builder, &frame);
 }
 
@@ -1580,6 +1580,8 @@ static int add_graph_port(struct impl *impl, enum spa_direction direction,
 			SPA_PARAM_BUFFERS_blocks, SPA_POD_Int(1),
 			SPA_PARAM_BUFFERS_size, SPA_POD_Int((int32_t)size),
 			SPA_PARAM_BUFFERS_stride, SPA_POD_Int(stride),
+			SPA_PARAM_BUFFERS_metaType, SPA_POD_Int((info->flags & SPA_FGN_PORT_FLAG_PARAMETER) ? 0 :
+			 (1u << SPA_META_Header) | (1u << SPA_META_Properties)),
 			SPA_PARAM_BUFFERS_dataType,
 			SPA_POD_CHOICE_FLAGS_Int((1u << SPA_DATA_MemPtr) |
 				(1u << SPA_DATA_MemFd)));
@@ -1588,7 +1590,8 @@ static int add_graph_port(struct impl *impl, enum spa_direction direction,
 			SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Header),
 			SPA_PARAM_META_size,
 			SPA_POD_Int(sizeof(struct spa_meta_header)));
-	params[n_params++] = build_acquisition_meta(&builder);
+	if (!(info->flags & SPA_FGN_PORT_FLAG_PARAMETER))
+		params[n_params++] = build_properties_meta(&builder);
 	for (uint32_t i = 0; i < n_params; i++)
 		if (params[i] == NULL) {
 			pw_properties_free(properties);
