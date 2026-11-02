@@ -43,7 +43,7 @@ be implemented only for a selected consumer that requires it.
   PipeWire node.
 - Perform no allocation, blocking wait, private scheduling, or unbounded work
   on the repeated processing path.
-- Copy only bounded Header, chunk, and Acquisition metadata; never copy the
+- Copy only bounded Header, chunk, and Properties metadata; never copy the
   ndarray payload on admission or publication.
 
 ## Non-goals
@@ -145,7 +145,7 @@ The implementation uses the existing Rust SPA-node support in
 `pipewireao-spa-plugins-core`, next to `api.ndarray.frame-assembly`. It does not
 extend the PipeWire core, FGN ABI, or JuliaFilterGraph execution model. The Rust
 support layer does need three narrow additions that its current surface lacks:
-node-level `SPA_IO_Position` delivery, `SPA_META_Acquisition` feature
+node-level `SPA_IO_Position` delivery, `SPA_META_Properties` feature
 negotiation and copying, and ordinary port-latency parameters. These expose
 existing PipeWire state to the node; they do not create another scheduler,
 metadata format, or latency engine.
@@ -163,7 +163,7 @@ The node prepares:
 
 - one current input-buffer lease and a fixed-width set of retired leases whose
   aliased outputs have not returned;
-- one copied acquisition-metadata record that also acts as the last-accepted
+- one bounded copy of the complete Properties object that also acts as the last-accepted
   comparison watermark;
 - the Header discontinuity state needed to construct output publication
   Headers;
@@ -201,7 +201,7 @@ If input and output work are both present in one process call, the new input is
 admitted before output is generated. The current fast cycle therefore uses the
 new value.
 
-An input is new only when it has valid Acquisition metadata and advances the
+An input is new only when it has valid Properties with a complete acquisition identity and advances the
 last-accepted identity according to the acquisition contract. Payload
 eligibility and the identity watermark are distinct state. Expiry, corruption,
 reset, pool replacement, and pause do not erase the same-namespace watermark.
@@ -219,7 +219,7 @@ ordinary identity rows apply last:
 | Exact duplicate identity | Ignore it, count a rejected update, and do not renew age |
 | Lower sequence in the same domain and generation | Invalidate the payload, preserve the watermark, count a protocol error, and mark discontinuity |
 | Changed domain or generation with a valid identity | Replace the slot and mark discontinuity; identities are not ordered across that boundary |
-| Structurally valid Acquisition metadata without `IDENTITY_VALID` | Reject the update without replacing or refreshing the current slot |
+| Structurally valid Properties with a complete acquisition identity without `IDENTITY_VALID` | Reject the update without replacing or refreshing the current slot |
 | Header `DISCONT` with a valid advancing or changed-namespace identity | Admit the replacement and mark its first output discontinuous |
 | Header `DISCONT` without a valid replacement | Invalidate the payload, preserve the watermark, and mark discontinuity |
 
@@ -239,9 +239,9 @@ discontinuity.
 
 The first compatible position with a non-invalid `clock.id` admits the selected
 driver identity; zero is a valid identity. A later driver change invalidates
-the payload, preserves the Acquisition watermark and output sequence, marks
+the payload, preserves the acquisition-identity watermark and output sequence, marks
 discontinuity, and replaces the driver/cycle comparison baseline so a new
-advancing Acquisition can recover. The last-published marker is scoped to the
+advancing acquisition identity can recover. The last-published marker is scoped to the
 driver identity and cycle.
 
 The admitted nominal cycle period is the exact rational product of
@@ -268,7 +268,7 @@ rate ratio does not by itself prove that ten uses are safe.
 ### Metadata
 
 The held output preserves the slow sample's complete
-`SPA_META_Acquisition` identity on every repeated publication. This lets a
+`SPA_META_Properties` acquisition identity on every repeated publication. This lets a
 consumer determine which physical slow acquisition supplied the value.
 
 The output Header describes output publication rather than pretending that each
@@ -288,10 +288,10 @@ input. Native FGN must retain and validate its existing generated
 `metadata_source()` declaration rather than adding adapter-wide inference.
 JuliaFilterGraph exposes the resolved external provenance through
 `output_metadata_source_inputs(graph)`. FilterGraphPipeWire copies valid
-Acquisition metadata from that declared source by calling the existing
+Properties from that declared source by calling the existing
 `PipeWireAO.propagate_metadata!` mechanism for each available output, then
 finalizes the algorithm-defined output Header so the temporary copied Header is
-overwritten while Acquisition remains copied. This is adapter plumbing and
+overwritten while Properties remain copied. This is adapter plumbing and
 does not change Julia graph execution or add a Julia hold policy. A graph that
 explicitly declares another output provenance keeps that declaration.
 
@@ -307,7 +307,7 @@ authority-provided generation change.
 Input and output pools have an explicit cross-port lease dependency. Output
 allocation duplicates the negotiated MemFd and creates an independent read-only
 mapping on the control path; it does not allocate or copy payload storage. Each
-output also keeps its own chunk, Header, and Acquisition storage. During normal
+output also keeps its own chunk, Header, and Properties storage. During normal
 processing, returning an aliased output releases the matching input lease.
 Pause invalidates the current selection but does not return an input whose
 output is still held downstream.
@@ -346,7 +346,7 @@ buffer-validation, allocation-negotiation, metadata, and lifecycle utilities.
 It does not use the queue ring or its cross-loop publication protocol. The
 queue's current transfer helper copies a delivery and preserves Header bytes,
 while latest/hold aliases payload storage, assigns a new publication Header,
-and preserves the retained Acquisition record; that helper is not the hold
+and preserves the retained Properties object; that helper is not the hold
 node's transfer policy.
 
 If the qualified slow source cannot complete as a follower of the fast driver,
@@ -373,7 +373,7 @@ Native FGN keeps its current exact-rate validation and synchronous
 `spa_fgn_graph_process()` call. Its selected graph declaration must prove that
 the main-WFS metadata source reaches each command output. Julia uses an ordinary
 `PreparedGraph` and ordinary `PipeWireNode`, not `PreparedLatestHold`, for this
-deployment; its adapter gains the Acquisition copy described above. Their
+deployment; its adapter gains the Properties copy described above. Their
 numerical processing interfaces remain synchronous and unchanged.
 
 The existing Julia prepared latest/hold owner remains useful for direct Julia
@@ -410,7 +410,7 @@ RTC reset is accepted only in `READY`, where every execution group is stopped.
 It sends `Pause` to the hold nodes before resetting the numerical graphs and
 does not restart them; a later explicit start remains a separate lifecycle
 operation. The hold node's `pause()` clears payload eligibility and preserves
-the Acquisition watermark as specified above. This is one
+the acquisition-identity watermark as specified above. This is one
 realization-specific dispatch branch, not a new hold control protocol.
 
 RTC validates the realized factory and port formats and leaves driver selection
@@ -449,7 +449,7 @@ standard parameter snapshots should expose only essential values:
 - `latest-hold.updates-accepted`;
 - `latest-hold.updates-rejected`, for every offered input not admitted;
 - `latest-hold.protocol-errors`, the rejected subset with malformed storage,
-  metadata structure, or lower same-namespace Acquisition sequence;
+  metadata structure, or lower same-namespace acquisition sequence;
 - `latest-hold.outputs-published`;
 - `latest-hold.unavailable-cycles`, counted once per observed graph cycle
   without an eligible retained value; and
@@ -468,7 +468,7 @@ busy. The node does not publish registry updates on every frame.
    fail-before pool-removal case while a required input is absent, then prove
    pass-after behavior with the same test and under AddressSanitizer where
    available. Preserve the synchronous FGN ABI and execution behavior.
-2. Add `SPA_IO_Position`, Acquisition-metadata feature negotiation and copying,
+2. Add `SPA_IO_Position`, Properties-metadata feature negotiation and copying,
    ordinary port-latency support, retained input leases, and output-return
    notification to the reusable Rust SPA-node boundary. Implement
    `api.ndarray.latest-hold` with negotiated payload aliases, exact cadence and
@@ -480,7 +480,7 @@ busy. The node does not publish registry updates on every frame.
    through ordinary SPA `Start`/`Pause` lifecycle effects and exclude it from
    numerical run-control, reset-control, and property discovery. Verify the
    existing native metadata-source declarations and add declared-source
-   Acquisition propagation to FilterGraphPipeWire.
+   Properties propagation to FilterGraphPipeWire.
 4. Qualify one identity-bearing source that returns promptly with no published
    buffer between acquisitions. Run one 100 Hz to 1000 Hz live fixture feeding
    the native FGN composite, then substitute an ordinary JuliaFilterGraph
@@ -517,7 +517,7 @@ The live fixture must demonstrate:
 - wrap-safe aging and invalidation on driver or graph-clock change;
 - preserved slow acquisition identity and separately advancing output Header
   at the hold output;
-- main-WFS Acquisition identity on final native and Julia command outputs,
+- main-WFS acquisition identity on final native and Julia command outputs,
   without overwriting algorithm-defined Header metadata;
 - deterministic corruption, discontinuity, starvation, reset, pool replacement,
   stop, and restart behavior, including input-pool withdrawal while an aliased
