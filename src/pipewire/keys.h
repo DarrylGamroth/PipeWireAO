@@ -384,6 +384,10 @@ extern "C" {
 #define PW_KEY_AUDIO_ALLOWED_RATES	"audio.allowed-rates"	/**< a list of allowed samplerates
 								  *  ex. "[ 44100 48000 ]" */
 
+/** Cold Header PTS profile declarations; event metadata remains independent. */
+#define PW_KEY_HEADER_PTS_CLOCK "pipewireao.header.pts.clock" /**< monotonic/realtime/tai/model/unavailable */
+#define PW_KEY_HEADER_PTS_ABSOLUTE_CONVERSION "pipewireao.header.pts.absolute-conversion" /**< unavailable in the base profile */
+
 /** video related properties */
 #define PW_KEY_VIDEO_RATE		"video.framerate"	/**< a video framerate */
 #define PW_KEY_VIDEO_FORMAT		"video.format"		/**< a video format */

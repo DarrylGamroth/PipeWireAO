@@ -4,11 +4,11 @@
 
 ## Status and authority
 
-Planning update, 2026-11-02: [independent SPA metadata records](#planned-independent-spa-metadata-records)
-defines the next migration. It is a proposed target, not an implemented ABI.
-The native 2.0 Properties contract below remains the released behavior until
-the coordinated replacement passes its delivery gates. No runtime changes are
-authorized by this documentation-only planning update.
+Native 3.0 implementation is in progress. The independent-record ABI below is
+assigned and implemented in the native headers. The former native 2.0 Properties
+contract is retained in this document as historical context; its runtime helpers
+and acquisition keys are removed from the new cohort. Delivery gates remain
+open until their recorded verification passes.
 
 This document defines the PipeWireAO acquisition identity, timing, and join
 contract. It applies to complete frames and to complete row-block ndarray
@@ -33,8 +33,8 @@ acquisition. That decision belongs to a bounded semantic join.
 flowchart LR
     CameraA[Camera on host A] --> SourceA[Source A]
     CameraB[Camera on host B] --> SourceB[Source B]
-    SourceA --> MetaA[Header and buffer Properties]
-    SourceB --> MetaB[Header and buffer Properties]
+    SourceA --> MetaA[Header and independent records]
+    SourceB --> MetaB[Header and independent records]
     MetaA --> SendAdapter[Transport send adapter]
     SendAdapter --> Transport[Network transport]
     Transport --> ReceiveAdapter[Transport receive adapter]
@@ -80,10 +80,12 @@ Verification: inject a duplicate or reset sequence and prove that the producer
 does not publish a new locally invented identity tuple.
 
 Exact identity is independent of clock synchronization and is the preferred
-join key. A PTP timestamp is a fallback for sources without a common hardware
-counter and a consistency check for sources that have one.
+join key. A profile may select qualified time as a fallback when counters are
+not shared, or as a consistency check. Clock domains, event conventions and
+uncertainty must satisfy the current independent-record timing contract; PTP is
+not a base-framework dependency.
 
-## Per-buffer representation
+## Historical native 2.0 per-buffer representation
 
 Native 2.0 implements this representation. The preceding 1.7.3 cohort used
 the superseded Acquisition record. The replacement is standard `SPA_META_Header`
@@ -148,8 +150,8 @@ outputs MUST use explicit scientific provenance; a sum MUST NOT invent one
 camera's identity for the combined command. Output reuse MUST clear stale facts.
 Header publication identity and retained acquisition identity MUST remain distinct.
 
-**ACQ-TRIGGER-001:** Trigger Id values classify the electrical state over the
-whole exposure. Optical classification MUST NOT be inferred from electrical
+**ACQ-TRIGGER-001:** Trigger Id values **MUST** classify the electrical state over
+the whole exposure. Optical classification MUST NOT be inferred from electrical
 polarity by a generic transport. An optical application relating them MUST supply
 its explicit mapping, including absent and mixed states.
 
@@ -184,7 +186,7 @@ the eight-byte unsigned representation. `spa_acquisition_identity_equal`,
 the identity, clock and saturating comparison rules below. No old-name aliases
 are introduced.
 
-## PTP-qualified time
+## Historical native 2.0 PTP-qualified time
 
 A cross-host exposure timestamp has all of these properties:
 
@@ -213,9 +215,9 @@ bound is available, the producer **MUST NOT** publish a PTP-qualified group.
 Verification: measure each error term or obtain a guaranteed bound, record the
 sum used by the producer, and test the bound during steady state and recovery.
 
-**ACQ-TIME-003:** After loss of synchronization, an unbounded clock step, an
-unknown UTC offset, or an unqualified grandmaster change, the producer **MUST**
-stop publishing PTP-valid time and **SHOULD** mark the next recovered output
+**ACQ-TIME-003:** A producer **MUST** stop publishing PTP-valid time after loss of
+synchronization, an unbounded clock step, an unknown UTC offset, or an unqualified
+grandmaster change, and **SHOULD** mark the next recovered output
 `SPA_META_HEADER_FLAG_DISCONT`.
 
 Verification: inject each loss condition and prove that no PTP-valid record is
@@ -235,7 +237,7 @@ combined_uncertainty = saturating_add(uncertainty_a, uncertainty_b)
 Host location, clock servo name, and similar wall-clock readings are not part
 of the comparison.
 
-## Join contract
+## Historical native 2.0 Join contract
 
 **ACQ-JOIN-001:** A join **SHOULD** match an exact acquisition identity first.
 It **MAY** use PTP time when identity is absent, or use it to reject an
@@ -262,7 +264,7 @@ Verification: cover exact matches, different identity fields, matching and
 different PTP authorities, the uncertainty boundary, adjacent acquisitions,
 duplicates, missing inputs, reordering, deadline release, and overload.
 
-## Transport boundary
+## Historical native 2.0 Transport boundary
 
 SPA metadata is native shared-memory state. PipeWire does not serialize it
 across hosts, and an application MUST NOT send the bytes of the native C
@@ -287,7 +289,7 @@ golden vectors and round trips on both endian architectures where available,
 then exercise loss, reordering, duplication, fragmentation, and malformed
 records.
 
-## Capability and migration gates
+## Historical native 2.0 Capability and migration gates
 
 Hardware PTP qualification and cross-host codecs are not established by local
 SPA transport tests. Device adapters must migrate their producers separately
@@ -302,7 +304,7 @@ before using the new runtime cohort; missing facts cannot be manufactured.
 | RTC, capture, GUI and applications | New-schema-only source→queue→RTC→DM→GUI/capture, cold schemas and pins updated | Capture and GUI tests pass; all four instrument cold exports pass |
 | Retirement | Independent review, old-schema rejection, full dependency-cohort validation and release | Independent review complete; packaged native tests pass; publish only the complete staged cohort |
 
-## Delivery plan and identifier preflight
+## Historical native 2.0 Delivery plan and identifier preflight
 
 Native baseline `15525f80f`, PipeWireAO.jl `687d420`, JFG `68df2f5`, HIL `d676abc`,
 RTC `f7923eb`, Rust `e362a2c`, queue plugins `975c553`, GUI `a7ea558`, and instrument
@@ -350,11 +352,11 @@ fixed and reviewed again. Packaged native validation passes 171 binding and
 1,632 HIL calibration assertions without SDK preferences. ARM build/hash/header
 checks do not establish ARM runtime qualification.
 
-## Planned independent SPA metadata records
+## Independent SPA metadata records
 
 ### Decision and applicability
 
-Target design, 2026-11-02; implementation has not started. This section owns
+Target design, 2026-11-02; native implementation in progress. This section owns
 the framework-wide metadata migration plan for every PipeWireAO RTC, device
 adapter, simulator, algorithm executor, observer and recorder. SPIDERS and CAL2
 are acceptance applications, not definitions of the generic boundary.
@@ -369,8 +371,9 @@ a dependency of the base framework; a future clock provider may qualify clocks.
 The requirements below are target obligations using the BCP 14 convention
 declared above. They do not claim current conformance. Earlier ACQ-ID identity
 rules remain applicable. Existing ACQ-ABI/PROP/TRIGGER/TIME/JOIN/WIRE clauses describe
-the released cohort; phase 1 must reconcile them explicitly, retaining their
-IDs and history rather than silently assigning them different meanings.
+the historical native 2.0 cohort. The assigned ABI section reconciles them
+explicitly while retaining their IDs and history. Current delivery evidence does
+not promote historical gates into whole-framework native 3.0 conformance.
 
 Non-goals: implementing a network transport, clock discipline, hardware PTP,
 new scientific estimators, new controller authority, or physical/deadline
@@ -397,6 +400,122 @@ in these records. Existing product/command provenance stays explicit; combined
 outputs cannot be represented by arbitrarily selecting one camera's identity.
 Phase 1 inventories existing contributor/feedback lineage before assigning ABI
 layouts; it must preserve those semantics without inventing an unbounded history.
+
+### Assigned native ABI and port declaration
+
+The custom registry reserves `0x300..0x3ff` for PipeWireAO. Initial layouts use
+`0x300` AcquisitionIdentity, `0x301` ExposureTiming, `0x302` AbsoluteTime,
+`0x303` OpticalChopping and `0x304` ElectricalTrigger. IDs 11, 12 and 13 remain
+retired and are rejected. Upstream standard types retain their numeric values.
+Every payload address is eight-byte aligned. These exact sizes are the initial
+layout; an incompatible layout requires a new type ID. Native bytes are not a
+network encoding.
+
+| C record | Size | Fields in order |
+| --- | ---: | --- |
+| `spa_meta_acquisition_identity` | 40 | UInt32 flags/reserved; domain[16]; UInt64 generation/sequence |
+| `spa_meta_exposure_timing` | 64 | UInt32 flags/clock; clock_domain[16]; mapping[16]; Int64 start_nsec; UInt64 duration_nsec/uncertainty_nsec |
+| `spa_meta_absolute_time_event` | 80 | Int64 seconds; UInt32 nanoseconds/clock/event/flags; origin[16]; clock_domain[16]; mapping[16]; UInt64 uncertainty_nsec |
+| `spa_meta_absolute_time` | 336 | UInt32 count/reserved[3]; four absolute-time events |
+| `spa_meta_optical_chopping` | 8 | UInt32 flags/classification |
+| `spa_meta_electrical_trigger` | 8 | UInt32 flags/classification |
+
+Identity and classifications use `SPA_META_RECORD_VALID=1`; all-zero storage
+means allocated but invalid. Invalid payloads and reserved bytes MUST be zero.
+Classification zero with VALID set means an explicit whole-exposure absent
+classification. Identity requires a nonzero domain and retains the full unsigned
+64-bit generation and sequence.
+
+Exposure flags are START_VALID=1, DURATION_VALID=2, UNCERTAINTY=4 and MAPPED=8.
+Duration alone is usable without a start. A valid duration is positive. Start
+is the start of the half-open interval `[start, start + duration)` in nanoseconds
+on the identified clock; its clock domain is nonzero. Unavailable fields are
+zero. A mapped start requires a nonzero mapping ID. Clock values are MONOTONIC=1,
+REALTIME=2, TAI=3 and MODEL=4. A signed start is deliberate; arithmetic involving
+duration or differences must be checked before conversion or addition.
+
+Absolute time uses signed epoch seconds and normalized nanoseconds 0..999999999;
+it never passes through floating-point seconds. Only REALTIME and TAI are allowed.
+Each active event has VALID=1, optional UNCERTAINTY=2, MAPPED=4 and CLOCK_STEP=8;
+its origin and clock domain are nonzero. A nonzero uncertainty requires its flag;
+MAPPED requires a nonzero mapping ID. CLOCK_STEP reports a discontinuity and does
+not assert synchronization. Events are ACQUISITION=1, PRODUCTION=2, RECEIPT=3 and
+FILE_WRITE=4. Active events occupy the first `count` entries; the remaining entries
+are zero. At most four events are active, and `(event, origin)` is unique. A
+required AbsoluteTime allocation with any valid event does not satisfy a profile
+that requires a particular source event or basis; that profile checks both.
+Source events survive derived publication. Recorder observations use a separate
+index or sidecar, as specified above.
+
+The cold Header PTS property registry is `PW_KEY_HEADER_PTS_CLOCK` =
+`pipewireao.header.pts.clock` and `PW_KEY_HEADER_PTS_ABSOLUTE_CONVERSION` =
+`pipewireao.header.pts.absolute-conversion`. Clock values are the lowercase strings
+`monotonic`, `realtime`, `tai`, `model` or `unavailable`. Generic standalone and
+filter-graph nodes default to `unavailable` for both properties. A cold producer
+profile may identify its actual known clock. Conversion `unavailable` means no
+validated mapping from Header PTS to a physical event is exposed; knowing a clock
+label or numeric epoch still does not infer an acquisition event. The base
+framework defines no Header conversion protocol. Per-buffer clock-domain and
+event facts remain in the independent timing records.
+
+Native 3.0 removes the duplicate by-value Header and Properties callback from
+ndarray callback ABI 5. Header is the canonical entry in the borrowed `metas`
+array. `spa_meta_records_find` locates a record without allocating. Inputs are
+read-only and all descriptors are immutable for the lease. Output owners may
+modify payload bytes, never counts, pointers, types or capacities. Native plugin
+ABI 8 similarly extends `spa_fgn_port_info` with cold metadata declarations.
+
+`spa_meta_requirement` has four UInt32 fields: type, exact size, flags and
+reserved. REQUIRED=1 is the only flag; reserved is zero. Each cold frame-port
+constructor carries the additional descriptor array, count and propagation mode
+(PRODUCE=0, PRESERVE=1, REPLACE=2 or DROP=3). Header is required implicitly on both frame and sparse Parameter streams;
+generic profiles declare no other records. Parameter Header sequence identifies
+the published prepared product and never manufactures acquisition identity. The constructor copies standalone
+filter declarations. PRESERVE requires output capacity for every accepted input
+layout and makes those output allocation slots required even when their facts
+are optional or invalid. Plugin declarations remain immutable for plugin lifetime.
+The graph allocates each declared layout before activation. Existing bounded
+contributor/feedback lineage remains in its algorithm owner; no native history
+container is introduced.
+
+`SPA_PARAM_META_required=0x1000000` is a local Bool on ParamMeta. The allocator
+reads both peers' raw declarations before accepting negotiated storage, checking
+required type and exact size independently of the standard 32-bit metaType mask.
+The required Bool is removed from the value-intersection filter: optional supply
+and required consumption are compatible. Custom types require explicit metadata
+support on both peers. Unknown optional payloads remain opaque; a custom required
+declaration explicitly asserts understanding of that specific type/layout. Unknown
+or old peers cannot satisfy required custom layouts through a missing Meta param.
+The standard mask remains available for upstream standard metadata below bit 32.
+Feature entries count toward the 64-entry bound. When either peer fixes the
+application/ndarray format, the allocator also rejects aggregate storage above
+4096 bytes before pool allocation. Preparation does not imply that
+required semantic facts are valid on a particular buffer.
+
+`spa_meta_type_is_transport_owned` identifies Busy, SyncTimeline and feature
+entries. Generic fact initialization is a no-op for those entries; copying and
+owned snapshots omit their payloads and preserve each pool's synchronization
+state. Borrowed descriptor iteration may expose them without reading mutable
+payloads. This is an upstream ownership obligation, not a scientific fact.
+
+`spa_meta_record_layout_validate(type, size, max_bytes)` is the shared pure
+cold layout check. Core allocation uses the finite SPA Int size limit, preserving
+upstream variable-sized metadata outside the ndarray profile.
+
+`spa_meta_records_layout_validate` checks bounded storage independently of reused
+bytes. `spa_meta_record_init` clears an owned slot. `spa_meta_record_validate`
+checks understood semantics, with an optional valid-fact requirement.
+`spa_meta_records_validate` checks the complete array and declared requirements;
+unknown optional records are skipped. `spa_meta_records_copy` preflights all
+storage and capacity before changing destination bytes, preserving every source
+fact record exactly. Missing destinations, unequal sizes and aliasing reject the copy;
+no truncation occurs. Opaque types participate without changes to generic iteration.
+
+The replaced ACQ-ABI/PROP/TRIGGER/TIME/JOIN/WIRE clauses above retain their IDs and
+native 2.0 history. ACQ-META-001..008 and ACQ-META-TIME-001..005 are the active
+replacement requirements; identity authority rules ACQ-ID-001/002 still apply.
+PTP-specific historical helpers are removed. No native TAI label claims hardware
+qualification, and no base-profile clock discipline is introduced.
 
 ### Planned port and buffer contract
 
@@ -427,8 +546,11 @@ distinguishable. Each proposed record layout MUST define its validity encoding,
 reserved-byte rules and validation before bindings are generated. Duplicate
 instances of a singleton record MUST be rejected.
 
-**ACQ-META-005:** Published metadata MUST remain immutable for its buffer lease.
-Only the owner of a writable output may populate or invalidate its records.
+**ACQ-META-005:** Published fact metadata MUST remain immutable for its buffer lease.
+Standard transport-owned metadata, including Busy counters and SyncTimeline state,
+MUST follow upstream ownership and synchronization rules; fact propagation,
+initialization and owned snapshots MUST NOT clear or clone that state.
+Only the owner of a writable output may populate or invalidate its fact records.
 Consumers MUST NOT retain borrowed views beyond the callback/lease. Fanout
 MUST NOT permit one consumer to remove or mutate another consumer's records.
 
@@ -494,8 +616,8 @@ bounded explicitly so preserving source time and describing a derived product's
 own event never requires ambiguous duplicate singleton records. A reference to
 source time in existing bounded provenance is allowed; silent replacement is not.
 
-**ACQ-META-TIME-004:** A producer mapping a device/model/host clock to absolute
-time MUST identify the mapping and its validity. It MUST NOT claim physical
+**ACQ-META-TIME-004:** A producer MUST identify any mapping from a
+device/model/host clock to absolute time and its validity. It MUST NOT claim physical
 acquisition timing from callback arrival. Explicit uncertainty is required when
 a consumer relies on a quantitative accuracy bound. Clock steps, invalid TAI
 configuration and invalid mappings MUST be observable; absolute clock jumps
@@ -545,18 +667,17 @@ AOS 0.3.18/AOC 0.17.3/Proper 0.4.1 and frozen calibrations remain unchanged.
 | 5. RTC and observation | RTC owners/export/configuration/calibration capture; GUI native/browser bridge and FITS/recording paths | Required metadata resolves in cold schemas; both absolute clocks record correctly; clocks remain labelled; no lost/forged source provenance or unknown optional pass-through |
 | 6. Applications and release | All supported RTC profiles, including explicit inventory/disposition of Copper's older cohort | Fresh CPU/captured-GPU applications, matching dependency cohort, capture/GUI schemas, independent review and complete release/pin update; retired compatibility paths removed |
 
-Current allocator code represents required metadata with a 32-bit mask and
-reserves low numeric IDs. Phase 1 must prove how custom types beyond that mask
-are negotiated and required, retaining interoperability with upstream standard
-types. Do not allocate more low standard slots as a workaround. Reserve retired
-IDs 11/12 and the published Properties ID against incompatible reuse. Reuse
-upstream mechanisms where sufficient; document any necessary AO extension at
-the native port contract rather than inventing per-instrument negotiation.
+The native 2.0 allocator represented required metadata with a 32-bit mask and
+reserved low numeric IDs. Native 3.0 adds the raw-peer ParamMeta requirement
+check described above; custom types no longer consume standard mask bits.
+Focused allocation tests cover that boundary and retain upstream standard
+metadata support. IDs 11/12/13 remain retired. No per-instrument negotiation
+protocol is introduced.
 
-The target validity/layout design is an ABI gate, not permission to start
-bindings against guessed layouts. Byte counts, numeric type IDs and exact public
-function names are assigned and tested in phase 1; semantic boundaries above
-are settled. No unresolved optical/controller choice blocks this plan.
+The assigned native layout is the ABI authority for generated bindings. Byte
+counts, numeric type IDs and public helpers are implemented and covered by
+focused native tests; cross-language integration and release gates remain open
+until their own evidence is recorded.
 
 Use one coordinated breaking native/binding/dependency release. Do not mutate
 published tags, retrofit existing sealed applications, or keep automatic old/new
@@ -574,9 +695,10 @@ them before claiming retirement. Do not preserve a second acquisition encoding.
 
 ### Verification and completion criteria
 
-Every ACQ-META clause is planned, not yet implemented or qualified. During
-delivery, extend the existing native ndarray traceability ledger with each ID,
-owning change, selector and result; do not mark satisfied from document presence.
+The ACQ-META clauses are active delivery obligations. Native implementation
+and focused evidence are recorded below; whole-framework qualification remains
+open. The ndarray traceability ledger records each ID, owning change, selector
+and result; document presence alone does not satisfy a requirement.
 
 | Target clauses | Required verification |
 | --- | --- |
@@ -599,6 +721,99 @@ registered coherent dependencies, fresh sealed applications and declared capture
 compatibility. Software results, live application acceptance, clock accuracy and
 deadline qualification remain separate claims. Retain concise receipts and usable
 scientific inputs; remove temporary builds/logs after verification.
+
+### Native 3.0 validation receipt (2026-11-02)
+
+Source baseline is `98c75c8e8995eeca86b8bf593f40adf8d0cc72a1` (native
+`8bccb6e22` plus the approved plan), initially clean, on
+`codex/independent-spa-metadata`. Native 3.0 is installed into a new task-owned
+immutable `pipewireao-independent-spa-metadata-r3` prefix; the released 2.0
+installation and original source checkout remain untouched. Native 3.0 library
+SHA256 is `2503fbc01d72105e70672954c2e879efa8ee7acde730793b12b89514cd9f81cc`;
+`meta.h` SHA256 is `49591e5e326659b059bcb3297da821523ee61ed57d09b524ba55236729447760`.
+
+Observed checks:
+
+- Optimized native build passes; 81 of 82 configured Meson tests pass. The
+  retention client once timed out after correct delivery during teardown;
+  callback ownership investigation remains open. The focused
+  30 selectors include C/Rust graph hosts, independent metadata, exact custom
+  allocation, ndarray callbacks, private-core transport, FIFO/held outputs,
+  malformed input/output rejection and row-block ownership.
+- `pw-test-buffers-negotiate` allocates exactly 64 entries / 4096 bytes, rejects
+  65 entries and 4104 bytes, and counts 32 type + 32 feature entries as 64.
+  Required custom types beyond bit 31, asymmetric optional/required declarations,
+  missing support, unsupported sizes and retired IDs are checked independently.
+- The declared C metadata graph profile preserves full-width identity, both
+  absolute clocks and opaque optional bytes across a three-node fanout and held
+  identity with changing Header sequence. Missing required input rejects before
+  any scientific callback and clears completed-output sizes. Missing opaque
+  output capacity rejects publication without truncation.
+- AddressSanitizer/UndefinedBehaviorSanitizer metadata units pass. The Busy
+  initialization invariant fails before the ownership fix (counter 7 cleared,
+  assertion exit 134) and passes after it. Regression checks keep source/destination
+  Busy counts 3/7 and SyncTimeline points 11/12 versus 21/22 distinct while
+  copying facts. No mutable transport payload is read by validation or snapshots.
+
+Reproduction uses a fresh Meson build and a new prefix, never overwriting a
+prefix loaded by validation processes:
+
+```sh
+meson setup BUILD --prefix=NEW_PREFIX --buildtype=release \
+  -Dauto_features=disabled -Dtests=enabled -Dspa-plugins=enabled \
+  -Dsupport=enabled -Daudioconvert=enabled -Dsession-managers=[]
+ninja -C BUILD
+meson test -C BUILD --no-rebuild --print-errorlogs
+meson install -C BUILD --no-rebuild
+cc -std=gnu11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -Ispa/include spa/tests/test-buffer-metadata.c -o TEST
+```
+
+The build still reports warnings in unchanged `conf.c` (nullable format argument)
+and `hook.h` (optimizer array-bound analysis). The shutdown test failure
+remains under investigation.
+These warnings are not treated as proof of a runtime defect.
+
+The standalone `spa/tests/benchmark-metadata.c` measures input validation,
+initialization/copy and output validation. Its explicit baseline mode is compiled
+only against frozen native 2.0 headers; it is not a runtime compatibility path.
+Common facts are identical: Header, full unsigned acquisition identity,
+monotonic exposure start/duration/uncertainty, independent optical/electrical
+classifications and an opaque value. Negotiated payloads total 544 bytes in
+native 2.0 and 160 bytes in native 3.0; both benchmark programs use a fixed
+4096-byte backing array. A separate native-only case uses the maximum
+64 entries / 4096 bytes. Absolute-time records have no equivalent baseline layout.
+
+Both programs use GCC 14.2.0, `-std=gnu11 -O3`, identical malloc/calloc/realloc
+link wrappers, one thread pinned to logical CPU 0, 10,000 warmups and 10,000
+measured calls per process, repeated three times. The host is an AMD Ryzen 7
+6800H (8 cores / 16 threads), Linux 6.12.113, with the powersave governor and
+concurrent validation work. Measurements include clock overhead (median 20 ns).
+No offered-load, queue residence, scheduling, network or deadline claim is made.
+
+| Boundary | p50 range | p99 range | Maximum range | Wrapped allocations |
+| --- | ---: | ---: | ---: | ---: |
+| Native 2.0 common facts | 361–601 ns | 390–731 ns | 0.971–5.670 µs | 0 |
+| Native 3.0 common facts | 300–301 ns | 301–321 ns | 0.591–9.839 µs | 0 |
+| Native 3.0 maximum envelope | 13.085–13.255 µs | 13.986–23.785 µs | 30.367–42.190 µs | 0 |
+
+The short repetitions on this shared host do not establish a stable improvement
+or regression ratio. The result
+establishes bounded measured helper cost and zero wrapped heap calls, separately
+from optics and system timing. Build baseline mode with
+`-DPIPEWIREAO_METADATA_BASELINE` and a first include directory containing
+`git show 8bccb6e22:spa/include/spa/buffer/meta.h`; compile current mode against
+`spa/include`. Both link `-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc`.
+Run current maximum mode with `--maximum`.
+
+A SPA queue fanout run delivered all 64 products correctly but once exited 139
+while shutting down its private daemon. Nine focused repeats and two subsequent
+29-selector matrices passed without reproduction. Its cause remains unconfirmed;
+a frozen ASAN/UBSAN private-core fanout plus all 11 queue variants also passed.
+This unexplained daemon exit is separate from the fixed transport-state hazard.
+
+This receipt does not close the cross-framework release gate, physical clock
+qualification or deadline qualification.
 
 ### Primary references
 

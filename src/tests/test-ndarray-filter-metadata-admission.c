@@ -49,7 +49,7 @@ int main(int argc, char *argv[])
 	const struct pw_ndarray_filter_config config = {
 		.struct_size = sizeof(config),
 		.version = PW_VERSION_NDARRAY_FILTER_CONFIG,
-		.node_name = "properties-abi-admission",
+		.node_name = "metadata-abi-admission",
 		.n_ports = SPA_N_ELEMENTS(ports),
 		.ports = ports,
 		.events = &events,
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
 		return 2;
 	result = pw_ndarray_filter_new(&config, &filter);
 	valid_result = expect_unsupported ? filter == NULL : filter != NULL;
-	printf("Properties callback ABI admission: result=%d expected=%d result_null=%d\n",
+	printf("Metadata callback ABI admission: result=%d expected=%d result_null=%d\n",
 			result, expected, filter == NULL);
 	if (result == 0)
 		pw_ndarray_filter_destroy(filter);

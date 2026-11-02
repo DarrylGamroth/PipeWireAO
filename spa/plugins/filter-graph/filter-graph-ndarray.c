@@ -53,9 +53,9 @@ struct fgn_storage {
 	struct spa_buffer buffer;
 	struct spa_data data;
 	struct spa_chunk chunk;
-	struct spa_meta metas[2];
+	struct spa_meta metas[SPA_FGN_MAX_METAS];
 	struct spa_meta_header header;
-	uint64_t properties[(SPA_FGN_MAX_META_BYTES - sizeof(struct spa_meta_header)) / sizeof(uint64_t)];
+	uint64_t metadata[(SPA_FGN_MAX_META_BYTES - sizeof(struct spa_meta_header)) / sizeof(uint64_t)];
 	void *memory;
 };
 
@@ -212,7 +212,7 @@ static bool format_equal(const struct spa_fgn_format *a,
 }
 
 static int storage_init(struct fgn_storage *storage,
-		const struct spa_fgn_format *format, size_t size)
+		const struct spa_fgn_format *format, size_t size, const struct spa_fgn_port_info *info)
 {
 	size_t contiguous;
 	uint32_t contiguous_axis, element_size;
@@ -244,13 +244,16 @@ static int storage_init(struct fgn_storage *storage,
 		.size = sizeof(storage->header),
 		.data = &storage->header,
 	};
-	storage->metas[1] = (struct spa_meta) {
-		.type = SPA_META_Properties,
-		.size = sizeof(storage->properties),
-		.data = storage->properties,
-	};
-	spa_meta_properties_init(&storage->metas[1]);
-	storage->buffer.n_metas = SPA_N_ELEMENTS(storage->metas);
+	uint32_t offset = 0;
+	for (uint32_t i = 0; i < info->n_metas; i++) {
+		storage->metas[i + 1] = (struct spa_meta) {
+			.type = info->metas[i].type, .size = info->metas[i].size,
+			.data = SPA_PTROFF(storage->metadata, offset, void),
+		};
+		offset += SPA_ROUND_UP_N(info->metas[i].size, 8);
+		if (!spa_meta_record_init(&storage->metas[i + 1])) return -EINVAL;
+	}
+	storage->buffer.n_metas = info->n_metas + 1;
 	storage->buffer.metas = storage->metas;
 	storage->buffer.n_datas = 1;
 	storage->buffer.datas = &storage->data;
@@ -934,6 +937,19 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 				res = -EEXIST;
 				goto error;
 			}
+		if (info->n_metas >= SPA_FGN_MAX_METAS || info->propagation > SPA_META_PROPAGATION_DROP ||
+		    (info->n_metas && info->metas == NULL)) { res = -EINVAL; goto error; }
+		uint32_t metadata_bytes = sizeof(struct spa_meta_header);
+		for (uint32_t k = 0; k < info->n_metas; k++) {
+			const struct spa_meta_requirement *r = &info->metas[k];
+			if (r->type == SPA_META_Header || r->reserved || r->flags & ~SPA_META_REQUIREMENT_REQUIRED ||
+			    !spa_meta_record_layout_validate(r->type, r->size, SPA_FGN_MAX_META_BYTES) ||
+			    SPA_ROUND_UP_N(r->size, 8) > SPA_FGN_MAX_META_BYTES - metadata_bytes) {
+				res = -EINVAL; goto error;
+			}
+			metadata_bytes += SPA_ROUND_UP_N(r->size, 8);
+			for (uint32_t l = 0; l < k; l++) if (info->metas[l].type == r->type) { res = -EEXIST; goto error; }
+		}
 		port->node = node;
 		port->info = info;
 		port->external = SPA_ID_INVALID;
@@ -960,6 +976,21 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 		res = -ENOMEM;
 		goto error;
 	}
+	for (uint32_t o = 0; o < node->descriptor->n_ports; o++) {
+		const struct spa_fgn_port_info *out = &node->descriptor->ports[o];
+		if (out->direction != SPA_DIRECTION_OUTPUT || out->propagation != SPA_META_PROPAGATION_PRESERVE) continue;
+		for (uint32_t in = 0; in < node->descriptor->n_ports; in++) {
+			const struct spa_fgn_port_info *source = &node->descriptor->ports[in];
+			if (source->direction != SPA_DIRECTION_INPUT || source->flags & SPA_FGN_PORT_FLAG_PARAMETER) continue;
+			for (uint32_t m = 0; m < source->n_metas; m++) {
+				if (spa_meta_type_is_transport_owned(source->metas[m].type)) continue;
+				bool found = false;
+				for (uint32_t d = 0; d < out->n_metas; d++)
+					if (source->metas[m].type == out->metas[d].type && source->metas[m].size == out->metas[d].size) found = true;
+				if (!found) { res = -ENOTSUP; goto error; }
+			}
+		}
+	}
 	n_input = n_output = 0;
 	for (i = 0; i < node->descriptor->n_ports; i++) {
 		struct fgn_port *port = &node->ports[i];
@@ -968,7 +999,7 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 		else {
 			node->outputs[n_output++] = port;
 			if ((res = storage_init(&port->storage, port->format,
-					port->payload_size)) < 0)
+					port->payload_size, port->info)) < 0)
 				goto error;
 		}
 	}
@@ -1058,6 +1089,13 @@ static int load_link(struct spa_fgn_graph *graph, struct spa_json *json)
 		return -EBUSY;
 	if (!format_equal(out_port->format, in_port->format))
 		return -EINVAL;
+	for (uint32_t i = 0; i < in_port->info->n_metas; i++) {
+		const struct spa_meta_requirement *r = &in_port->info->metas[i];
+		bool found = false;
+		for (uint32_t j = 0; j < out_port->info->n_metas; j++)
+			if (out_port->info->metas[j].type == r->type && out_port->info->metas[j].size == r->size) found = true;
+		if ((r->flags & SPA_META_REQUIREMENT_REQUIRED) && !found) return -ENOTSUP;
+	}
 	if ((len = next_array_size(graph->n_links, FGN_MAX_LINKS,
 			 sizeof(*links), &links_size)) < 0)
 		return len;
@@ -2355,9 +2393,7 @@ static int validate_buffer(struct spa_buffer *buffer,
 		const struct fgn_port *port, bool output)
 {
 	struct spa_data *data;
-	size_t metadata_bytes = 0;
 	uintptr_t payload;
-	uint32_t i, j;
 
 	if (buffer == NULL || port == NULL)
 		return -ENOBUFS;
@@ -2383,26 +2419,13 @@ static int validate_buffer(struct spa_buffer *buffer,
 	if (!output && (data->chunk->size < port->payload_size ||
 		data->chunk->size > data->maxsize - data->chunk->offset))
 		return -EMSGSIZE;
-	for (i = 0; i < buffer->n_metas; i++) {
-		const struct spa_meta *meta = &buffer->metas[i];
-		if ((meta->size != 0 && meta->data == NULL) ||
-		    meta->size > SPA_FGN_MAX_META_BYTES ||
-		    metadata_bytes > SPA_FGN_MAX_META_BYTES - meta->size)
-			return -EINVAL;
-		metadata_bytes += meta->size;
-		for (j = 0; j < i; j++)
-			if (buffer->metas[j].type == meta->type)
-				return -EEXIST;
-		if (meta->type == SPA_META_Header &&
-		    (meta->size < sizeof(struct spa_meta_header) ||
-		     (uintptr_t)meta->data % _Alignof(struct spa_meta_header) != 0))
-			return -EINVAL;
-		if ((meta->type == 11 || meta->type == 12) ||
-		    (meta->type == SPA_META_Properties &&
-		     (output ? !_spa_meta_properties_storage_is_valid(meta) :
-		      !spa_meta_properties_is_valid(meta, NULL, 0))))
-			return -EINVAL;
-	}
+	for (uint32_t i = 0; i < buffer->n_metas; i++)
+		for (uint32_t j = 0; j < i; j++)
+			if (buffer->metas[i].type == buffer->metas[j].type) return -EEXIST;
+	if (!spa_meta_records_layout_validate(buffer->metas, buffer->n_metas) ||
+	    spa_buffer_find_meta(buffer, SPA_META_Header) == NULL) return -EINVAL;
+
+
 	return 0;
 }
 
@@ -2670,10 +2693,7 @@ static int validate_completed_output(struct spa_buffer *buffer,
 	    data->chunk->offset >= data->maxsize ||
 	    data->maxsize - data->chunk->offset < payload_size)
 		return -EMSGSIZE;
-	for (uint32_t i = 0; i < buffer->n_metas; i++)
-		if (buffer->metas[i].type == SPA_META_Properties &&
-		    !spa_meta_properties_is_valid(&buffer->metas[i], NULL, 0))
-			return -EINVAL;
+	if (!spa_meta_records_validate(buffer->metas, buffer->n_metas, NULL, 0)) return -EINVAL;
 	return 0;
 }
 
@@ -2698,7 +2718,8 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		for (j = 0; j < node->n_outputs; j++) {
 			node->outputs[j]->storage.chunk.offset = 0;
 			node->outputs[j]->storage.chunk.size = 0;
-			spa_meta_properties_init(&node->outputs[j]->storage.metas[1]);
+			for (uint32_t k = 0; k < node->outputs[j]->storage.buffer.n_metas; k++)
+				spa_meta_record_init(&node->outputs[j]->storage.metas[k]);
 			node->outputs[j]->cycle_buffer = &node->outputs[j]->storage.buffer;
 			node->outputs[j]->cycle_offset = 0;
 		}
@@ -2729,14 +2750,16 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		return res;
 	for (i = 0; i < n_outputs; i++) {
 		struct spa_data *data = &outputs[i]->datas[0];
-		struct spa_meta *properties = spa_buffer_find_meta(outputs[i], SPA_META_Properties);
 		data->chunk->size = 0;
 		data->chunk->flags = 0;
-		if (properties != NULL && !spa_meta_properties_init(properties))
-			return -EINVAL;
+		for (uint32_t k = 0; k < outputs[i]->n_metas; k++)
+			if (!spa_meta_record_init(&outputs[i]->metas[k])) return -EINVAL;
 		graph->outputs[i]->cycle_buffer = outputs[i];
 		graph->outputs[i]->cycle_offset = data->chunk->offset;
 	}
+	for (i = 0; i < n_inputs; i++)
+		if (inputs[i] != NULL && !spa_meta_records_validate(inputs[i]->metas, inputs[i]->n_metas,
+			graph->inputs[i]->info->metas, graph->inputs[i]->info->n_metas)) { res = -EINVAL; goto process_error; }
 	if (publish_graph_property_transaction(graph))
 		status |= SPA_FGN_PROCESS_RESULT_PROPS_CHANGED;
 	if (publish_graph_parameter_transaction(graph))
@@ -2770,12 +2793,23 @@ int spa_fgn_graph_process(struct spa_fgn_graph *graph,
 		}
 		if (!ready)
 			continue;
+		for (j = 0; j < node->n_inputs; j++)
+			if (node->process_inputs[j].buffer != NULL &&
+			    (res = validate_buffer(node->process_inputs[j].buffer, node->inputs[j], false)) < 0)
+				goto process_error;
+		for (j = 0; j < node->n_inputs; j++)
+			if (node->process_inputs[j].buffer != NULL && !spa_meta_records_validate(
+			    node->process_inputs[j].buffer->metas, node->process_inputs[j].buffer->n_metas,
+			    node->inputs[j]->info->metas, node->inputs[j]->info->n_metas)) { res = -EINVAL; goto process_error; }
 		if ((res = node->descriptor->process(node->instance,
 				node->process_inputs, node->n_inputs,
 				node->process_outputs, node->n_outputs)) < 0)
 			goto process_error;
 		for (j = 0; j < node->n_outputs; j++) {
 			struct fgn_port *port = node->outputs[j];
+			if (port->cycle_buffer->datas[0].chunk->size != 0 &&
+			    !spa_meta_records_validate(port->cycle_buffer->metas, port->cycle_buffer->n_metas,
+				port->info->metas, port->info->n_metas)) { res = -EINVAL; goto process_error; }
 			if ((res = validate_completed_output(port->cycle_buffer,
 					port->payload_size, port->cycle_offset,
 					port->info->flags &

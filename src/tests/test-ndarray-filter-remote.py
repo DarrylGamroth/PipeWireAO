@@ -68,7 +68,7 @@ def link_nodes(link, environment, source, sink):
 def main():
     options = sys.argv[5:]
     if (len(sys.argv) < 5 or
-            any(option not in ("--fifo-inputs", "--buffers32", "--buffer-properties", "--malformed-input", "--malformed-output") for option in options) or
+            any(option not in ("--fifo-inputs", "--buffers32", "--metadata", "--malformed-input", "--malformed-output") for option in options) or
             len(set(options)) != len(options)):
         return 2
     paths = {
@@ -135,8 +135,8 @@ def main():
         filter_command = [str(paths["filter"])]
         if "--fifo-inputs" in options:
             filter_command.append("--fifo-inputs")
-        if "--buffer-properties" in options:
-            filter_command.append("--buffer-properties")
+        if "--metadata" in options:
+            filter_command.append("--metadata")
         if "--malformed-output" in options:
             filter_command.append("--malformed-output")
         filter_process = subprocess.Popen(
@@ -149,8 +149,8 @@ def main():
         client_command = [str(paths["client"])]
         if "--buffers32" in options:
             client_command.append("--buffers32")
-        if "--buffer-properties" in options:
-            client_command.append("--buffer-properties")
+        if "--metadata" in options:
+            client_command.append("--metadata")
         if "--malformed-input" in options:
             client_command.append("--malformed-input")
         client_process = subprocess.Popen(
@@ -190,10 +190,10 @@ def main():
                 raise TestFailure("mismatched input did not terminate before process") from error
             filter_text, client_text = read_log(logs["filter"]), read_log(logs["client"])
             if result == 0 or "DEFERRED" in filter_text or "COMPLETE" in filter_text or "SINK_BUFFER" in client_text:
-                raise TestFailure("malformed input Properties reached processing/publication")
+                raise TestFailure("malformed input metadata reached processing/publication")
             if "SOURCE 1" not in client_text:
                 raise TestFailure("mismatched input fixture did not publish a source buffer")
-            print("malformed input Properties rejected before process")
+            print("malformed input metadata rejected before process")
             return 0
         wait_for_text(filter_process, logs["filter"], "DEFERRED", 5)
         client_text = read_log(logs["client"])
@@ -216,8 +216,8 @@ def main():
             except subprocess.TimeoutExpired as error:
                 raise TestFailure("mismatched output did not terminate before publication") from error
             if result == 0 or "COMPLETE" not in read_log(logs["filter"]) or "SINK_BUFFER" in read_log(logs["client"]):
-                raise TestFailure("malformed output Properties was not rejected before publication")
-            print("malformed output Properties rejected before publication")
+                raise TestFailure("malformed output metadata was not rejected before publication")
+            print("malformed output metadata rejected before publication")
             return 0
         try:
             client_result = client_process.wait(timeout=5)
@@ -229,8 +229,8 @@ def main():
                 f"endpoint client failed ({client_result}):\n{client_text}"
             )
 
-        if "--buffer-properties" in options and "PROPERTIES optical=unfringed optional=222 acquisition=2" not in client_text:
-            raise TestFailure("missing buffer-properties preservation evidence")
+        if "--metadata" in options and "METADATA optical=unfringed optional=222 acquisition=2" not in client_text:
+            raise TestFailure("missing metadata preservation evidence")
 
         filter_process.send_signal(signal.SIGTERM)
         try:

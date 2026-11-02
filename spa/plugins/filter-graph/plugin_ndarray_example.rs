@@ -13,7 +13,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
-const ABI_VERSION: u32 = 7;
+const ABI_VERSION: u32 = 8;
 const EXECUTOR_VERSION: u32 = 1;
 const DIRECTION_INPUT: u32 = 0;
 const DIRECTION_OUTPUT: u32 = 1;
@@ -103,6 +103,9 @@ struct PortInfo {
     direction: u32,
     flags: u32,
     name: *const c_char,
+    n_metas: u32,
+    propagation: u32,
+    metas: *const c_void,
 }
 
 unsafe impl Sync for PortInfo {}
@@ -362,6 +365,9 @@ static PORTS: [PortInfo; 3] = [
         direction: DIRECTION_INPUT,
         flags: 0,
         name: c"in".as_ptr(),
+        n_metas: 0,
+        propagation: 0,
+        metas: ptr::null(),
     },
     PortInfo {
         struct_size: size_of::<PortInfo>() as u32,
@@ -369,6 +375,9 @@ static PORTS: [PortInfo; 3] = [
         direction: DIRECTION_OUTPUT,
         flags: 0,
         name: c"out".as_ptr(),
+        n_metas: 0,
+        propagation: 0,
+        metas: ptr::null(),
     },
     PortInfo {
         struct_size: size_of::<PortInfo>() as u32,
@@ -376,6 +385,9 @@ static PORTS: [PortInfo; 3] = [
         direction: DIRECTION_INPUT,
         flags: PORT_OPTIONAL | PORT_PARAMETER,
         name: c"coefficients".as_ptr(),
+        n_metas: 0,
+        propagation: 0,
+        metas: ptr::null(),
     },
 ];
 
@@ -905,28 +917,32 @@ unsafe extern "C" fn discard_parameter(data: *mut c_void, prepared: *mut c_void)
     }));
 }
 
-unsafe fn copy_metadata(output: *mut SpaBuffer, input: *const SpaBuffer) {
+unsafe fn copy_metadata(output: *mut SpaBuffer, input: *const SpaBuffer) -> bool {
     let output = unsafe { &mut *output };
     let input = unsafe { &*input };
+    if output.n_metas > 64 || input.n_metas > 64 { return false; }
+    for input_index in 0..input.n_metas as usize {
+        let source = unsafe { &*input.metas.add(input_index) };
+        let mut found = false;
+        for output_index in 0..output.n_metas as usize {
+            let destination = unsafe { &*output.metas.add(output_index) };
+            if source.type_ == destination.type_ && source.size == destination.size {
+                found = source.size == 0 || (!source.data.is_null() && !destination.data.is_null());
+            }
+        }
+        if !found { return false; }
+    }
     for output_index in 0..output.n_metas as usize {
         let destination = unsafe { &mut *output.metas.add(output_index) };
+        if destination.size > 0 { unsafe { ptr::write_bytes(destination.data.cast::<u8>(), 0, destination.size as usize) }; }
         for input_index in 0..input.n_metas as usize {
             let source = unsafe { &*input.metas.add(input_index) };
-            if source.type_ == destination.type_
-                && !source.data.is_null()
-                && !destination.data.is_null()
-            {
-                unsafe {
-                    ptr::copy(
-                        source.data.cast::<u8>(),
-                        destination.data.cast::<u8>(),
-                        source.size.min(destination.size) as usize,
-                    )
-                };
-                break;
+            if source.type_ == destination.type_ && source.size > 0 {
+                unsafe { ptr::copy_nonoverlapping(source.data.cast::<u8>(), destination.data.cast::<u8>(), source.size as usize) };
             }
         }
     }
+    true
 }
 
 unsafe extern "C" fn process(
@@ -1018,7 +1034,7 @@ unsafe extern "C" fn process(
             };
         }
         unsafe { (*output_data.chunk).size = 4 * size_of::<f32>() as u32 };
-        unsafe { copy_metadata(output.buffer, input.buffer) };
+        if !unsafe { copy_metadata(output.buffer, input.buffer) } { return -EINVAL; }
         0
     }))
     .unwrap_or(-EFAULT)

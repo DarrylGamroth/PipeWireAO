@@ -30,9 +30,8 @@ struct test_buffer {
 	struct spa_buffer buffer;
 	struct spa_data data;
 	struct spa_chunk chunk;
-	struct spa_meta metas[2];
+	struct spa_meta metas[1];
 	struct spa_meta_header header;
-	uint64_t properties[64];
 	float values[5];
 };
 
@@ -92,10 +91,6 @@ static void init_buffer(struct test_buffer *buffer)
 	buffer->metas[0].type = SPA_META_Header;
 	buffer->metas[0].size = sizeof(buffer->header);
 	buffer->metas[0].data = &buffer->header;
-	buffer->metas[1].type = SPA_META_Properties;
-	buffer->metas[1].size = sizeof(buffer->properties);
-	buffer->metas[1].data = buffer->properties;
-	assert(spa_meta_properties_init(&buffer->metas[1]));
 	buffer->buffer.n_metas = SPA_N_ELEMENTS(buffer->metas);
 	buffer->buffer.metas = buffer->metas;
 	buffer->buffer.n_datas = 1;
@@ -1475,6 +1470,81 @@ static void test_dense_graph_workers(const char *plugin)
 	assert(graph == NULL);
 }
 
+struct metadata_buffer {
+	struct test_buffer frame;
+	struct spa_meta metas[7];
+	struct spa_meta_acquisition_identity identity;
+	struct spa_meta_exposure_timing exposure;
+	struct spa_meta_absolute_time absolute;
+	uint64_t optical, trigger, opaque;
+};
+
+static void init_metadata_buffer(struct metadata_buffer *b)
+{
+	memset(b, 0, sizeof(*b));
+	init_buffer(&b->frame);
+	struct spa_meta layout[] = {
+		{ SPA_META_Header, sizeof(b->frame.header), &b->frame.header },
+		{ SPA_META_AcquisitionIdentity, sizeof(b->identity), &b->identity },
+		{ SPA_META_ExposureTiming, sizeof(b->exposure), &b->exposure },
+		{ SPA_META_AbsoluteTime, sizeof(b->absolute), &b->absolute },
+		{ SPA_META_OpticalChopping, sizeof(b->optical), &b->optical },
+		{ SPA_META_ElectricalTrigger, sizeof(b->trigger), &b->trigger },
+		{ 0x3f0, sizeof(b->opaque), &b->opaque },
+	};
+	memcpy(b->metas, layout, sizeof(layout));
+	b->frame.buffer.n_metas = SPA_N_ELEMENTS(layout);
+	b->frame.buffer.metas = b->metas;
+}
+
+static void test_independent_metadata(const char *plugin)
+{
+	char config[8192];
+	struct spa_fgn_graph *graph = NULL;
+	struct metadata_buffer input, left, right;
+	init_metadata_buffer(&input); init_metadata_buffer(&left); init_metadata_buffer(&right);
+	struct spa_buffer *inputs[] = { &input.frame.buffer }, *outputs[] = { &left.frame.buffer, &right.frame.buffer };
+	int n = snprintf(config, sizeof(config),
+		"{ nodes = [ { type=ndarray name=source plugin=\"%s\" label=metadata-scale-f32 }"
+		"{ type=ndarray name=left plugin=\"%s\" label=metadata-scale-f32 }"
+		"{ type=ndarray name=right plugin=\"%s\" label=metadata-scale-f32 } ]"
+		"links=[ { output=\"source:out\" input=\"left:in\" } { output=\"source:out\" input=\"right:in\" } ]"
+		"inputs=[ \"source:in\" ] outputs=[ \"left:out\" \"right:out\" ] }", plugin, plugin, plugin);
+	assert(n > 0 && (size_t)n < sizeof(config));
+	int result = spa_fgn_graph_new(config, &graph);
+	if (result < 0) fprintf(stderr, "metadata graph admission: %d\n", result);
+	assert(result == 0);
+	assert(spa_fgn_graph_activate(graph) == 0);
+	input.identity = (struct spa_meta_acquisition_identity){.flags=SPA_META_RECORD_VALID,.domain={1},.generation=UINT64_MAX,.sequence=UINT64_MAX};
+	input.exposure = (struct spa_meta_exposure_timing){.flags=SPA_META_EXPOSURE_DURATION_VALID,.duration_nsec=123};
+	input.absolute = (struct spa_meta_absolute_time){.count=2,.events={
+		{.seconds=1700000000,.nanoseconds=999999999,.clock=SPA_META_CLOCK_REALTIME,.event=SPA_META_TIME_EVENT_ACQUISITION,.flags=SPA_META_RECORD_VALID,.origin={1},.clock_domain={2}},
+		{.seconds=1700000037,.nanoseconds=999999999,.clock=SPA_META_CLOCK_TAI,.event=SPA_META_TIME_EVENT_PRODUCTION,.flags=SPA_META_RECORD_VALID,.origin={3},.clock_domain={2}},
+	}};
+	input.opaque = UINT64_MAX;
+	for (uint32_t seq=1; seq<=2; seq++) {
+		input.frame.header.seq=seq;
+		assert(spa_fgn_graph_process(graph,inputs,1,outputs,2)>=0);
+		for (uint32_t i=0;i<7;i++) {
+			assert(memcmp(input.metas[i].data,left.metas[i].data,input.metas[i].size)==0);
+			assert(memcmp(input.metas[i].data,right.metas[i].data,input.metas[i].size)==0);
+		}
+		assert(left.identity.sequence==UINT64_MAX && input.opaque==UINT64_MAX);
+	}
+	input.identity.flags=0; /* Missing required facts reject before any node executes. */
+	assert(spa_fgn_graph_process(graph,inputs,1,outputs,2)==-EINVAL);
+	assert(left.frame.chunk.size==0 && right.frame.chunk.size==0);
+	input.identity.flags=SPA_META_RECORD_VALID;
+	right.frame.buffer.n_metas=6; /* No opaque output slot: never truncate. */
+	assert(spa_fgn_graph_process(graph,inputs,1,outputs,2)==-ENOSPC);
+	assert(left.frame.chunk.size==0 && right.frame.chunk.size==0);
+	spa_fgn_graph_free(graph);
+	/* Required input type missing from producer declaration fails cold admission. */
+	n=snprintf(config,sizeof(config),"{ nodes=[ { type=ndarray name=a plugin=\"%s\" label=scale-f32 } { type=ndarray name=b plugin=\"%s\" label=metadata-scale-f32 } ] links=[ { output=\"a:out\" input=\"b:in\" } ] }",plugin,plugin);
+	assert(n>0 && (size_t)n<sizeof(config));
+	graph=NULL;assert(spa_fgn_graph_new(config,&graph)==-ENOTSUP);assert(graph==NULL);
+}
+
 int main(int argc, char *argv[])
 {
 	struct spa_fgn_graph *graph = NULL;
@@ -1494,8 +1564,6 @@ int main(int argc, char *argv[])
 	void *saved_data;
 	struct spa_meta *saved_metas;
 	uint32_t saved_maxsize, saved_n_metas;
-	const uint8_t acquisition_domain[SPA_ACQUISITION_DOMAIN_SIZE] = { 1 };
-	const uint8_t grandmaster_id[SPA_EXPOSURE_PTP_CLOCK_ID_SIZE] = { 2 };
 	uint32_t i;
 	int res;
 
@@ -1504,6 +1572,7 @@ int main(int argc, char *argv[])
 	test_dense_executor();
 	test_graph_inspection(argv[1]);
 	test_graph_admission(argv[1]);
+	if (argc >= 4) test_independent_metadata(argv[1]);
 	if (argc >= 3) {
 		check_failed_property_snapshot(argv[2]);
 		test_process_failure_state_boundary(argv[2]);
@@ -1636,18 +1705,6 @@ int main(int argc, char *argv[])
 		input.values[i] = (float)i + 1.0f;
 	input.header.seq = 42;
 	input.header.pts = 1234567;
-	{
-		uint32_t flags = SPA_POD_PROP_FLAG_MANDATORY, timebase = SPA_EXPOSURE_TIMEBASE_TAI, domain = 3;
-		int64_t start = 123456789;
-		assert(spa_meta_properties_add(&input.metas[1], 3, flags, SPA_TYPE_Bytes, 16, acquisition_domain));
-		assert(spa_meta_properties_add_uint64(&input.metas[1], 4, flags, 7));
-		assert(spa_meta_properties_add_uint64(&input.metas[1], 5, flags, 42));
-		assert(spa_meta_properties_add(&input.metas[1], 7, flags, SPA_TYPE_Long, 8, &start));
-		assert(spa_meta_properties_add(&input.metas[1], 8, flags, SPA_TYPE_Id, 4, &timebase));
-		assert(spa_meta_properties_add_uint64(&input.metas[1], 9, flags, 100));
-		assert(spa_meta_properties_add(&input.metas[1], 10, flags, SPA_TYPE_Bytes, 8, grandmaster_id));
-		assert(spa_meta_properties_add(&input.metas[1], 11, flags, SPA_TYPE_Id, 4, &domain));
-	}
 	inputs[0] = &input.buffer;
 	inputs[1] = NULL;
 	outputs[0] = &output.buffer;
@@ -1661,8 +1718,6 @@ int main(int argc, char *argv[])
 		assert(output.values[i] == input.values[i] * 6.0f);
 	assert(output.header.seq == input.header.seq);
 	assert(output.header.pts == input.header.pts);
-	assert(memcmp(output.properties, input.properties,
-			sizeof(input.properties)) == 0);
 
 	/* External output offsets are caller-owned and survive graph processing. */
 	output.values[0] = -123.0f;

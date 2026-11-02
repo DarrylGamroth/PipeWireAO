@@ -5,6 +5,7 @@
 #include <spa/node/utils.h>
 #include <spa/pod/iter.h>
 #include <spa/param/param.h>
+#include <spa/param/format-utils.h>
 #include <spa/buffer/alloc.h>
 #include <spa/utils/overflow.h>
 #include <spa/debug/types.h>
@@ -161,12 +162,12 @@ static int alloc_buffers(struct pw_mempool *pool,
 	return 0;
 }
 
-static bool is_properties_meta(const struct spa_pod *param)
+static bool is_custom_meta(const struct spa_pod *param)
 {
 	uint32_t type;
 	return param != NULL && spa_pod_parse_object(param, SPA_TYPE_OBJECT_ParamMeta,
 			NULL, SPA_PARAM_META_type, SPA_POD_Id(&type)) >= 0 &&
-		type == SPA_META_Properties;
+		type >= SPA_META_START_custom;
 }
 
 static int
@@ -176,7 +177,7 @@ param_filter(struct pw_buffers *this,
 	     uint32_t id,
 	     struct spa_pod_builder *result)
 {
-	uint8_t ibuf[4096];
+	uint8_t ibuf[16384];
         struct spa_pod_builder ib = { 0 };
 	struct spa_pod *oparam, *iparam;
 	uint32_t iidx, oidx;
@@ -200,6 +201,16 @@ param_filter(struct pw_buffers *this,
 				break;
 		}
 
+		/* Required is a local admission obligation, not a value intersection. */
+		if (id == SPA_PARAM_Meta && iparam != NULL) {
+			struct spa_pod_prop *required = (struct spa_pod_prop *)spa_pod_find_prop(iparam, NULL, SPA_PARAM_META_required);
+			if (required != NULL) {
+				uint32_t bytes = SPA_ROUND_UP_N(SPA_POD_PROP_SIZE(required), 8);
+				uint32_t offset = SPA_PTRDIFF(required, iparam);
+				memmove(required, SPA_PTROFF(required, bytes, void), SPA_POD_SIZE(iparam) - offset - bytes);
+				iparam->size -= bytes;
+			}
+		}
 		pw_log_pod(SPA_LOG_LEVEL_DEBUG, iparam);
 
 		for (oidx = 0;;) {
@@ -214,9 +225,9 @@ param_filter(struct pw_buffers *this,
 			if (out_res < 1)
 				break;
 
-			/* Properties needs explicit support on both peers. A missing Meta
+			/* Custom records need explicit support on both peers. A missing Meta
 			 * parameter remains permissive for established metadata types. */
-			if (id == SPA_PARAM_Meta && in_res == -ENOENT && is_properties_meta(oparam)) {
+			if (id == SPA_PARAM_Meta && in_res == -ENOENT && is_custom_meta(oparam)) {
 				spa_pod_builder_reset(result, &state);
 				continue;
 			}
@@ -224,7 +235,7 @@ param_filter(struct pw_buffers *this,
 			num++;
 		}
 		if (out_res == -ENOENT && iparam &&
-		    !(id == SPA_PARAM_Meta && is_properties_meta(iparam))) {
+		    !(id == SPA_PARAM_Meta && is_custom_meta(iparam))) {
 			/* no output param known but we have an input param,
 			 * use that one */
 			spa_pod_builder_raw_padded(result, iparam, SPA_POD_SIZE(iparam));
@@ -246,6 +257,56 @@ param_filter(struct pw_buffers *this,
 	return num;
 }
 
+/* Read requirements before intersection: a missing type must not disappear. */
+static int check_required_metas(const struct port *port,
+		const struct spa_meta *metas, uint32_t n_metas)
+{
+	uint8_t storage[4096];
+	struct spa_pod_builder builder;
+	uint32_t index = 0, count = 0, seen[MAX_METAS];
+	struct spa_pod *param;
+	int res;
+	for (;;) {
+		uint32_t type, size, features = 0;
+		bool required = false, found = false;
+		spa_pod_builder_init(&builder, storage, sizeof(storage));
+		res = spa_node_port_enum_params_sync(port->node, port->direction, port->port_id,
+			SPA_PARAM_Meta, &index, NULL, &param, &builder);
+		if (res == -ENOENT || res == 0) return 0;
+		if (res < 0) return res;
+		spa_pod_fixate(param);
+		if (++count > MAX_METAS || spa_pod_parse_object(param, SPA_TYPE_OBJECT_ParamMeta, NULL,
+		    SPA_PARAM_META_type, SPA_POD_Id(&type), SPA_PARAM_META_size, SPA_POD_Int(&size),
+		    SPA_PARAM_META_features, SPA_POD_OPT_Int(&features),
+		    SPA_PARAM_META_required, SPA_POD_OPT_Bool(&required)) < 0) return -EINVAL;
+		if (!spa_meta_record_layout_validate(type, size, INT32_MAX) ||
+		    (type >= SPA_META_START_features && features != 0)) return -ENOTSUP;
+		for (uint32_t i = 0; i + 1 < count; i++) if (seen[i] == type) return -EEXIST;
+		seen[count - 1] = type;
+		for (uint32_t i = 0; i < n_metas; i++)
+			if (metas[i].type == type && metas[i].size == size) found = true;
+		if (required && !found) return -ENOTSUP;
+		if (required && features != 0) {
+			found = false;
+			for (uint32_t i = 0; i < n_metas; i++)
+				if (metas[i].type == SPA_META_TYPE_FEATURES(type, features)) found = true;
+			if (!found) return -ENOTSUP;
+		}
+	}
+}
+
+static bool port_is_ndarray(const struct port *port)
+{
+	uint8_t storage[4096];
+	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(storage, sizeof(storage));
+	struct spa_pod *param;
+	uint32_t index = 0, media_type, media_subtype;
+	return spa_node_port_enum_params_sync(port->node, port->direction, port->port_id,
+		SPA_PARAM_Format, &index, NULL, &param, &builder) > 0 &&
+		spa_format_parse(param, &media_type, &media_subtype) >= 0 &&
+		media_type == SPA_MEDIA_TYPE_application && media_subtype == SPA_MEDIA_SUBTYPE_ndarray;
+}
+
 SPA_EXPORT
 int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 		struct spa_node *outnode, uint32_t out_port_id,
@@ -253,7 +314,7 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 		struct pw_buffers *result)
 {
 	struct spa_pod **params;
-	uint8_t buffer[4096];
+	uint8_t buffer[16384];
 	struct spa_pod_builder b = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
 	uint32_t i, j, offset, n_params, n_metas;
 	struct spa_meta *metas;
@@ -291,7 +352,7 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 	if ((res = param_filter(result, &input, &output, SPA_PARAM_Meta, &b)) > 0)
 		n_params += res;
 
-	if (n_params > MAX_METAS)
+	if (n_params > MAX_METAS * 2)
 		return -EINVAL;
 
 	metas = alloca(sizeof(struct spa_meta) * n_params * 2);
@@ -318,9 +379,10 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 			continue;
 		}
 
-		/* Retired PipeWireAO allocations must never re-enter a native pool. */
-		if (type == 11 || type == 12)
-			return -ENOTSUP;
+		if (!spa_meta_record_layout_validate(type, size, INT32_MAX) ||
+		    (type >= SPA_META_START_features && features != 0)) return -ENOTSUP;
+		for (j = 0; j < n_metas; j++) if (metas[j].type == type) return -EEXIST;
+		if (n_metas + 1 + (features != 0) > MAX_METAS) return -ENOSPC;
 
 		pw_log_debug("%p: enable meta %s size:%d", result,
 				spa_debug_type_find_name(spa_type_meta_type, type), size);
@@ -332,6 +394,20 @@ int pw_buffers_negotiate(struct pw_context *context, uint32_t flags,
 			metas[n_metas].type = SPA_META_TYPE_FEATURES(type, features);
 			metas[n_metas].size = 0;
 			n_metas++;
+		}
+	}
+
+	if ((res = check_required_metas(&input, metas, n_metas)) < 0 ||
+	    (res = check_required_metas(&output, metas, n_metas)) < 0) return res;
+
+	/* The ndarray profile bounds allocation, not merely first-use admission. */
+	if (port_is_ndarray(&input) || port_is_ndarray(&output)) {
+		uint32_t metadata_bytes = 0;
+		for (i = 0; i < n_metas; i++) {
+			if (metas[i].size > SPA_META_MAX_BYTES ||
+			    SPA_ROUND_UP_N(metas[i].size, 8) > SPA_META_MAX_BYTES - metadata_bytes)
+				return -ENOSPC;
+			metadata_bytes += SPA_ROUND_UP_N(metas[i].size, 8);
 		}
 	}
 

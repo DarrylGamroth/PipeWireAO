@@ -16,7 +16,7 @@
 #include <spa/utils/result.h>
 
 #include <pipewire/impl.h>
-#include "buffer-properties-fixture.h"
+#include "metadata-fixture.h"
 
 enum source_phase {
 	SOURCE_IDLE,

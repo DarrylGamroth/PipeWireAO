@@ -14,8 +14,8 @@ test_apps = [
   'test-filter',
   'test-ndarray-filter',
   'test-ndarray-filter-admission',
-  'test-ndarray-filter-properties-admission',
-  'test-ndarray-filter-buffer-properties',
+  'test-ndarray-filter-metadata-admission',
+  'test-ndarray-filter-buffer-metadata',
   'test-ndarray-filter-publication',
   'test-ndarray-filter-chain-parameter',
   'test-run-control',
@@ -174,13 +174,13 @@ test(
 )
 
 test(
-  'pw-test-ndarray-filter-buffer-properties-remote',
+  'pw-test-ndarray-filter-metadata-remote',
   find_program('python3'),
   args: [
     files('test-ndarray-filter-remote.py'),
     pipewire_exec.full_path(), pwao_link.full_path(),
     ndarray_filter_remote_filter.full_path(), ndarray_filter_remote_client.full_path(),
-    '--buffer-properties',
+    '--metadata',
   ],
   depends: pipewire_daemon_required_modules + [
     spa_support_lib, pipewire_exec, pwao_link,
@@ -191,11 +191,11 @@ test(
 )
 
 foreach name, options : {
-  'input-mismatch': ['--buffer-properties', '--malformed-input'],
-  'output-mismatch': ['--buffer-properties', '--malformed-output'],
+  'input-mismatch': ['--metadata', '--malformed-input'],
+  'output-mismatch': ['--metadata', '--malformed-output'],
 }
   test(
-    'pw-test-ndarray-filter-properties-' + name,
+    'pw-test-ndarray-filter-metadata-' + name,
     find_program('python3'),
     args: [files('test-ndarray-filter-remote.py'),
       pipewire_exec.full_path(), pwao_link.full_path(),

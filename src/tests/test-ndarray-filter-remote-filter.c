@@ -16,7 +16,7 @@
 #include <spa/utils/result.h>
 
 #include <pipewire/ndarray-filter.h>
-#include "buffer-properties-fixture.h"
+#include "metadata-fixture.h"
 
 struct test_data {
 	struct pw_ndarray_filter *filter;
@@ -24,7 +24,7 @@ struct test_data {
 	void *retained_output;
 	atomic_uint callbacks;
 	atomic_bool retained;
-	bool buffer_properties;
+	bool metadata;
 	bool trigger_mismatch_output;
 };
 
@@ -49,37 +49,17 @@ static int process(void *userdata,
 		return -EINVAL;
 	input = &inputs[0];
 	output = &outputs[0];
-	if (input->size != sizeof(input_value) ||
-	    output->size != sizeof(output_value) ||
-	    input->capacity < sizeof(input_value) ||
-	    output->capacity < sizeof(output_value) ||
-	    input->data == NULL || output->data == NULL ||
-	    (input->metadata_valid & PW_NDARRAY_FILTER_METADATA_HEADER) == 0 ||
-	    (input->metadata_valid & PW_NDARRAY_FILTER_METADATA_PROPERTIES) == 0 ||
-	    (output->metadata_available & PW_NDARRAY_FILTER_METADATA_HEADER) == 0 ||
-	    (output->metadata_available & PW_NDARRAY_FILTER_METADATA_PROPERTIES) == 0 ||
-	    !test_check_acquisition(&input->properties, input->header.seq, 100000 + input->header.seq))
+	if (input->size != sizeof(input_value) || output->size != sizeof(output_value) ||
+	    input->data == NULL || output->data == NULL || test_header(input) == NULL || test_header(output) == NULL ||
+	    !test_check_acquisition(input->metas, input->n_metas, test_header(input)->seq, 100000 + test_header(input)->seq))
 		return -EINVAL;
-	if (data->buffer_properties) {
-		struct spa_meta input_properties, output_properties;
-		const struct spa_pod *optical;
-		if (pw_ndarray_filter_get_buffer_properties(data->filter, SPA_DIRECTION_INPUT,
-				0, &input_properties) < 0 ||
-		    pw_ndarray_filter_get_buffer_properties(data->filter, SPA_DIRECTION_OUTPUT,
-				0, &output_properties) < 0 ||
-		    spa_meta_properties_find(&output_properties, SPA_META_PROPERTY_opticalClassification) != NULL ||
-		    (optical = spa_meta_properties_find(&input_properties, SPA_META_PROPERTY_opticalClassification)) == NULL ||
-		    optical->type != SPA_TYPE_Id || input_properties.size != output_properties.size)
-			return -EINVAL;
-		/* Preserve every field, including the unknown optional fixture key. */
-		memcpy(output_properties.data, input_properties.data, input_properties.size);
-	}
+	if (!spa_meta_records_copy(output->metas, output->n_metas, input->metas, input->n_metas)) return -ENOSPC;
 	memcpy(&input_value, input->data, sizeof(input_value));
 	callback = atomic_fetch_add_explicit(&data->callbacks, 1,
 			memory_order_relaxed) + 1;
 
 	if (callback == 1) {
-		if (input_value != 1.0f || input->header.seq != 1)
+		if (input_value != 1.0f || test_header(input)->seq != 1)
 			return -EINVAL;
 		data->retained_output = output->data;
 		output_value = 41.0f;
@@ -90,7 +70,7 @@ static int process(void *userdata,
 		return 0;
 	}
 	if (callback != 2 || input_value != 2.0f ||
-	    input->header.seq != 2 || output->data != data->retained_output)
+	    test_header(input)->seq != 2 || output->data != data->retained_output)
 		return -EINVAL;
 	memcpy(&output_value, output->data, sizeof(output_value));
 	if (output_value != 41.0f)
@@ -99,25 +79,17 @@ static int process(void *userdata,
 	atomic_store_explicit(&data->retained, true, memory_order_release);
 	output_value = 3.0f;
 	memcpy(output->data, &output_value, sizeof(output_value));
-	output->header = (struct spa_meta_header) {
+	*test_header(output) = (struct spa_meta_header) {
 		.flags = SPA_META_HEADER_FLAG_MARKER | SPA_META_HEADER_FLAG_DISCONT,
 		.offset = 22,
 		.pts = 2002,
 		.dts_offset = 0,
 		.seq = 2,
 	};
-	output->metadata_valid |= PW_NDARRAY_FILTER_METADATA_HEADER;
-	memcpy(output->properties.data, input->properties.data, input->properties.size);
-	output->metadata_valid |= PW_NDARRAY_FILTER_METADATA_PROPERTIES;
 	if (data->trigger_mismatch_output) {
-		struct spa_meta properties;
-		const struct spa_pod *trigger;
-		uint32_t invalid = 4;
-		if (pw_ndarray_filter_get_buffer_properties(data->filter, SPA_DIRECTION_OUTPUT,
-				0, &properties) < 0 ||
-		    (trigger = spa_meta_properties_find(&properties, SPA_META_PROPERTY_triggerClassification)) == NULL)
-			return -EINVAL;
-		memcpy(SPA_POD_BODY((struct spa_pod *)trigger), &invalid, sizeof(invalid));
+		struct spa_meta *m = spa_meta_records_find(output->metas, output->n_metas, SPA_META_ElectricalTrigger);
+		if (m == NULL) return -EINVAL;
+		*(struct spa_meta_electrical_trigger *)m->data = (struct spa_meta_electrical_trigger){SPA_META_RECORD_VALID,4};
 	}
 	printf("COMPLETE\n");
 	fflush(stdout);
@@ -147,6 +119,7 @@ int main(int argc, char *argv[])
 		{
 			.struct_size = sizeof(struct pw_ndarray_filter_port),
 			.direction = SPA_DIRECTION_INPUT,
+			.n_metas = SPA_N_ELEMENTS(test_metadata), .metas = test_metadata,
 			.name = "input",
 			.format = {
 				.element_type = SPA_ELEMENT_TYPE_F32_LE,
@@ -161,6 +134,7 @@ int main(int argc, char *argv[])
 		{
 			.struct_size = sizeof(struct pw_ndarray_filter_port),
 			.direction = SPA_DIRECTION_OUTPUT,
+			.n_metas = SPA_N_ELEMENTS(test_metadata), .metas = test_metadata, .propagation = SPA_META_PROPAGATION_PRESERVE,
 			.name = "output",
 			.format = {
 				.element_type = SPA_ELEMENT_TYPE_F32_LE,
@@ -193,8 +167,8 @@ int main(int argc, char *argv[])
 			config.flags |= PW_NDARRAY_FILTER_FLAG_FIFO_INPUTS;
 		else if (spa_streq(argv[i], "--malformed-output")) {
 			data.trigger_mismatch_output = true;
-		} else if (spa_streq(argv[i], "--buffer-properties")) {
-			data.buffer_properties = true;
+		} else if (spa_streq(argv[i], "--metadata")) {
+			data.metadata = true;
 		} else {
 			fprintf(stderr, "unknown argument: %s\n", argv[i]);
 			return 2;
@@ -213,18 +187,6 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "could not create ndarray filter: %s\n",
 				spa_strerror(result));
 		return 1;
-	}
-	if (data.buffer_properties) {
-		const struct spa_meta_property_requirement required = {
-			SPA_META_PROPERTY_opticalClassification, SPA_TYPE_Id };
-		for (uint32_t direction = SPA_DIRECTION_INPUT; direction <= SPA_DIRECTION_OUTPUT; direction++) {
-			result = pw_ndarray_filter_set_port_buffer_properties(data.filter, direction,
-					0, 512, &required, 1);
-			if (result < 0) {
-				fprintf(stderr, "could not configure buffer properties: %s\n", spa_strerror(result));
-				goto done;
-			}
-		}
 	}
 	if ((result = pw_ndarray_filter_connect(data.filter)) < 0) {
 		fprintf(stderr, "could not connect ndarray filter: %s\n",

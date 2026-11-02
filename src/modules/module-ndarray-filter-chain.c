@@ -823,23 +823,6 @@ static struct spa_pod *build_format(struct spa_pod_builder *builder,
 	return spa_pod_builder_pop(builder, &object);
 }
 
-static struct spa_pod *build_properties_meta(struct spa_pod_builder *builder)
-{
-	struct spa_pod_frame frame;
-
-	spa_pod_builder_push_object(builder, &frame,
-			SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta);
-	spa_pod_builder_add(builder,
-			SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Properties),
-			SPA_PARAM_META_size,
-			SPA_POD_Int(512),
-			0);
-	spa_pod_builder_prop(builder, SPA_PARAM_META_features,
-			SPA_POD_PROP_FLAG_MANDATORY);
-	spa_pod_builder_int(builder, SPA_META_FEATURE_PROPERTIES_VERSION_1);
-	return spa_pod_builder_pop(builder, &frame);
-}
-
 static bool strings_equal(const char *a, const char *b)
 {
 	return a == b || (a != NULL && b != NULL && spa_streq(a, b));
@@ -1543,11 +1526,11 @@ static const struct pw_filter_events filter_events = {
 static int add_graph_port(struct impl *impl, enum spa_direction direction,
 		uint32_t index)
 {
-	uint8_t buffer[4096];
+	uint8_t buffer[16384];
 	struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
 	const struct spa_fgn_port_info *info;
 	const struct spa_fgn_format *format;
-	const struct spa_pod *params[4];
+	const struct spa_pod *params[SPA_FGN_MAX_METAS + 3];
 	struct pw_properties *properties;
 	struct port *port;
 	const char *node_name;
@@ -1580,8 +1563,7 @@ static int add_graph_port(struct impl *impl, enum spa_direction direction,
 			SPA_PARAM_BUFFERS_blocks, SPA_POD_Int(1),
 			SPA_PARAM_BUFFERS_size, SPA_POD_Int((int32_t)size),
 			SPA_PARAM_BUFFERS_stride, SPA_POD_Int(stride),
-			SPA_PARAM_BUFFERS_metaType, SPA_POD_Int((info->flags & SPA_FGN_PORT_FLAG_PARAMETER) ? 0 :
-			 (1u << SPA_META_Header) | (1u << SPA_META_Properties)),
+			SPA_PARAM_BUFFERS_metaType, SPA_POD_Int(1u << SPA_META_Header),
 			SPA_PARAM_BUFFERS_dataType,
 			SPA_POD_CHOICE_FLAGS_Int((1u << SPA_DATA_MemPtr) |
 				(1u << SPA_DATA_MemFd)));
@@ -1589,9 +1571,18 @@ static int add_graph_port(struct impl *impl, enum spa_direction direction,
 			SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta,
 			SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Header),
 			SPA_PARAM_META_size,
-			SPA_POD_Int(sizeof(struct spa_meta_header)));
+			SPA_POD_Int(sizeof(struct spa_meta_header)),
+			SPA_PARAM_META_required, SPA_POD_Bool(true));
 	if (!(info->flags & SPA_FGN_PORT_FLAG_PARAMETER))
-		params[n_params++] = build_properties_meta(&builder);
+		for (uint32_t i = 0; i < info->n_metas; i++)
+			params[n_params++] = spa_pod_builder_add_object(&builder,
+				SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta,
+				SPA_PARAM_META_type, SPA_POD_Id(info->metas[i].type),
+				SPA_PARAM_META_size, SPA_POD_Int(info->metas[i].size),
+				SPA_PARAM_META_required, SPA_POD_Bool((info->metas[i].flags & SPA_META_REQUIREMENT_REQUIRED) ||
+				 (direction == SPA_DIRECTION_OUTPUT && info->propagation == SPA_META_PROPAGATION_PRESERVE &&
+				  !spa_meta_type_is_transport_owned(info->metas[i].type))));
+
 	for (uint32_t i = 0; i < n_params; i++)
 		if (params[i] == NULL) {
 			pw_properties_free(properties);
@@ -1880,6 +1871,10 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 		pw_properties_set(properties, PW_KEY_MEDIA_CATEGORY, "Filter");
 	if (pw_properties_get(properties, PW_KEY_NODE_VIRTUAL) == NULL)
 		pw_properties_set(properties, PW_KEY_NODE_VIRTUAL, "true");
+	if (pw_properties_get(properties, PW_KEY_HEADER_PTS_CLOCK) == NULL)
+		pw_properties_set(properties, PW_KEY_HEADER_PTS_CLOCK, "unavailable");
+	if (pw_properties_get(properties, PW_KEY_HEADER_PTS_ABSOLUTE_CONVERSION) == NULL)
+		pw_properties_set(properties, PW_KEY_HEADER_PTS_ABSOLUTE_CONVERSION, "unavailable");
 	if (impl->reset_control)
 		pw_properties_set(properties, PW_AO_RESET_CONTROL_KEY_ENABLED, "true");
 	remote = pw_properties_get(properties, PW_KEY_REMOTE_NAME);
