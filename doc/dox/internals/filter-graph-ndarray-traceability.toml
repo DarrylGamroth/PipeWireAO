@@ -1,6 +1,6 @@
 schema_version = 1
-specification_baseline = "ABI-v7 schema-authoritative working tree, reviewed 2026-09-01"
-specification_files = ["doc/dox/internals/filter-graph-ndarray.md"]
+specification_baseline = "Native 3.0 / FGN ABI8 independent metadata implementation; prior FGN evidence retains its recorded revision"
+specification_files = ["doc/dox/internals/filter-graph-ndarray.md", "doc/dox/internals/acquisition-metadata.md"]
 
 [[requirements]]
 id = "FGN-ABI-001"
@@ -324,3 +324,391 @@ id = "fgn-v4-ndarray"
 requirements = ["FGN-ABI-001", "FGN-CONFIG-001", "FGN-FORMAT-001", "FGN-LIFE-001", "FGN-BUF-001", "FGN-SCHEMA-001", "FGN-PROP-001", "FGN-PROP-002", "FGN-PROP-003", "FGN-PROP-004", "FGN-PARAM-001", "FGN-PARAM-002", "FGN-EXEC-001", "FGN-FAIL-001", "FGN-RT-001", "FGN-WORKER-001", "FGN-PORT-001", "FGN-SPA-001", "FGN-RUST-001"]
 state = "partial"
 acceptance_evidence = ["spa/plugins/filter-graph/test-filter-graph-ndarray.c", "spa/plugins/filter-graph/benchmark-filter-graph-ndarray-revolt-classic.c", "../calculon-algorithms/crates/calculon-fgn/tests/algorithm_declaration.rs", "../calculon-algorithms/scripts/test_fgn_declaration.py", "../calculon-algorithms/scripts/test_fgn_pipewire_live.py", "../calculon-algorithms/scripts/qualify_fgn_revolt_classic.py", "../calculon-algorithms/docs/fgn-revolt-classic-qualification.md"]
+
+[[requirements]]
+id = "ACQ-META-001"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Approved framework-wide plan98c75c8e8; user implementation authorization2026-11-02"
+owner = "Native ABI and producer profiles"
+applicability = "mandatory"
+profile_scope = "supported target-cohort profiles; TIME-003 applies to selected recording profiles"
+claimed_surfaces = ["native stream/filter/ndarray/queue/row-block", "Julia/Rust bindings", "FGA/JFG/FGPW/FI", "AOS/HIL and device adapters", "RTC capture/export", "GUI native/browser", "CPU/captured CUDA/supported AMDGPU preparation"]
+closure_obligations = ["standard Header", "independent records", "retired Acquisition/Properties rejection", "all RTC stream profiles"]
+implementation_state = "partial"
+implementation_links = ["spa/include/spa/buffer/meta.h", "src/pipewire/buffers.c", "src/pipewire/ndarray-filter.c"]
+evidence_state = "partial"
+evidence_links = ["test/test-spa-buffer.c", "src/tests/test-ndarray-filter.c", "spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
+remaining_gaps = ["Native and language implementations have focused source tests, but cross-package final-prefix verification, independent review fixes, required/opaque queue negotiation, recorder and profile acceptance, complete cohort release and fresh application rebuild remain open. Current per-clause links locate the native contribution only; they do not close other surfaces. Hardware/deadline qualification is not claimed."]
+
+[[requirements]]
+id = "ACQ-META-002"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Approved framework-wide plan98c75c8e8; user implementation authorization2026-11-02"
+owner = "Native ports, executors and RTC admission"
+applicability = "mandatory"
+profile_scope = "supported target-cohort profiles; TIME-003 applies to selected recording profiles"
+claimed_surfaces = ["native stream/filter/ndarray/queue/row-block", "Julia/Rust bindings", "FGA/JFG/FGPW/FI", "AOS/HIL and device adapters", "RTC capture/export", "GUI native/browser", "CPU/captured CUDA/supported AMDGPU preparation"]
+closure_obligations = ["cold required/optional declarations", "both-peer capability admission", "per-buffer validity", "failure without scientific state advance"]
+implementation_state = "partial"
+implementation_links = ["spa/include/spa/buffer/meta.h", "src/pipewire/buffers.c", "src/pipewire/ndarray-filter.c"]
+evidence_state = "partial"
+evidence_links = ["test/test-spa-buffer.c", "src/tests/test-ndarray-filter.c", "spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
+remaining_gaps = ["Native and language implementations have focused source tests, but cross-package final-prefix verification, independent review fixes, required/opaque queue negotiation, recorder and profile acceptance, complete cohort release and fresh application rebuild remain open. Current per-clause links locate the native contribution only; they do not close other surfaces. Hardware/deadline qualification is not claimed."]
+
+[[requirements]]
+id = "ACQ-META-003"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Approved framework-wide plan98c75c8e8; user implementation authorization2026-11-02"
+owner = "Native allocator and prepared executors"
+applicability = "mandatory"
+profile_scope = "supported target-cohort profiles; TIME-003 applies to selected recording profiles"
+claimed_surfaces = ["native stream/filter/ndarray/queue/row-block", "Julia/Rust bindings", "FGA/JFG/FGPW/FI", "AOS/HIL and device adapters", "RTC capture/export", "GUI native/browser", "CPU/captured CUDA/supported AMDGPU preparation"]
+closure_obligations = ["64 entries including features", "4096 aligned aggregate bytes", "custom IDs beyond32bitmask", "cold replacement", "no callback skeleton mutation"]
+implementation_state = "partial"
+implementation_links = ["spa/include/spa/buffer/meta.h", "src/pipewire/buffers.c", "src/pipewire/ndarray-filter.c"]
+evidence_state = "partial"
+evidence_links = ["test/test-spa-buffer.c", "src/tests/test-ndarray-filter.c", "spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
+remaining_gaps = ["Native and language implementations have focused source tests, but cross-package final-prefix verification, independent review fixes, required/opaque queue negotiation, recorder and profile acceptance, complete cohort release and fresh application rebuild remain open. Current per-clause links locate the native contribution only; they do not close other surfaces. Hardware/deadline qualification is not claimed."]
+
+[[requirements]]
+id = "ACQ-META-004"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Approved framework-wide plan98c75c8e8; user implementation authorization2026-11-02"
+owner = "Native records and writable bindings"
+applicability = "mandatory"
+profile_scope = "supported target-cohort profiles; TIME-003 applies to selected recording profiles"
+claimed_surfaces = ["native stream/filter/ndarray/queue/row-block", "Julia/Rust bindings", "FGA/JFG/FGPW/FI", "AOS/HIL and device adapters", "RTC capture/export", "GUI native/browser", "CPU/captured CUDA/supported AMDGPU preparation"]
+closure_obligations = ["recycle invalidation", "missing versus invalid versus explicit absent", "reserved bytes and flags", "singleton duplicates", "bounded absolute event multiplicity"]
+implementation_state = "partial"
+implementation_links = ["spa/include/spa/buffer/meta.h", "src/pipewire/buffers.c", "src/pipewire/ndarray-filter.c"]
+evidence_state = "partial"
+evidence_links = ["test/test-spa-buffer.c", "src/tests/test-ndarray-filter.c", "spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
+remaining_gaps = ["Native and language implementations have focused source tests, but cross-package final-prefix verification, independent review fixes, required/opaque queue negotiation, recorder and profile acceptance, complete cohort release and fresh application rebuild remain open. Current per-clause links locate the native contribution only; they do not close other surfaces. Hardware/deadline qualification is not claimed."]
+
+[[requirements]]
+id = "ACQ-META-005"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Approved framework-wide plan98c75c8e8; user implementation authorization2026-11-02"
+owner = "Native leases and language wrappers"
+applicability = "mandatory"
+profile_scope = "supported target-cohort profiles; TIME-003 applies to selected recording profiles"
+claimed_surfaces = ["native stream/filter/ndarray/queue/row-block", "Julia/Rust bindings", "FGA/JFG/FGPW/FI", "AOS/HIL and device adapters", "RTC capture/export", "GUI native/browser", "CPU/captured CUDA/supported AMDGPU preparation"]
+closure_obligations = ["single writer", "published immutability", "borrow lifetime", "fanout isolation", "held/captured ownership"]
+implementation_state = "partial"
+implementation_links = ["spa/include/spa/buffer/meta.h", "src/pipewire/buffers.c", "src/pipewire/ndarray-filter.c"]
+evidence_state = "partial"
+evidence_links = ["test/test-spa-buffer.c", "src/tests/test-ndarray-filter.c", "spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
+remaining_gaps = ["Native and language implementations have focused source tests, but cross-package final-prefix verification, independent review fixes, required/opaque queue negotiation, recorder and profile acceptance, complete cohort release and fresh application rebuild remain open. Current per-clause links locate the native contribution only; they do not close other surfaces. Hardware/deadline qualification is not claimed."]
+
+[[requirements]]
+id = "ACQ-META-006"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Approved framework-wide plan98c75c8e8; user implementation authorization2026-11-02"
+owner = "Native queues, FGPW and graph publication"
+applicability = "mandatory"
+profile_scope = "supported target-cohort profiles; TIME-003 applies to selected recording profiles"
+claimed_surfaces = ["native stream/filter/ndarray/queue/row-block", "Julia/Rust bindings", "FGA/JFG/FGPW/FI", "AOS/HIL and device adapters", "RTC capture/export", "GUI native/browser", "CPU/captured CUDA/supported AMDGPU preparation"]
+closure_obligations = ["preserve/produce/replace/drop", "unknown optional opaque copies", "preflight capacity before execution", "derived contributor provenance", "failure atomicity and cleared output"]
+implementation_state = "partial"
+implementation_links = ["spa/include/spa/buffer/meta.h", "src/pipewire/buffers.c", "src/pipewire/ndarray-filter.c"]
+evidence_state = "partial"
+evidence_links = ["test/test-spa-buffer.c", "src/tests/test-ndarray-filter.c", "spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
+remaining_gaps = ["Native and language implementations have focused source tests, but cross-package final-prefix verification, independent review fixes, required/opaque queue negotiation, recorder and profile acceptance, complete cohort release and fresh application rebuild remain open. Current per-clause links locate the native contribution only; they do not close other surfaces. Hardware/deadline qualification is not claimed."]
+
+[[requirements]]
+id = "ACQ-META-007"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Approved framework-wide plan98c75c8e8; user implementation authorization2026-11-02"
+owner = "Native validation and all bindings"
+applicability = "mandatory"
+profile_scope = "supported target-cohort profiles; TIME-003 applies to selected recording profiles"
+claimed_surfaces = ["native stream/filter/ndarray/queue/row-block", "Julia/Rust bindings", "FGA/JFG/FGPW/FI", "AOS/HIL and device adapters", "RTC capture/export", "GUI native/browser", "CPU/captured CUDA/supported AMDGPU preparation"]
+closure_obligations = ["generic envelope bounds", "known-type semantic validation", "unknown optional skipping", "unsupported required layouts", "per-type evolution and generic iteration"]
+implementation_state = "partial"
+implementation_links = ["spa/include/spa/buffer/meta.h", "src/pipewire/buffers.c", "src/pipewire/ndarray-filter.c"]
+evidence_state = "partial"
+evidence_links = ["test/test-spa-buffer.c", "src/tests/test-ndarray-filter.c", "spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
+remaining_gaps = ["Native and language implementations have focused source tests, but cross-package final-prefix verification, independent review fixes, required/opaque queue negotiation, recorder and profile acceptance, complete cohort release and fresh application rebuild remain open. Current per-clause links locate the native contribution only; they do not close other surfaces. Hardware/deadline qualification is not claimed."]
+
+[[requirements]]
+id = "ACQ-META-008"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Approved framework-wide plan98c75c8e8; user implementation authorization2026-11-02"
+owner = "Sources, FGA SCC and consumers"
+applicability = "mandatory"
+profile_scope = "supported target-cohort profiles; TIME-003 applies to selected recording profiles"
+claimed_surfaces = ["native stream/filter/ndarray/queue/row-block", "Julia/Rust bindings", "FGA/JFG/FGPW/FI", "AOS/HIL and device adapters", "RTC capture/export", "GUI native/browser", "CPU/captured CUDA/supported AMDGPU preparation"]
+closure_obligations = ["independent optical/electrical classification", "declared producer mapping", "mixed/missing rejection", "full UInt64 identities", "held versus publication sequence", "generation/reset"]
+implementation_state = "partial"
+implementation_links = ["spa/include/spa/buffer/meta.h", "src/pipewire/buffers.c", "src/pipewire/ndarray-filter.c"]
+evidence_state = "partial"
+evidence_links = ["test/test-spa-buffer.c", "src/tests/test-ndarray-filter.c", "spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
+remaining_gaps = ["Native and language implementations have focused source tests, but cross-package final-prefix verification, independent review fixes, required/opaque queue negotiation, recorder and profile acceptance, complete cohort release and fresh application rebuild remain open. Current per-clause links locate the native contribution only; they do not close other surfaces. Hardware/deadline qualification is not claimed."]
+
+[[requirements]]
+id = "ACQ-META-TIME-001"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Approved framework-wide plan98c75c8e8; user implementation authorization2026-11-02"
+owner = "Stream profiles and RTC clocks"
+applicability = "mandatory"
+profile_scope = "supported target-cohort profiles; TIME-003 applies to selected recording profiles"
+claimed_surfaces = ["native stream/filter/ndarray/queue/row-block", "Julia/Rust bindings", "FGA/JFG/FGPW/FI", "AOS/HIL and device adapters", "RTC capture/export", "GUI native/browser", "CPU/captured CUDA/supported AMDGPU preparation"]
+closure_obligations = ["Header presentation semantics", "explicit PTS domain or unavailable mapping", "independent acquisition identity", "monotonic deadlines"]
+implementation_state = "partial"
+implementation_links = ["spa/include/spa/buffer/meta.h", "src/pipewire/buffers.c", "src/pipewire/ndarray-filter.c"]
+evidence_state = "partial"
+evidence_links = ["test/test-spa-buffer.c", "src/tests/test-ndarray-filter.c", "spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
+remaining_gaps = ["Native and language implementations have focused source tests, but cross-package final-prefix verification, independent review fixes, required/opaque queue negotiation, recorder and profile acceptance, complete cohort release and fresh application rebuild remain open. Current per-clause links locate the native contribution only; they do not close other surfaces. Hardware/deadline qualification is not claimed."]
+
+[[requirements]]
+id = "ACQ-META-TIME-002"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Approved framework-wide plan98c75c8e8; user implementation authorization2026-11-02"
+owner = "Native clock helpers and public bindings"
+applicability = "mandatory"
+profile_scope = "supported target-cohort profiles; TIME-003 applies to selected recording profiles"
+claimed_surfaces = ["native stream/filter/ndarray/queue/row-block", "Julia/Rust bindings", "FGA/JFG/FGPW/FI", "AOS/HIL and device adapters", "RTC capture/export", "GUI native/browser", "CPU/captured CUDA/supported AMDGPU preparation"]
+closure_obligations = ["integer REALTIME and TAI", "normalized signed seconds/nanoseconds", "explicit event and epoch", "clock labels do not assert accuracy", "no Float64 clock conversion", "C/Julia/Rust layout"]
+implementation_state = "partial"
+implementation_links = ["spa/include/spa/buffer/meta.h", "src/pipewire/buffers.c", "src/pipewire/ndarray-filter.c"]
+evidence_state = "partial"
+evidence_links = ["test/test-spa-buffer.c", "src/tests/test-ndarray-filter.c", "spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
+remaining_gaps = ["Native and language implementations have focused source tests, but cross-package final-prefix verification, independent review fixes, required/opaque queue negotiation, recorder and profile acceptance, complete cohort release and fresh application rebuild remain open. Current per-clause links locate the native contribution only; they do not close other surfaces. Hardware/deadline qualification is not claimed."]
+
+[[requirements]]
+id = "ACQ-META-TIME-003"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Approved framework-wide plan98c75c8e8; user implementation authorization2026-11-02"
+owner = "Sources, capture/recording and GUI"
+applicability = "mandatory"
+profile_scope = "supported target-cohort profiles; TIME-003 applies to selected recording profiles"
+claimed_surfaces = ["native stream/filter/ndarray/queue/row-block", "Julia/Rust bindings", "FGA/JFG/FGPW/FI", "AOS/HIL and device adapters", "RTC capture/export", "GUI native/browser", "CPU/captured CUDA/supported AMDGPU preparation"]
+closure_obligations = ["recording profile required absolute time", "REALTIME default and explicit TAI", "source event/identity retained", "bounded receipt/write sidecar", "explicit receipt-only fallback", "no borrowed buffer mutation"]
+implementation_state = "partial"
+implementation_links = ["spa/include/spa/buffer/meta.h", "src/pipewire/buffers.c", "src/pipewire/ndarray-filter.c"]
+evidence_state = "partial"
+evidence_links = ["test/test-spa-buffer.c", "src/tests/test-ndarray-filter.c", "spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
+remaining_gaps = ["Native and language implementations have focused source tests, but cross-package final-prefix verification, independent review fixes, required/opaque queue negotiation, recorder and profile acceptance, complete cohort release and fresh application rebuild remain open. Current per-clause links locate the native contribution only; they do not close other surfaces. Hardware/deadline qualification is not claimed."]
+
+[[requirements]]
+id = "ACQ-META-TIME-004"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Approved framework-wide plan98c75c8e8; user implementation authorization2026-11-02"
+owner = "Clock providers, HIL and recorders"
+applicability = "mandatory"
+profile_scope = "supported target-cohort profiles; TIME-003 applies to selected recording profiles"
+claimed_surfaces = ["native stream/filter/ndarray/queue/row-block", "Julia/Rust bindings", "FGA/JFG/FGPW/FI", "AOS/HIL and device adapters", "RTC capture/export", "GUI native/browser", "CPU/captured CUDA/supported AMDGPU preparation"]
+closure_obligations = ["explicit domain/mapping validity", "no arrival-as-acquisition timestamp", "conditional uncertainty", "clock-step/invalid-TAI observability", "identity/deadline independence", "model versus wall time"]
+implementation_state = "partial"
+implementation_links = ["spa/include/spa/buffer/meta.h", "src/pipewire/buffers.c", "src/pipewire/ndarray-filter.c"]
+evidence_state = "partial"
+evidence_links = ["test/test-spa-buffer.c", "src/tests/test-ndarray-filter.c", "spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
+remaining_gaps = ["Native and language implementations have focused source tests, but cross-package final-prefix verification, independent review fixes, required/opaque queue negotiation, recorder and profile acceptance, complete cohort release and fresh application rebuild remain open. Current per-clause links locate the native contribution only; they do not close other surfaces. Hardware/deadline qualification is not claimed."]
+
+[[requirements]]
+id = "ACQ-META-TIME-005"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Approved framework-wide plan98c75c8e8; user implementation authorization2026-11-02"
+owner = "Semantic comparisons and transport adapters"
+applicability = "mandatory"
+profile_scope = "supported target-cohort profiles; TIME-003 applies to selected recording profiles"
+claimed_surfaces = ["native stream/filter/ndarray/queue/row-block", "Julia/Rust bindings", "FGA/JFG/FGPW/FI", "AOS/HIL and device adapters", "RTC capture/export", "GUI native/browser", "CPU/captured CUDA/supported AMDGPU preparation"]
+closure_obligations = ["same-domain or valid accuracy-qualified mapping", "different-host labels insufficient", "no mandatory PTP", "RTP counter not absolute time", "unsupported comparison rejection"]
+implementation_state = "partial"
+implementation_links = ["spa/include/spa/buffer/meta.h", "src/pipewire/buffers.c", "src/pipewire/ndarray-filter.c"]
+evidence_state = "partial"
+evidence_links = ["test/test-spa-buffer.c", "src/tests/test-ndarray-filter.c", "spa/plugins/filter-graph/test-filter-graph-ndarray.c"]
+remaining_gaps = ["Native and language implementations have focused source tests, but cross-package final-prefix verification, independent review fixes, required/opaque queue negotiation, recorder and profile acceptance, complete cohort release and fresh application rebuild remain open. Current per-clause links locate the native contribution only; they do not close other surfaces. Hardware/deadline qualification is not claimed."]
+
+[[requirements]]
+id = "ACQ-ID-001"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Physical acquisition authority retained by the independent-record contract"
+owner = "Shared acquisition sources and consumers"
+applicability = "mandatory"
+implementation_state = "partial"
+evidence_state = "partial"
+claimed_surfaces = ["Julia/HIL sources", "FGA/JFG/FGPW held and chopped inputs", "RTC capture"]
+closure_obligations = ["shared acquisition authority", "full-width identity", "generation/reset", "held publication preserves physical identity"]
+implementation_links = ["spa/include/spa/buffer/meta.h"]
+evidence_links = ["test/test-spa-buffer.c"]
+remaining_gaps = ["Final cross-package tests and coordinated release remain open; native representation tests alone do not establish producer authority across every profile."]
+
+[[requirements]]
+id = "ACQ-ID-002"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Physical acquisition authority retained by the independent-record contract"
+owner = "Shared acquisition sources and consumers"
+applicability = "mandatory"
+implementation_state = "partial"
+evidence_state = "partial"
+claimed_surfaces = ["Julia/HIL sources", "FGA/JFG/FGPW held and chopped inputs", "RTC capture"]
+closure_obligations = ["shared acquisition authority", "full-width identity", "generation/reset", "held publication preserves physical identity"]
+implementation_links = ["spa/include/spa/buffer/meta.h"]
+evidence_links = ["test/test-spa-buffer.c"]
+remaining_gaps = ["Final cross-package tests and coordinated release remain open; native representation tests alone do not establish producer authority across every profile."]
+
+[[requirements]]
+id = "ACQ-ABI-001"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
+
+[[requirements]]
+id = "ACQ-PROP-001"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
+
+[[requirements]]
+id = "ACQ-PROP-002"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
+
+[[requirements]]
+id = "ACQ-PROP-003"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
+
+[[requirements]]
+id = "ACQ-TRIGGER-001"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
+
+[[requirements]]
+id = "ACQ-TRIGGER-002"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
+
+[[requirements]]
+id = "ACQ-TRIGGER-003"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
+
+[[requirements]]
+id = "ACQ-TIME-001"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
+
+[[requirements]]
+id = "ACQ-TIME-002"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
+
+[[requirements]]
+id = "ACQ-TIME-003"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
+
+[[requirements]]
+id = "ACQ-JOIN-001"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
+
+[[requirements]]
+id = "ACQ-JOIN-002"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
+
+[[requirements]]
+id = "ACQ-JOIN-003"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
+
+[[requirements]]
+id = "ACQ-WIRE-001"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
+
+[[requirements]]
+id = "ACQ-WIRE-002"
+source = "doc/dox/internals/acquisition-metadata.md"
+parent_or_rationale = "Historical native 2.0 contract; superseded explicitly by ACQ-META-001..008 and ACQ-META-TIME-001..005"
+owner = "Historical native 2.0 cohort"
+applicability = "not_applicable"
+implementation_state = "planned"
+evidence_state = "missing"
+lifecycle = "superseded"
+disposition = "Retained for historical native 2.0 interpretation only; no native 3.0 compatibility encoding or support claim. New evidence is traced to the replacement ACQ-META requirements."
