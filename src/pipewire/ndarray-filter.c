@@ -113,6 +113,7 @@ struct port_data {
 
 struct pw_ndarray_filter {
 	struct pw_main_loop *main_loop;
+	bool main_loop_entered;
 	struct pw_filter *filter;
 	struct spa_source *error_event;
 	struct spa_source *fifo_process_event;
@@ -1926,7 +1927,12 @@ static void free_filter(struct pw_ndarray_filter *filter)
 	if (filter == NULL)
 		return;
 	atomic_store_explicit(&filter->destroying, true, memory_order_release);
+	if (filter->filter != NULL && filter->connected) {
+		pw_filter_disconnect(filter->filter);
+		filter->connected = false;
+	}
 	stop_parameter_loop(filter);
+	deactivate(filter);
 	if (filter->parameter_event != NULL && filter->parameter_loop != NULL)
 		pw_loop_destroy_source(pw_thread_loop_get_loop(filter->parameter_loop),
 				filter->parameter_event);
@@ -1943,6 +1949,10 @@ static void free_filter(struct pw_ndarray_filter *filter)
 				filter->properties_event);
 	if (filter->filter != NULL)
 		pw_filter_destroy(filter->filter);
+	if (filter->main_loop_entered) {
+		pw_loop_leave(pw_main_loop_get_loop(filter->main_loop));
+		filter->main_loop_entered = false;
+	}
 	if (filter->main_loop != NULL)
 		pw_main_loop_destroy(filter->main_loop);
 #ifdef PW_ENABLE_DIAGNOSTIC_TRACE
@@ -2005,6 +2015,10 @@ int pw_ndarray_filter_new(const struct pw_ndarray_filter_config *config,
 		res = errno != 0 ? -errno : -ENOMEM;
 		goto error;
 	}
+	/* Keep callback ownership through run's nested enter/leave and teardown.
+	 * Otherwise a late data-thread invoke may flush this loop after run returns. */
+	pw_loop_enter(pw_main_loop_get_loop(filter->main_loop));
+	filter->main_loop_entered = true;
 	filter->error_event = pw_loop_add_event(
 			pw_main_loop_get_loop(filter->main_loop), error_event, filter);
 	if (filter->error_event == NULL) {
@@ -2210,14 +2224,5 @@ uint32_t pw_ndarray_filter_get_node_id(const struct pw_ndarray_filter *filter)
 SPA_EXPORT
 void pw_ndarray_filter_destroy(struct pw_ndarray_filter *filter)
 {
-	if (filter == NULL)
-		return;
-	atomic_store_explicit(&filter->destroying, true, memory_order_release);
-	if (filter->filter != NULL && filter->connected) {
-		pw_filter_disconnect(filter->filter);
-		filter->connected = false;
-	}
-	stop_parameter_loop(filter);
-	deactivate(filter);
 	free_filter(filter);
 }

@@ -2,6 +2,59 @@
 /* SPDX-License-Identifier: MIT */
 #include "../pipewire/ndarray-filter.c"
 #include "metadata-fixture.h"
+#include <pthread.h>
+
+struct invoke_probe {
+	struct pw_loop *loop;
+	pthread_t owner;
+	unsigned calls;
+	bool on_owner;
+};
+
+static int late_invoke(struct spa_loop *loop SPA_UNUSED, bool async SPA_UNUSED,
+		uint32_t seq SPA_UNUSED, const void *data SPA_UNUSED,
+		size_t size SPA_UNUSED, void *user_data)
+{
+	struct invoke_probe *probe = user_data;
+	probe->calls++;
+	probe->on_owner = pthread_equal(probe->owner, pthread_self());
+	return 0;
+}
+
+static void *queue_late_invoke(void *data)
+{
+	struct invoke_probe *probe = data;
+	spa_assert_se(pw_loop_invoke(probe->loop, late_invoke, SPA_ID_INVALID,
+			NULL, 0, false, probe) >= 0);
+	return NULL;
+}
+
+static void quit_loop(void *data, uint64_t count SPA_UNUSED)
+{
+	pw_main_loop_quit(data);
+}
+
+/* A late data-thread invoke must remain queued after run returns. */
+static void test_loop_ownership(struct pw_ndarray_filter *filter)
+{
+	struct invoke_probe probe = {
+		.loop = pw_main_loop_get_loop(filter->main_loop),
+		.owner = pthread_self(),
+	};
+	struct spa_source *event = pw_loop_add_event(probe.loop, quit_loop,
+			filter->main_loop);
+	pthread_t worker;
+
+	spa_assert_se(event != NULL);
+	spa_assert_se(pw_loop_signal_event(probe.loop, event) == 0);
+	spa_assert_se(pw_main_loop_run(filter->main_loop) == 0);
+	spa_assert_se(pthread_create(&worker, NULL, queue_late_invoke, &probe) == 0);
+	spa_assert_se(pthread_join(worker, NULL) == 0);
+	spa_assert_se(probe.calls == 0);
+	pw_loop_destroy_source(probe.loop, event);
+	pw_ndarray_filter_destroy(filter);
+	spa_assert_se(probe.calls == 1 && probe.on_owner);
+}
 static int no_process(void *d SPA_UNUSED, const struct pw_ndarray_filter_buffer *i SPA_UNUSED,
 		      uint32_t ni SPA_UNUSED, struct pw_ndarray_filter_buffer *o SPA_UNUSED,
 		      uint32_t no SPA_UNUSED)
@@ -41,7 +94,7 @@ int main(void)
 
 	requirement.type = 11;
 	spa_assert_se(filter->inputs[0]->metas[0].type == SPA_META_AcquisitionIdentity);
-	pw_ndarray_filter_destroy(filter);
+	test_loop_ownership(filter);
 	spa_assert_se(pw_ndarray_filter_new(&config, &filter) == -EINVAL);
 	requirement.type = SPA_META_AcquisitionIdentity;
 	requirement.size--;
