@@ -79,8 +79,7 @@ counter and a consistency check for sources that have one.
 
 ## Per-buffer representation
 
-This section is the target contract for the complete migration. Its implementation
-and qualification gates are tracked below; the published 1.7.3 cohort still uses
+Native 2.0 implements this representation. The preceding 1.7.3 cohort used
 the superseded Acquisition record. The replacement is standard `SPA_META_Header`
 and the existing `SPA_META_Properties` BufferProperties Object, version 1.
 Metadata IDs 11 and 12 remain retired and MUST NOT be reused. No Acquisition
@@ -292,10 +291,10 @@ before using the new runtime cohort; missing facts cannot be manufactured.
 | --- | --- | --- |
 | Semantic and native contract | Identity/range/clock/hold rules and additive keys reviewed | Reviewed; native boundary independently reviewed |
 | Native transport and queues | No retired record IDs; private-core Properties preservation, mismatch/reuse/fanout tests | Native focused tests and 17 queue tests pass |
-| Julia and Rust bindings | Regenerated ABI; no version selection or legacy transport readers | Rust tests pass; Julia integration in progress |
-| Scientific algorithms and HIL | Version-free chopping, joins, commands and held identities; zero-allocation warmed transport | Semantic tests pass; complete transport validation in progress |
-| RTC, capture, GUI and applications | New-schema-only source→queue→RTC→DM→GUI/capture, cold schemas and pins updated | Pending |
-| Retirement | Independent review, old-schema rejection, full dependency-cohort validation and release | Pending |
+| Julia and Rust bindings | Regenerated ABI; no version selection or legacy transport readers | Rust and Julia unit/private-core tests pass; regenerated ABI reviewed |
+| Scientific algorithms and HIL | Version-free chopping, joins, commands and held identities; zero-allocation warmed transport | Semantic and private-core tests pass, including required extensions, held/captured retention and warmed zero allocation |
+| RTC, capture, GUI and applications | New-schema-only source→queue→RTC→DM→GUI/capture, cold schemas and pins updated | Capture and GUI tests pass; all four instrument cold exports pass |
+| Retirement | Independent review, old-schema rejection, full dependency-cohort validation and release | Independent review complete; packaged native tests pass; publish only the complete staged cohort |
 
 ## Delivery plan and identifier preflight
 
@@ -337,3 +336,10 @@ Existing ACQ-ID/TIME/JOIN/WIRE requirement identities and meanings remain intact
 ACQ-ABI and TRIGGER clauses now define the replacement boundary; ACQ-PROP clauses
 make extensibility and complete semantic groups explicit. The native header is
 implemented against this authority, not used to invent competing terminology.
+
+The complete software cohort is native/JLL 2.0.0, PipeWireAO.jl 0.7.0,
+FGA 0.9.0, JFG 0.5.0, FGPW/FI 0.2.0, HIL/RTC 0.3.0. Independent review
+findings on required-field admission and opaque-field retention were reproduced,
+fixed and reviewed again. Packaged native validation passes 171 binding and
+1,632 HIL calibration assertions without SDK preferences. ARM build/hash/header
+checks do not establish ARM runtime qualification.
