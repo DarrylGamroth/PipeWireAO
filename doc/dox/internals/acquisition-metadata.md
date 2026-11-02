@@ -4,11 +4,11 @@
 
 ## Status and authority
 
-Native 3.0 implementation is in progress. The independent-record ABI below is
-assigned and implemented in the native headers. The former native 2.0 Properties
-contract is retained in this document as historical context; its runtime helpers
-and acquisition keys are removed from the new cohort. Delivery gates remain
-open until their recorded verification passes.
+Native 3.0 and the matching independent-record software cohort are published.
+The native headers own the assigned ABI. The former native 2.0 Properties
+contract remains as historical context; its runtime helpers and acquisition keys
+are removed from the new cohort. The shared validation receipt below states the
+verified software scope and exclusions.
 
 This document defines the PipeWireAO acquisition identity, timing, and join
 contract. It applies to complete frames and to complete row-block ndarray
@@ -356,7 +356,7 @@ checks do not establish ARM runtime qualification.
 
 ### Decision and applicability
 
-Target design, 2026-11-02; native implementation in progress. This section owns
+Approved design and software release, 2026-11-02. This section owns
 the framework-wide metadata migration plan for every PipeWireAO RTC, device
 adapter, simulator, algorithm executor, observer and recorder. SPIDERS and CAL2
 are acceptance applications, not definitions of the generic boundary.
@@ -368,8 +368,8 @@ universal acquisition record or introduce a global acquisition version selector.
 Absolute REALTIME or TAI timestamps are part of telemetry support. PTP is not
 a dependency of the base framework; a future clock provider may qualify clocks.
 
-The requirements below are target obligations using the BCP 14 convention
-declared above. They do not claim current conformance. Earlier ACQ-ID identity
+The requirements below are active obligations using the BCP 14 convention
+declared above. The delivery receipt and ledger define the validated scope. Earlier ACQ-ID identity
 rules remain applicable. Existing ACQ-ABI/PROP/TRIGGER/TIME/JOIN/WIRE clauses describe
 the historical native 2.0 cohort. The assigned ABI section reconciles them
 explicitly while retaining their IDs and history. Current delivery evidence does
@@ -382,8 +382,8 @@ private-core integration tests own and close their cores.
 
 ### Record boundaries and terminology
 
-These are semantic record descriptions, not assigned C type names or numeric
-IDs. Native headers will own the final ABI and generated bindings will follow.
+These semantic descriptions summarize the assigned layouts. Native headers own
+C type names and numeric IDs; language bindings follow that ABI.
 
 | Record | Coherent contents and meaning | Applicability |
 | --- | --- | --- |
@@ -517,7 +517,7 @@ replacement requirements; identity authority rules ACQ-ID-001/002 still apply.
 PTP-specific historical helpers are removed. No native TAI label claims hardware
 qualification, and no base-profile clock discipline is introduced.
 
-### Planned port and buffer contract
+### Port and buffer contract
 
 **ACQ-META-001:** Each supported framework stream MUST carry standard Header
 metadata. Additional record types MUST be independently negotiable. Producers
@@ -676,8 +676,8 @@ protocol is introduced.
 
 The assigned native layout is the ABI authority for generated bindings. Byte
 counts, numeric type IDs and public helpers are implemented and covered by
-focused native tests; cross-language integration and release gates remain open
-until their own evidence is recorded.
+focused native tests. Cross-language integration and release evidence is recorded
+below for the supported software profile.
 
 Use one coordinated breaking native/binding/dependency release. Do not mutate
 published tags, retrofit existing sealed applications, or keep automatic old/new
@@ -695,9 +695,9 @@ them before claiming retirement. Do not preserve a second acquisition encoding.
 
 ### Verification and completion criteria
 
-The ACQ-META clauses are active delivery obligations. Native implementation
-and focused evidence are recorded below; whole-framework qualification remains
-open. The ndarray traceability ledger records each ID, owning change, selector
+The ACQ-META clauses are active delivery obligations. Native and shared-framework
+software evidence is recorded below. Live application, hardware and deadline
+qualification remain separate. The ndarray traceability ledger records each ID, owning change, selector
 and result; document presence alone does not satisfy a requirement.
 
 | Target clauses | Required verification |
@@ -831,8 +831,53 @@ modules and SPA support paths and preload `libasan.so.8`. Their options are
 Constructor/error-unwind, queued-invoke ownership, Parameter
 Ports, run control and metadata sanitizer units pass (five selectors).
 This repair is not a confirmed explanation for the earlier queue daemon exit.
-This receipt does not close the cross-framework release gate, physical clock
-qualification or deadline qualification.
+This native-only receipt does not establish cross-framework, physical clock or
+deadline qualification. The following shared receipt covers the software release
+gate; physical clock and deadline qualification remain separate.
+
+### Shared framework validation receipt (2026-11-02)
+
+The published cohort is native/JLL 3.0.0 / 3.0.0+0, PipeWireAO 0.8.0,
+FGA 0.10.0, JFG 0.6.0, FGPW/FI 0.3.0 and HIL/RTC 0.4.0. Capture schema is 3,
+GUI observation protocol is 3, and the RTC control protocol remains 1. Capture
+schema 3 is independent of the retired Acquisition v3 wire record. AOS 0.3.18,
+AOC 0.17.3, Proper 0.4.1 and frozen scientific/calibration inputs are unchanged.
+
+| Surface | Frozen implementation | Software verification |
+| --- | --- | --- |
+| Native and binary artifact | Native `cf3687044`, JLL `d18dd7d`, recipe `63c933230` | 82 native tests; 100 sanitizer stress cases; five binary variants built; selected artifact loads native 3.0 without preferences |
+| Julia bindings | PipeWireAO `046b948` | Full suite 2,263 assertions; registered artifact 66 metadata checks and 18 private-core checks; retained-byte ownership and zero warmed allocation |
+| Graph execution | JFG monorepo `f71a53c` | Full FGA/JFG suite; FGPW assertions partitioned across isolated processes without dropping assertions; held/progressive/captured/composition, opaque retention, preflight and clock-failure checks; FI QA |
+| Simulation transport | HIL `699137f` | Full suite 3,437 assertions, including held calibration and independent duration/identity semantics; no numerical optics change |
+| RTC and capture | RTC `c5a1b01` | Core 8,392; capture files 228; capture callbacks 125; stream formats 164; private-core calibration transport; raw UInt16 preserved |
+| Rust and observation | Rust `b2f7a067`, GUI `1117809` | Borrowed lifetime, native/browser protocol, capability forwarding and opaque-record tests; final immutable binding pins and native/wasm/browser builds |
+| Device/file adapters | SPA core `86e8544`, FITS `7a63f6f` | Required/opaque queue checks; seven cold SPA selectors; four FITS tests; no manufactured acquisition time from file playback |
+
+Final documentation-only changes do not alter the verified runtime behavior.
+The FGPW partition retained the already passed 1,228-assertion prefix, then ran
+136 recovery-boundary, 345 middle-include, 74 inline-tail, 745 final-include and
+29 opaque-retention checks. The framework-root suite also passed. A Header-less
+ingress fixture now verifies the unavailable result and exact preservation of
+the prior calibrated array and sample metadata; it no longer expects invalid
+input to advance scientific state.
+
+The selected artifact is `5e41e3b927eaeba977ae288f96513062ab1d18c3`. A fresh
+SDK preserves all 328 artifact files byte-for-byte and adds matched queue,
+SPA/FITS, WirePlumber, RTC and stopped GUI/bridge assets. Cold loader and sealed
+asset checks pass. WirePlumber's dynamic-rules test needs an audio test plugin
+omitted from the minimal binary artifact; its five applicable cold tests pass.
+This omission does not affect the RTC asset validator or claim audio support.
+
+Registry revision `306971e` publishes the coherent package cohort. All eight
+SPIDERS, CAL2, GPI2 and REVOLT Classic CPU/CUDA-selected application exports pass
+sealed-manifest and backend checks; all eight instantiate from the public registry
+with no source overrides or local preferences. Registered RTC private-core
+transport passes 27 checks plus 16 named-command transport checks. Independent
+delivery review accepts the source trees, artifact, seals and unchanged scientific
+pins. Cold AMDGPU profile checks preserve instrument/controller data; these are
+preparation checks, not accelerator execution. Copper is explicitly excluded and
+retains its legacy cohort. No task simulator, GUI, hardware timing, clock accuracy
+or GPU deadline qualification is claimed.
 
 ### Primary references
 
