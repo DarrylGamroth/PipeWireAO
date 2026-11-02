@@ -181,7 +181,7 @@ static void test_valid_config(void)
 	spa_assert_se(PW_NDARRAY_FILTER_BUFFER_FLAG_INPUT_UNAVAILABLE == (1u << 1));
 	spa_assert_se(PW_NDARRAY_FILTER_PORT_FLAG_NONE == 0);
 	spa_assert_se(PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER == (1u << 0));
-	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS == 4);
+	spa_assert_se(PW_VERSION_NDARRAY_FILTER_EVENTS == 5);
 	spa_assert_se(SPA_PROP_INFO_visibility == 9);
 	spa_assert_se(SPA_PROP_INFO_displayName == 10);
 	spa_assert_se(spa_type_prop_info[10].type == SPA_PROP_INFO_displayName);

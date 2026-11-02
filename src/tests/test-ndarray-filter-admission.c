@@ -27,6 +27,8 @@ struct test_buffer {
 	struct spa_buffer spa;
 	struct spa_data data;
 	struct spa_chunk chunk;
+	struct spa_meta meta;
+	struct spa_meta_header header;
 	float value;
 };
 
@@ -109,6 +111,9 @@ static void init_buffer(struct test_buffer *buffer, float value)
 	spa_zero(*buffer);
 	buffer->value = value;
 	buffer->chunk.size = sizeof(value);
+	buffer->meta = (struct spa_meta){SPA_META_Header,sizeof(buffer->header),&buffer->header};
+	buffer->spa.n_metas = 1;
+	buffer->spa.metas = &buffer->meta;
 	buffer->spa.n_datas = 1;
 	buffer->spa.datas = &buffer->data;
 	buffer->data.data = &buffer->value;

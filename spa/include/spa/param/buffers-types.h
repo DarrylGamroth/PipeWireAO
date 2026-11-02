@@ -27,6 +27,7 @@ static const struct spa_type_info spa_type_param_meta[] = {
 	{ SPA_PARAM_META_type, SPA_TYPE_Id, SPA_TYPE_INFO_PARAM_META_BASE "type", spa_type_meta_type },
 	{ SPA_PARAM_META_size, SPA_TYPE_Int, SPA_TYPE_INFO_PARAM_META_BASE "size", NULL },
 	{ SPA_PARAM_META_features, SPA_TYPE_Int, SPA_TYPE_INFO_PARAM_META_BASE "features", NULL },
+	{ SPA_PARAM_META_required, SPA_TYPE_Bool, SPA_TYPE_INFO_PARAM_META_BASE "required", NULL },
 	{ 0, 0, NULL, NULL },
 };
 

@@ -18,7 +18,7 @@
 #include <spa/pod/parser.h>
 
 #include <pipewire/impl.h>
-#include "buffer-properties-fixture.h"
+#include "metadata-fixture.h"
 
 enum test_mode {
 	TEST_BACK_PRESSURE,

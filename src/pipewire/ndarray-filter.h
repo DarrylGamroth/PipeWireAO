@@ -26,11 +26,10 @@ extern "C" {
 
 /** \{ */
 
-#define PW_VERSION_NDARRAY_FILTER_EVENTS 4u
+#define PW_VERSION_NDARRAY_FILTER_EVENTS 5u
 #define PW_VERSION_NDARRAY_FILTER_CONFIG 0u
 #define PW_NDARRAY_FILTER_MAX_PORTS 1024u
 #define PW_NDARRAY_FILTER_NAME_MAX 255u
-#define PW_NDARRAY_FILTER_BUFFER_PROPERTIES_MAX_SIZE 4064u
 
 /** Standalone ndarray filter execution options. */
 enum pw_ndarray_filter_flags {
@@ -113,14 +112,6 @@ enum pw_ndarray_filter_port_flags {
 	PW_NDARRAY_FILTER_PORT_FLAG_PARAMETER = (1u << 0),
 };
 
-/** Metadata exposed in one callback buffer. */
-enum pw_ndarray_filter_metadata {
-	PW_NDARRAY_FILTER_METADATA_NONE = 0,
-	PW_NDARRAY_FILTER_METADATA_HEADER = (1u << 0),
-	/* Bit 1 belonged to the retired Acquisition callback record. */
-	PW_NDARRAY_FILTER_METADATA_PROPERTIES = (1u << 2),
-};
-
 /** Per-callback buffer state controlled by an output callback. */
 enum pw_ndarray_filter_buffer_flags {
 	PW_NDARRAY_FILTER_BUFFER_FLAG_NONE = 0,
@@ -137,7 +128,7 @@ enum pw_ndarray_filter_buffer_flags {
 	 *
 	 * This flag is helper-owned and appears only on input buffers when
 	 * PW_NDARRAY_FILTER_FLAG_INDEPENDENT_INPUTS is enabled. The data pointer
-	 * is NULL and the size, capacity, and metadata masks are zero.
+	 * is NULL and size, capacity, and metadata count are zero.
 	 */
 	PW_NDARRAY_FILTER_BUFFER_FLAG_INPUT_UNAVAILABLE = (1u << 1),
 };
@@ -150,26 +141,22 @@ enum pw_ndarray_filter_buffer_flags {
  * is exclusively writable. `size` is the exact declared payload size and
  * `capacity` is the mapped capacity beginning at `data`.
  *
- * `metadata_available` reports which destination metadata records exist for
- * an output and which records were present and valid for an input. A callback
- * sets `metadata_valid` on outputs after filling Header. Properties are
- * borrowed from the buffer lease; their validity bit is helper-owned, and
- * complete facts are validated before publication. The callback may set
- * `PW_NDARRAY_FILTER_BUFFER_FLAG_OUTPUT_UNAVAILABLE` on an output to retain it
- * without publication. With independent input admission, an input without a
- * new buffer carries `PW_NDARRAY_FILTER_BUFFER_FLAG_INPUT_UNAVAILABLE`.
- * The callback must not change structural fields.
+ * `metas` borrows the negotiated immutable descriptor array. Input bytes are
+ * read-only. Output fact payloads are exclusively writable and cleared before
+ * each callback. Busy, SyncTimeline and feature entries retain their upstream
+ * transport ownership and are never cleared as facts. Neither descriptors nor
+ * payload views may escape the callback.
+ * Header is a canonical record in this array, with no duplicate publication copy.
  */
 struct pw_ndarray_filter_buffer {
 	uint32_t struct_size;
-	uint32_t flags;                 /**< mask of enum pw_ndarray_filter_buffer_flags */
+	uint32_t flags;
 	void *data;
 	uint32_t size;
 	uint32_t capacity;
-	uint32_t metadata_available;    /**< mask of enum pw_ndarray_filter_metadata */
-	uint32_t metadata_valid;        /**< subset of metadata_available */
-	struct spa_meta_header header;
-	struct spa_meta properties;     /**< borrowed; input bytes are read-only */
+	uint32_t n_metas;
+	uint32_t reserved;
+	struct spa_meta *metas;
 };
 
 /**
@@ -197,6 +184,9 @@ struct pw_ndarray_filter_port {
 	uint32_t reserved;              /**< zero */
 	const char *name;               /**< non-empty local name */
 	struct pw_ndarray_filter_format format;
+	uint32_t n_metas;              /**< additional cold metadata layouts */
+	uint32_t propagation;          /**< enum spa_meta_propagation */
+	const struct spa_meta_requirement *metas;
 };
 
 /**
@@ -278,31 +268,6 @@ struct pw_ndarray_filter;
 /** Construct an unconnected filter. Calls pw_init() once on success. */
 int pw_ndarray_filter_new(const struct pw_ndarray_filter_config *config,
 		struct pw_ndarray_filter **filter);
-
-/**
- * Configure one frame-data Port's buffer Properties before connect.
- *
- * The direction-local declaration index includes Parameter Ports, which cannot
- * use Properties. Frame ports default to 512 bytes. Capacity is 16..4064, a
- * multiple of 8; zero disables with no required fields. An allocation too small for the required fields returns -ENOSPC.
- * Requirements are copied and checked on every input and publication.
- * Callback ABI version 4 borrows the Properties descriptor. A frame peer must
- * negotiate Header and, unless disabled, Properties with the Version 1 feature.
- */
-int pw_ndarray_filter_set_port_buffer_properties(struct pw_ndarray_filter *filter,
-		uint32_t direction, uint32_t port_index, uint32_t capacity,
-		const struct spa_meta_property_requirement *requirements, uint32_t n_requirements);
-
-/**
- * Borrow opted-in metadata only during process(). Inputs are read-only.
- * Outputs are cleared to an empty Object before each callback. The returned
- * descriptor and its bytes must not outlive the callback; do not alter the
- * descriptor. An unavailable input returns -ENOENT. Other threads must not call
- * this function. Ordinary pw_stream users use the same public SPA helpers and
- * ParamMeta negotiation directly.
- */
-int pw_ndarray_filter_get_buffer_properties(struct pw_ndarray_filter *filter,
-		uint32_t direction, uint32_t port_index, struct spa_meta *meta);
 
 /** Add the configured node and ports to the selected PipeWire remote. */
 int pw_ndarray_filter_connect(struct pw_ndarray_filter *filter);

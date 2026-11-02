@@ -14,7 +14,7 @@
 
 #include <spa/buffer/buffer.h>
 #include <spa/buffer/meta.h>
-#include "buffer-properties-fixture.h"
+#include "metadata-fixture.h"
 #include <spa/param/buffers.h>
 #include <spa/param/ndarray-utils.h>
 #include <spa/pod/builder.h>
@@ -128,7 +128,6 @@ static void source_process(void *userdata)
 	struct pw_buffer *buffer;
 	struct spa_data *block;
 	struct spa_meta_header *header;
-	struct spa_meta *properties;
 	uint32_t sequence;
 	float value;
 
@@ -170,11 +169,9 @@ static void source_process(void *userdata)
 		.dts_offset = 0,
 		.seq = 100 + (sequence - 1) / 4,
 	};
-	properties = spa_buffer_find_meta(buffer->buffer, SPA_META_Properties);
-	if (!spa_meta_properties_init(properties) ||
-	    !test_add_acquisition(properties, 100 + (sequence - 1) / 4, 100000 + sequence)) {
+	if (!test_add_acquisition(buffer->buffer->metas, buffer->buffer->n_metas, 100 + (sequence - 1) / 4, 100000 + sequence)) {
 		(void)pw_stream_queue_buffer(data->source, buffer);
-		quit_with_error(data, "source acquisition Properties are unavailable");
+		quit_with_error(data, "source acquisition metadata are unavailable");
 		return;
 	}
 	if (pw_stream_queue_buffer(data->source, buffer) < 0) {
@@ -199,7 +196,6 @@ static void sink_process(void *userdata)
 	struct pw_buffer *buffer;
 	struct spa_data *block;
 	struct spa_meta_header *header;
-	struct spa_meta *acquisition_meta;
 	float value;
 
 	buffer = pw_stream_dequeue_buffer(data->sink);
@@ -229,8 +225,6 @@ static void sink_process(void *userdata)
 			sizeof(value));
 	header = spa_buffer_find_meta_data(buffer->buffer, SPA_META_Header,
 			sizeof(*header));
-	acquisition_meta = spa_buffer_find_meta(buffer->buffer,
-			SPA_META_Properties);
 	uint32_t received = atomic_fetch_add_explicit(&data->received, 1,
 			memory_order_relaxed) + 1;
 	uint32_t packet = received + 1;
@@ -241,7 +235,7 @@ static void sink_process(void *userdata)
 	    header->seq != sequence || header->offset != row ||
 	    header->pts != 1000 + (int64_t)sequence || header->dts_offset != 0 ||
 	    header->flags != (packet % 4 == 0 ? SPA_META_HEADER_FLAG_MARKER : 0) ||
-	    !test_check_acquisition(acquisition_meta, sequence, 100000 + packet)) {
+	    !test_check_acquisition(buffer->buffer->metas, buffer->buffer->n_metas, sequence, 100000 + packet)) {
 		quit_with_error(data, "sink received reordered or invalid row metadata");
 		return;
 	}
@@ -382,32 +376,6 @@ static struct spa_pod *build_format(struct spa_pod_builder *builder)
 	return spa_pod_builder_pop(builder, &object);
 }
 
-static struct spa_pod *build_header_meta(struct spa_pod_builder *builder)
-{
-	return spa_pod_builder_add_object(builder,
-			SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta,
-			SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Header),
-			SPA_PARAM_META_size,
-			SPA_POD_Int(sizeof(struct spa_meta_header)));
-}
-
-static struct spa_pod *build_properties_meta(struct spa_pod_builder *builder)
-{
-	struct spa_pod_frame frame;
-
-	spa_pod_builder_push_object(builder, &frame,
-			SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta);
-	spa_pod_builder_add(builder,
-			SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Properties),
-			SPA_PARAM_META_size,
-			SPA_POD_Int(512),
-			0);
-	spa_pod_builder_prop(builder, SPA_PARAM_META_features,
-			SPA_POD_PROP_FLAG_MANDATORY);
-	spa_pod_builder_int(builder, SPA_META_FEATURE_PROPERTIES_VERSION_1);
-	return spa_pod_builder_pop(builder, &frame);
-}
-
 static struct spa_pod *build_buffers(struct spa_pod_builder *builder, uint32_t count)
 {
 	return spa_pod_builder_add_object(builder,
@@ -428,9 +396,9 @@ int main(int argc, char *argv[])
 	struct test_data data = { 0 };
 	struct pw_properties *context_props, *source_props, *sink_props;
 	struct spa_pod_builder source_builder, sink_builder;
-	struct spa_pod *source_params[4], *sink_params[4];
+	struct spa_pod *source_params[9], *sink_params[9];
 	struct timespec timeout_value = { .tv_sec = 10 };
-	uint8_t source_pods[768], sink_pods[768];
+	uint8_t source_pods[4096], sink_pods[4096];
 	int result;
 
 	if (argc != 1) {
@@ -488,14 +456,12 @@ int main(int argc, char *argv[])
 			&sink_events, &data);
 	spa_pod_builder_init(&source_builder, source_pods, sizeof(source_pods));
 	source_params[0] = build_format(&source_builder);
-	source_params[1] = build_header_meta(&source_builder);
-	source_params[2] = build_properties_meta(&source_builder);
-	source_params[3] = build_buffers(&source_builder, 16);
+	test_build_metadata(&source_builder, source_params + 1);
+	source_params[8] = build_buffers(&source_builder, 16);
 	spa_pod_builder_init(&sink_builder, sink_pods, sizeof(sink_pods));
 	sink_params[0] = build_format(&sink_builder);
-	sink_params[1] = build_header_meta(&sink_builder);
-	sink_params[2] = build_properties_meta(&sink_builder);
-	sink_params[3] = build_buffers(&sink_builder, 2);
+	test_build_metadata(&sink_builder, sink_params + 1);
+	sink_params[8] = build_buffers(&sink_builder, 2);
 	if (source_params[0] == NULL || source_params[1] == NULL ||
 	    source_params[2] == NULL ||
 	    source_params[3] == NULL || sink_params[0] == NULL ||
@@ -508,7 +474,7 @@ int main(int argc, char *argv[])
 			PW_STREAM_FLAG_DRIVER | PW_STREAM_FLAG_MAP_BUFFERS |
 			PW_STREAM_FLAG_RT_PROCESS | PW_STREAM_FLAG_NO_CONVERT,
 			(const struct spa_pod **)source_params,
-			4);
+			SPA_N_ELEMENTS(source_params));
 	if (result < 0) {
 		fprintf(stderr, "could not connect source: %s\n", spa_strerror(result));
 		data.result = 1;

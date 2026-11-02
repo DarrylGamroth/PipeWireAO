@@ -568,18 +568,9 @@ static void discard_parameter(void *data, void *prepared)
 				memory_order_release);
 }
 
-static void copy_metadata(struct spa_buffer *output, const struct spa_buffer *input)
+static bool copy_metadata(struct spa_buffer *output, const struct spa_buffer *input)
 {
-	uint32_t i;
-
-	for (i = 0; i < output->n_metas; i++) {
-		struct spa_meta *source = spa_buffer_find_meta(input,
-				output->metas[i].type);
-		if (source != NULL && source->data != NULL &&
-		    output->metas[i].data != NULL)
-			memmove(output->metas[i].data, source->data,
-					SPA_MIN(source->size, output->metas[i].size));
-	}
+	return spa_meta_records_copy(output->metas, output->n_metas, input->metas, input->n_metas);
 }
 
 static int process(void *data, const struct spa_fgn_buffer *inputs,
@@ -636,7 +627,7 @@ static int process(void *data, const struct spa_fgn_buffer *inputs,
 		output[i] = input[i] * gain *
 			instance->parameter_slots[parameter_slot].values[i];
 	output_data->chunk->size = instance->n_values * sizeof(float);
-	copy_metadata(outputs[0].buffer, inputs[0].buffer);
+	if (!copy_metadata(outputs[0].buffer, inputs[0].buffer)) return -ENOSPC;
 	return 0;
 }
 
@@ -659,6 +650,34 @@ static const struct spa_fgn_descriptor descriptor = {
 	.commit_parameter = commit_parameter,
 	.discard_parameter = discard_parameter,
 	.process = process,
+};
+
+/* Explicit metadata profile used by the independent-record graph proof. */
+static const struct spa_meta_requirement metadata_layout[] = {
+	{ SPA_META_AcquisitionIdentity, sizeof(struct spa_meta_acquisition_identity), SPA_META_REQUIREMENT_REQUIRED, 0 },
+	{ SPA_META_ExposureTiming, sizeof(struct spa_meta_exposure_timing), 0, 0 },
+	{ SPA_META_AbsoluteTime, sizeof(struct spa_meta_absolute_time), SPA_META_REQUIREMENT_REQUIRED, 0 },
+	{ SPA_META_OpticalChopping, sizeof(struct spa_meta_optical_chopping), 0, 0 },
+	{ SPA_META_ElectricalTrigger, sizeof(struct spa_meta_electrical_trigger), 0, 0 },
+	{ 0x3f0, 8, 0, 0 },
+};
+static const struct spa_fgn_port_info metadata_ports[] = {
+	{ .struct_size = sizeof(struct spa_fgn_port_info), .index = 0, .direction = SPA_DIRECTION_INPUT,
+	  .name = "in", .n_metas = SPA_N_ELEMENTS(metadata_layout), .metas = metadata_layout },
+	{ .struct_size = sizeof(struct spa_fgn_port_info), .index = 1, .direction = SPA_DIRECTION_OUTPUT,
+	  .name = "out", .n_metas = SPA_N_ELEMENTS(metadata_layout), .metas = metadata_layout,
+	  .propagation = SPA_META_PROPAGATION_PRESERVE },
+	{ .struct_size = sizeof(struct spa_fgn_port_info), .index = 2, .direction = SPA_DIRECTION_INPUT,
+	  .flags = SPA_FGN_PORT_FLAG_OPTIONAL | SPA_FGN_PORT_FLAG_PARAMETER, .name = "coefficients" },
+};
+static const struct spa_fgn_descriptor metadata_descriptor = {
+	.struct_size = sizeof(struct spa_fgn_descriptor), .version = SPA_FGN_PLUGIN_ABI_VERSION,
+	.name = "metadata-scale-f32", .n_ports = SPA_N_ELEMENTS(metadata_ports), .ports = metadata_ports,
+	.instantiate = instantiate, .cleanup = cleanup, .get_port_format = get_port_format,
+	.enum_prop_info = enum_prop_info, .get_prop = get_prop, .get_prop_revision = get_prop_revision,
+	.prepare_props = prepare_props, .commit_props = commit_props, .discard_props = discard_props,
+	.prepare_parameter = prepare_parameter, .commit_parameter = commit_parameter,
+	.discard_parameter = discard_parameter, .process = process,
 };
 
 struct conditional_instance {
@@ -753,7 +772,7 @@ static int conditional_process(void *data,
 		SPA_PTROFF(input_data->data, input_data->chunk->offset, const void),
 		4 * sizeof(float));
 	output_data->chunk->size = 4 * sizeof(float);
-	copy_metadata(outputs[0].buffer, inputs[0].buffer);
+	if (!copy_metadata(outputs[0].buffer, inputs[0].buffer)) return -ENOSPC;
 	return 0;
 }
 
@@ -825,7 +844,7 @@ static int gated_process(void *data, const struct spa_fgn_buffer *inputs,
 	for (i = 0; i < 4; i++)
 		sum[i] = a[i] + b[i];
 	output->chunk->size = 4 * sizeof(float);
-	copy_metadata(outputs[0].buffer, inputs[0].buffer);
+	if (!copy_metadata(outputs[0].buffer, inputs[0].buffer)) return -ENOSPC;
 	return 0;
 }
 
@@ -941,7 +960,7 @@ static int thread_preparation_process(void *data,
 		SPA_PTROFF(input_data->data, input_data->chunk->offset, const void),
 		4 * sizeof(float));
 	output_data->chunk->size = 4 * sizeof(float);
-	copy_metadata(outputs[0].buffer, inputs[0].buffer);
+	if (!copy_metadata(outputs[0].buffer, inputs[0].buffer)) return -ENOSPC;
 	return 0;
 }
 
@@ -1104,7 +1123,7 @@ static int dense_process(void *data, const struct spa_fgn_buffer *inputs,
 			instance->executor->data, &task)) < 0)
 		return res;
 	output_data->chunk->size = instance->shapes[1] * sizeof(float);
-	copy_metadata(outputs[0].buffer, inputs[0].buffer);
+	if (!copy_metadata(outputs[0].buffer, inputs[0].buffer)) return -ENOSPC;
 	return 0;
 }
 
@@ -1126,6 +1145,8 @@ static const struct spa_fgn_descriptor *find_descriptor(const char *name)
 
 	if (name == NULL)
 		return NULL;
+	if (spa_streq(name, metadata_descriptor.name))
+		return &metadata_descriptor;
 	if (spa_streq(name, descriptor.name))
 		return &descriptor;
 	if (spa_streq(name, dense_descriptor.name))

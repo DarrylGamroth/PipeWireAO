@@ -66,8 +66,8 @@ static int update_parameter(void *userdata, uint32_t input_port,
 	    input_port != 0 || parameter == NULL ||
 	    parameter->size != sizeof(value) ||
 	    parameter->capacity < sizeof(value) || parameter->data == NULL ||
-	    (parameter->metadata_valid & PW_NDARRAY_FILTER_METADATA_HEADER) == 0 ||
-	    parameter->header.seq != 1)
+	    parameter->n_metas == 0 ||
+	    ((const struct spa_meta_header *)spa_meta_records_find(parameter->metas, parameter->n_metas, SPA_META_Header)->data)->seq != 1)
 		return -EINVAL;
 	memcpy(&value, parameter->data, sizeof(value));
 	if (value != 5.0f)

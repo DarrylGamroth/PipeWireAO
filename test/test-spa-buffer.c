@@ -49,11 +49,15 @@ PWTEST(buffer_abi_types)
 	pwtest_int_eq(SPA_META_Busy, 7);
 	pwtest_int_eq(SPA_META_VideoTransform, 8);
 	pwtest_int_eq(SPA_META_SyncTimeline, 9);
-	/* Metadata IDs 11 and 12 remain retired. */
-	pwtest_int_eq(SPA_META_Properties, 13);
-	pwtest_int_eq(_SPA_META_LAST, 14);
+	/* PipeWireAO records use the custom namespace; 11/12/13 stay retired. */
+	pwtest_int_eq(SPA_META_AcquisitionIdentity, 0x300);
+	pwtest_int_eq(SPA_META_ExposureTiming, 0x301);
+	pwtest_int_eq(SPA_META_AbsoluteTime, 0x302);
+	pwtest_int_eq(SPA_META_OpticalChopping, 0x303);
+	pwtest_int_eq(SPA_META_ElectricalTrigger, 0x304);
+	pwtest_int_eq(_SPA_META_LAST, 10);
 	pwtest_str_eq(spa_debug_type_find_name(spa_type_meta_type,
-			SPA_META_Properties), SPA_TYPE_INFO_META_BASE "Properties");
+			SPA_META_AcquisitionIdentity), SPA_TYPE_INFO_META_BASE "AcquisitionIdentity");
 
 	return PWTEST_PASS;
 }
@@ -103,8 +107,8 @@ PWTEST(buffer_alloc)
                                    sizeof(struct spa_meta_bitmap) + w * h * bpp)
 	metas[2].type = SPA_META_Cursor;
 	metas[2].size = CURSOR_META_SIZE(64,64,4);
-	metas[3].type = SPA_META_Properties;
-	metas[3].size = 512;
+	metas[3].type = SPA_META_AcquisitionIdentity;
+	metas[3].size = sizeof(struct spa_meta_acquisition_identity);
 	metas[4].type = 101;
 	metas[4].size = 11;
 

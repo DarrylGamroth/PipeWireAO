@@ -48,6 +48,7 @@ enum spa_param_meta {
 	SPA_PARAM_META_type,		/**< the metadata, one of enum spa_meta_type (Id enum spa_meta_type) */
 	SPA_PARAM_META_size,		/**< the expected maximum size the meta (Int) */
 	SPA_PARAM_META_features,	/**< meta data features (Features Int) */
+	SPA_PARAM_META_required = 0x1000000, /**< required exact type/size capability (Bool) */
 };
 
 /** properties for SPA_TYPE_OBJECT_ParamIO */

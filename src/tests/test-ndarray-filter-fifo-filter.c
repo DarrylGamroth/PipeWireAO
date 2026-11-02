@@ -16,7 +16,7 @@
 #include <spa/utils/result.h>
 
 #include <pipewire/ndarray-filter.h>
-#include "buffer-properties-fixture.h"
+#include "metadata-fixture.h"
 
 /* Observe opaque public handles; all calls still use the native implementation. */
 static struct pw_filter *native_filter;
@@ -108,13 +108,12 @@ static int fifo_process(void *userdata,
 	if (n_inputs != 1 || n_outputs != 1 || packet > 8 ||
 	    input->size != sizeof(value) || output->size != sizeof(value) ||
 	    input->data == NULL || output->data == NULL ||
-	    (input->metadata_valid & PW_NDARRAY_FILTER_METADATA_HEADER) == 0 ||
-	    (input->metadata_valid & PW_NDARRAY_FILTER_METADATA_PROPERTIES) == 0 ||
-	    input->header.seq != sequence || input->header.offset != row ||
-	    input->header.pts != 1000 + (int64_t)sequence ||
-	    input->header.dts_offset != 0 ||
-	    input->header.flags != (packet % 4 == 0 ? SPA_META_HEADER_FLAG_MARKER : 0) ||
-	    !test_check_acquisition(&input->properties, sequence, 100000 + packet))
+	    test_header(input) == NULL ||
+	    test_header(input)->seq != sequence || test_header(input)->offset != row ||
+	    test_header(input)->pts != 1000 + (int64_t)sequence ||
+	    test_header(input)->dts_offset != 0 ||
+	    test_header(input)->flags != (packet % 4 == 0 ? SPA_META_HEADER_FLAG_MARKER : 0) ||
+	    !test_check_acquisition(input->metas, input->n_metas, sequence, 100000 + packet))
 		return -EINVAL;
 	memcpy(&value, input->data, sizeof(value));
 	if (value != (float)packet)
@@ -135,10 +134,7 @@ static int fifo_process(void *userdata,
 		}
 		value = (float)packet;
 		memcpy(output->data, &value, sizeof(value));
-		output->header = input->header;
-		memcpy(output->properties.data, input->properties.data, input->properties.size);
-		output->metadata_valid |= PW_NDARRAY_FILTER_METADATA_HEADER |
-			PW_NDARRAY_FILTER_METADATA_PROPERTIES;
+		if (!spa_meta_records_copy(output->metas, output->n_metas, input->metas, input->n_metas)) return -ENOSPC;
 	}
 	fflush(stdout);
 	return 0;
@@ -220,6 +216,7 @@ int main(int argc, char *argv[])
 		{
 			.struct_size = sizeof(struct pw_ndarray_filter_port),
 			.direction = SPA_DIRECTION_INPUT,
+			.n_metas = SPA_N_ELEMENTS(test_metadata), .metas = test_metadata,
 			.name = "input",
 			.format = {
 				.element_type = SPA_ELEMENT_TYPE_F32_LE,
@@ -234,6 +231,7 @@ int main(int argc, char *argv[])
 		{
 			.struct_size = sizeof(struct pw_ndarray_filter_port),
 			.direction = SPA_DIRECTION_OUTPUT,
+			.n_metas = SPA_N_ELEMENTS(test_metadata), .metas = test_metadata, .propagation = SPA_META_PROPAGATION_PRESERVE,
 			.name = "output",
 			.format = {
 				.element_type = SPA_ELEMENT_TYPE_F32_LE,

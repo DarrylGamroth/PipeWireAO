@@ -26,8 +26,8 @@ extern "C" {
  */
 
 /** Version of the C ABI exported by ndarray plugin libraries. */
-#define SPA_FGN_PLUGIN_ABI_VERSION 7u
-#define SPA_FGN_MAX_METAS 16u
+#define SPA_FGN_PLUGIN_ABI_VERSION 8u
+#define SPA_FGN_MAX_METAS 64u
 #define SPA_FGN_MAX_META_BYTES 4096u
 #define SPA_FGN_MAX_PARAMETER_TRANSACTION_ASSIGNMENTS 4096u
 
@@ -92,6 +92,9 @@ struct spa_fgn_port_info {
 	uint32_t flags;              /**< a mask of enum spa_fgn_port_flag */
 	/** Non-empty; at most SPA_FGN_LOCAL_NAME_MAX bytes. */
 	const char *name;
+	uint32_t n_metas;            /**< additional immutable layouts, excluding Header */
+	uint32_t propagation;        /**< enum spa_meta_propagation */
+	const struct spa_meta_requirement *metas;
 };
 
 /**
@@ -354,8 +357,9 @@ struct spa_fgn_descriptor {
 	 * blocking primitive, unwind across the ABI, or retain a buffer after
 	 * returning. It may synchronously poll only through the supplied bounded
 	 * host executor. Input buffers
-	 * and their metadata are read-only, including when one output fans out to
-	 * multiple consumers. Input and output buffer descriptors, chunks,
+	 * and their fact metadata are read-only, including when one output fans out to
+	 * multiple consumers. Busy and SyncTimeline retain upstream transport ownership;
+	 * plugins must not copy or clear them as facts. Input and output buffer descriptors, chunks,
 	 * metadata, and data regions do not overlap. Each buffer has exactly one
 	 * data plane and at most SPA_FGN_MAX_METAS entries containing at most
 	 * SPA_FGN_MAX_META_BYTES in total. A plugin instance writes at the supplied
