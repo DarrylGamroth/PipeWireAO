@@ -727,16 +727,14 @@ scientific inputs; remove temporary builds/logs after verification.
 Source baseline is `98c75c8e8995eeca86b8bf593f40adf8d0cc72a1` (native
 `8bccb6e22` plus the approved plan), initially clean, on
 `codex/independent-spa-metadata`. Native 3.0 is installed into a new task-owned
-immutable `pipewireao-independent-spa-metadata-r3` prefix; the released 2.0
+immutable `pipewireao-independent-spa-metadata-r4` prefix; the released 2.0
 installation and original source checkout remain untouched. Native 3.0 library
-SHA256 is `2503fbc01d72105e70672954c2e879efa8ee7acde730793b12b89514cd9f81cc`;
+SHA256 is `3675c946474d7ad526215e1d804dce65d204ac3201cf2c335473e83a647a971a`;
 `meta.h` SHA256 is `49591e5e326659b059bcb3297da821523ee61ed57d09b524ba55236729447760`.
 
 Observed checks:
 
-- Optimized native build passes; 81 of 82 configured Meson tests pass. The
-  retention client once timed out after correct delivery during teardown;
-  callback ownership investigation remains open. The focused
+- Optimized native build and all 82 configured Meson tests pass. The focused
   30 selectors include C/Rust graph hosts, independent metadata, exact custom
   allocation, ndarray callbacks, private-core transport, FIFO/held outputs,
   malformed input/output rejection and row-block ownership.
@@ -770,8 +768,8 @@ cc -std=gnu11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
 ```
 
 The build still reports warnings in unchanged `conf.c` (nullable format argument)
-and `hook.h` (optimizer array-bound analysis). The shutdown test failure
-remains under investigation.
+and `hook.h` (optimizer array-bound analysis). The fresh final optimized run
+passes all 82 tests; sanitizer shutdown stress is recorded separately below.
 These warnings are not treated as proof of a runtime defect.
 
 The standalone `spa/tests/benchmark-metadata.c` measures input validation,
@@ -812,6 +810,27 @@ while shutting down its private daemon. Nine focused repeats and two subsequent
 a frozen ASAN/UBSAN private-core fanout plus all 11 queue variants also passed.
 This unexplained daemon exit is separate from the fixed transport-state hazard.
 
+A later native retention test reproduced a distinct post-run callback ownership
+race: after `pw_main_loop_run` relinquished ownership, a data thread could flush
+main-loop callbacks while the caller destroyed stream hooks. Three of 60
+sanitizer cases reported stack cursor use-after-return/scope; a post-run-only
+guard still timed out in six of 100 cases. Frozen native 2.0 sources and SDK
+reproduced the post-completion timeout in two of 100 cases. Continuous ownership
+from loop construction through teardown passed 100 investigative sanitizer cases.
+The native helper now retains that lifetime owner, nests the run enter/leave,
+and relinquishes ownership before destroying the loop. Its deterministic late
+invoke test fails before the repair and passes after it, asserting deferred
+execution exactly once on the owner during teardown. The final-source frozen ASAN/UBSAN library
+(`f9e09babbdd2e7ea39e3d3f61fe1c8c2adab6a38f0a468cb2c75406e5abbcf21`)
+passes the same 100 four-way private-core cases with stack-use-after-return
+detection enabled. The runner is `src/tests/test-ndarray-filter-remote.py`,
+repeated 100 times with four concurrent private cores. Daemon/link use the
+release build; client/filter wrappers select the frozen sanitizer library,
+modules and SPA support paths and preload `libasan.so.8`. Their options are
+`abort_on_error=1:detect_leaks=0:detect_stack_use_after_return=1`.
+Constructor/error-unwind, queued-invoke ownership, Parameter
+Ports, run control and metadata sanitizer units pass (five selectors).
+This repair is not a confirmed explanation for the earlier queue daemon exit.
 This receipt does not close the cross-framework release gate, physical clock
 qualification or deadline qualification.
 

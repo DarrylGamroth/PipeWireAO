@@ -370,6 +370,8 @@ int main(int argc, char *argv[])
 		data.result = 1;
 		goto done;
 	}
+	/* Retain ownership across run's return until all stream workers stop. */
+	pw_loop_enter(pw_main_loop_get_loop(data.loop));
 	context_props = pw_properties_new("context.data-loops", data_loops, NULL);
 	data.context = pw_context_new(pw_main_loop_get_loop(data.loop),
 			context_props, 0);
@@ -483,8 +485,10 @@ done:
 		pw_core_disconnect(data.core);
 	if (data.context != NULL)
 		pw_context_destroy(data.context);
-	if (data.loop != NULL)
+	if (data.loop != NULL) {
+		pw_loop_leave(pw_main_loop_get_loop(data.loop));
 		pw_main_loop_destroy(data.loop);
+	}
 	pw_deinit();
 	return data.result;
 }
