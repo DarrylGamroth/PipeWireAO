@@ -27,8 +27,8 @@ acquisition. That decision belongs to a bounded semantic join.
 flowchart LR
     CameraA[Camera on host A] --> SourceA[Source A]
     CameraB[Camera on host B] --> SourceB[Source B]
-    SourceA --> MetaA[Acquisition version 2]
-    SourceB --> MetaB[Acquisition version 2]
+    SourceA --> MetaA[Header and buffer Properties]
+    SourceB --> MetaB[Header and buffer Properties]
     MetaA --> SendAdapter[Transport send adapter]
     SendAdapter --> Transport[Network transport]
     Transport --> ReceiveAdapter[Transport receive adapter]
@@ -65,8 +65,10 @@ generation, or sequence compares unequal.
 its own pause, restart, packet loss, or local process lifecycle. Before a
 sequence can reset, wrap, or be reused, the authority **MUST** distribute a new
 generation to every participant. If the producer observes a non-increasing
-sequence without that reconfiguration, it **MUST** fail closed and stop
-publishing valid identity.
+sequence for a newly completed physical acquisition without that reconfiguration,
+it **MUST** fail closed and stop publishing valid identity. Re-publication of a
+retained acquisition preserves its identity; a new publication Header does not
+claim a new physical acquisition.
 
 Verification: inject a duplicate or reset sequence and prove that the producer
 does not publish a new locally invented identity tuple.
@@ -75,81 +77,122 @@ Exact identity is independent of clock synchronization and is the preferred
 join key. A PTP timestamp is a fallback for sources without a common hardware
 counter and a consistency check for sources that have one.
 
-## Metadata versions
+## Per-buffer representation
 
-`SPA_META_Acquisition` keeps metadata ID 11 and a 96-byte, 8-byte-aligned allocation in all
-three versions. Metadata ID 12 remains retired.
+This section is the target contract for the complete migration. Its implementation
+and qualification gates are tracked below; the published 1.7.3 cohort still uses
+the superseded Acquisition record. The replacement is standard `SPA_META_Header`
+and the existing `SPA_META_Properties` BufferProperties Object, version 1.
+Metadata IDs 11 and 12 remain retired and MUST NOT be reused. No Acquisition
+version, compatibility reader, or version-selection flag remains in the new
+runtime cohort. This changes the ndarray callback ABI and requires a coordinated
+native/bindings/application release; it is not an SDK replacement for old clients.
 
-| Version | Exposure time | Cross-host use |
-| --- | --- | --- |
-| 1 | Host-local `CLOCK_MONOTONIC` nanoseconds | Never comparable across hosts |
-| 2 | Explicit `MONOTONIC` or `TAI` timebase | Comparable only with valid matching PTP provenance |
-| 3 | Version 2 time semantics plus trigger classification | Same PTP requirements as Version 2 |
+The native Header retains publication sequence, presentation time and lifecycle
+flags. Acquisition identity and exposure facts are independent Properties.
+A held sample retains its acquisition tuple while each publication advances
+Header sequence and presentation time. Equality of these sequence numbers is
+not a general metadata invariant. Header PTS MUST NOT substitute for physical
+exposure start.
 
-Version 2 reuses Version 1 reserved storage without changing allocation size.
-Version-aware readers accept all three versions. A Version 2 producer and consumer
-negotiate `SPA_META_FEATURE_ACQUISITION_VERSION_2`; an older Version 1 reader
-must not silently receive Version 2 metadata.
+The following keys extend the existing Object without changing existing keys or
+the Object version. POD Bytes containing an unsigned integer use exactly eight
+little-endian bytes, covering the entire UInt64 range. They are values inside a
+native POD Object, not a cross-host encoding of the whole Object.
 
-**ACQ-ABI-001:** A producer **MUST** initialize every reused allocation with
-`spa_meta_acquisition_init()` before setting fields. A consumer **MUST** call
-`spa_meta_acquisition_is_valid()` before interpreting a mapped value.
+| Key | Name | POD type | Meaning |
+| --- | --- | --- | --- |
+| 1 | `opticalClassification` | Id | Independent absent/unfringed/fringed/mixed optical fact, values 0/1/2/3 |
+| 2 | `triggerClassification` | Id | Independent absent/low/high/mixed electrical fact, values 0/1/2/3 |
+| 3 | `acquisitionDomain` | Bytes16 | Nonzero acquisition-authority identifier |
+| 4 | `acquisitionGeneration` | Bytes8 | Full unsigned authority generation |
+| 5 | `acquisitionSequence` | Bytes8 | Full unsigned physical acquisition counter |
+| 6 | `exposureDuration` | Bytes8 | Positive duration in nanoseconds |
+| 7 | `exposureStart` | Long | Nonnegative physical exposure start in nanoseconds |
+| 8 | `exposureTimebase` | Id | MONOTONIC=1 or TAI=2 |
+| 9 | `timestampUncertainty` | Bytes8 | Inclusive unsigned timestamp error bound in nanoseconds |
+| 10 | `ptpGrandmasterIdentity` | Bytes8 | Nonzero IEEE 1588 clock identity, preserving byte order |
+| 11 | `ptpDomainNumber` | Id | IEEE 1588 domain, 0 through 255 |
 
-Verification: ABI tests check size, alignment, field offsets, reserved bytes,
-version negotiation, malformed records, and Version 1 and Version 2 compatibility.
+**ACQ-ABI-001:** A producer MUST initialize every reused Properties allocation
+before adding facts. A consumer MUST validate the complete Object before
+interpreting it. Properties retain their existing 16–4096-byte, eight-byte-aligned,
+64-field bounds, strict key order, exact types/sizes, zero padding and tail rules.
+The ndarray aggregate metadata budget remains 4096 bytes, including Header.
 
-### Version 3 trigger classification
+**ACQ-PROP-001:** Keys 3–11 MUST carry `SPA_POD_PROP_FLAG_MANDATORY` when
+present. Unknown well-formed optional keys MUST remain skippable. Unknown
+mandatory keys MUST fail admission unless a consumer requirement declares
+understanding. Each consumer MUST declare the facts and exact POD types it
+requires; absent required keys and wrong types/sizes MUST fail before use.
+Container-version support alone does not promise a particular fact is present.
 
-**ACQ-TRIGGER-001:** Version 3 **MUST** encode trigger classification in the
-`reserved2` word at byte offset 88: absent = 0, low = 1, high = 2, mixed = 3.
-All upper bits **MUST** be zero. Version 1 and Version 2 **MUST** retain a zero
-`reserved2` word. Absent means no classification was supplied; low and high
-classify the acquisition's trigger level, and mixed means the acquisition
-contains both levels. Classification does not alter identity or timing.
+**ACQ-PROP-002:** Identity keys 3–5 MUST appear together or all be absent.
+Exposure-start keys 7–9 MUST appear together or all be absent. Duration is
+independent. TAI additionally requires keys 10–11 with a nonzero grandmaster;
+MONOTONIC MUST NOT include PTP keys. PTP keys without a start are invalid.
+Classification absence differs from a present absent-classification value.
+Partial groups and invalid ranges MUST fail complete-record validation.
+Private builders may append a group incrementally; incomplete objects MUST NOT
+be published or accepted by readers. Append helpers perform structural checks
+while complete validation also checks semantic groups.
 
-**ACQ-TRIGGER-002:** Version 3 **MUST** apply every Version 2 clock, PTP,
-validation, comparison, and timestamp-setter rule. The trigger setter **MUST**
-upgrade a valid Version 2 record to Version 3 and **MUST** reject Version 1 and
-malformed records without modifying them. The getter **MUST** reject malformed
-records and return absent for valid Version 1 and Version 2 records.
+**ACQ-PROP-003:** Unchanged pass-through MUST preserve all validated Properties,
+including unknown optional fields, under the original buffer lease. Derived
+outputs MUST use explicit scientific provenance; a sum MUST NOT invent one
+camera's identity for the combined command. Output reuse MUST clear stale facts.
+Header publication identity and retained acquisition identity MUST remain distinct.
 
-**ACQ-TRIGGER-003:** Initialization and default producers **MUST** remain at
-Version 2. `SPA_META_FEATURE_ACQUISITION_CURRENT` **MUST** remain the Version 2
-feature. A Version 3 endpoint **MUST** explicitly require
-`SPA_META_FEATURE_ACQUISITION_VERSION_3`. The ndarray helper **MUST** select that
-mandatory feature only for a Port with
-`PW_NDARRAY_FILTER_PORT_FLAG_ACQUISITION_V3`; an unflagged Port **MUST** require
-Version 2. Older helpers **MUST** reject this unknown flag at admission. This
-opt-in **MUST NOT** change Port or callback-buffer structure layout. Flagged
-Ports **MUST** reject missing acquisition metadata and Version 1/2 payloads; unflagged Ports **MUST** reject
-Version 3 payloads. Empty output metadata on flagged Ports **MUST** use Version
-3 with absent classification. Global initialization remains Version 2.
+**ACQ-TRIGGER-001:** Trigger Id values classify the electrical state over the
+whole exposure. Optical classification MUST NOT be inferred from electrical
+polarity by a generic transport. An optical application relating them MUST supply
+its explicit mapping, including absent and mixed states.
 
-Verification: round-trip all classifications; reject out-of-range encodings and
-nonzero Version 1/2 reserved words; check Version 2/3 PTP comparisons and setter
-behavior; prove feature mismatch rejects negotiation and flagged Ports publish
-Version 3 through the native protocol. `pw-test-ndarray-filter-acquisition-admission`
-checks the explicit Port flag against the current library. Run that same binary
-with an older library selected through `LD_LIBRARY_PATH` and
-`--expect-unsupported` to verify admission rejects the unknown flag. The
-`pw-test-ndarray-filter-remote` and `pw-test-ndarray-filter-acquisition-v3`
-selectors prove Version 2 and Version 3 shared-memory metadata transfer,
-respectively; they do not exercise a cross-host wire codec.
+**ACQ-TRIGGER-002:** Chopped pairing MUST require complete acquisition identity,
+positive duration and explicit usable optical classification. It MUST validate
+same authority/generation, adjacent acquisition counters, compatible duration,
+and alternating fringed/unfringed roles. Duplicates, stale records and gaps
+MUST follow the existing bounded SCC reset/rejection policy, independently of
+Header publication counters. Missing metadata MUST NOT be reconstructed from
+arrival order or from a missing property treated as zero.
+
+**ACQ-TRIGGER-003:** The new cohort MUST neither negotiate nor publish the retired
+metadata type 11. Old-schema-only peers MUST fail required-Properties negotiation
+or semantic admission, rather than silently running with missing identity/timing.
+
+Verification: full-range unsigned round trips; malformed types/sizes/flags,
+partial groups and padding; buffer reuse; required-key rejection; held-sample
+publication/acquisition divergence; all electrical/optical classifications;
+and chopped loss/restart/duplicate tests. Native callbacks expose borrowed
+Properties and Header, without the old by-value Acquisition record.
+
+### Public native helper vocabulary
+
+`spa_acquisition_identity` and `spa_exposure_start` are owned semantic values,
+not separately versioned wire records. `spa_meta_properties_get_acquisition_identity`,
+`spa_meta_properties_get_exposure_start` and
+`spa_meta_properties_get_exposure_duration` read validated facts.
+`spa_meta_properties_add` accepts explicit property flags;
+`spa_meta_properties_add_uint64` and `spa_meta_properties_get_uint64` implement
+the eight-byte unsigned representation. `spa_acquisition_identity_equal`,
+`spa_exposure_start_time_difference` and `spa_exposure_start_times_match` preserve
+the identity, clock and saturating comparison rules below. No old-name aliases
+are introduced.
 
 ## PTP-qualified time
 
 A cross-host exposure timestamp has all of these properties:
 
-- `exposure_start_nsec` is the physical exposure start expressed as
+- `exposureStart` is the physical exposure start expressed as
   nonnegative Linux `CLOCK_TAI` nanoseconds;
-- `timebase` is `SPA_META_ACQUISITION_TIMEBASE_TAI`;
-- `PTP_REFERENCE_VALID` and `EXPOSURE_START_VALID` are set;
-- `ptp_grandmaster_id` is the nonzero IEEE 1588 grandmaster clock identity;
-- `ptp_domain_number` is the IEEE 1588 domain number; and
-- `timestamp_uncertainty_nsec` is a conservative inclusive error bound.
+- `timebase` is `TAI`;
+- the complete exposure-start and PTP property groups are present;
+- `ptpGrandmasterIdentity` is the nonzero IEEE 1588 grandmaster clock identity;
+- `ptpDomainNumber` is the IEEE 1588 domain number; and
+- `timestampUncertainty` is a conservative inclusive error bound.
 
 **ACQ-TIME-001:** A producer **MUST** use
-`spa_meta_acquisition_set_exposure_start_ptp()` only when the device timestamp
+the TAI exposure-start property group only when the device timestamp
 is traceably mapped to `CLOCK_TAI`. The mapping **MUST** account for the PTP
 timescale and UTC offset. A disciplined `CLOCK_MONOTONIC`, host arrival time,
 buffer completion time, or unqualified device tick is not a substitute.
@@ -157,10 +200,10 @@ buffer completion time, or unqualified device tick is not a substitute.
 Verification: compare the reported exposure time against a qualified hardware
 timestamp source while exercising the configured PTP profile.
 
-**ACQ-TIME-002:** `timestamp_uncertainty_nsec` **MUST** bound device timestamp
+**ACQ-TIME-002:** `timestampUncertainty` **MUST** bound device timestamp
 resolution, exposure-latch error, device-to-PHC conversion error, PHC-to-TAI
 correlation error, and the accepted synchronization error. If no defensible
-bound is available, the producer **MUST NOT** set `PTP_REFERENCE_VALID`.
+bound is available, the producer **MUST NOT** publish a PTP-qualified group.
 
 Verification: measure each error term or obtain a guaranteed bound, record the
 sum used by the producer, and test the bound during steady state and recovery.
@@ -173,10 +216,10 @@ stop publishing PTP-valid time and **SHOULD** mark the next recovered output
 Verification: inject each loss condition and prove that no PTP-valid record is
 published until qualification recovers.
 
-Two Version 2 timestamps are comparable only when both records validate, both
+Two exposure-start values are comparable only when both records validate, both
 are PTP-qualified TAI values, and their grandmaster identities and PTP domain
 numbers are byte-for-byte equal. The helper
-`spa_meta_acquisition_time_difference()` enforces these preconditions and
+`spa_exposure_start_time_difference()` enforces these preconditions and
 returns:
 
 ```text
@@ -200,7 +243,7 @@ additional tolerance `T` and may match only when:
 abs(difference) <= combined_uncertainty + T
 ```
 
-The addition is saturating. `spa_meta_acquisition_times_match()` implements
+The addition is saturating. `spa_exposure_start_times_match()` implements
 this test. `T` does not replace the reported uncertainty and **SHOULD** be less
 than half the minimum acquisition interval so adjacent acquisitions cannot
 match under nominal conditions.
@@ -230,8 +273,8 @@ fragmentation. It **MUST NOT** copy the native C structure directly onto the
 wire.
 
 **ACQ-WIRE-002:** A receiving adapter **MUST** decode the transport record,
-construct native metadata through the public acquisition helpers, and validate
-it before publishing local `SPA_META_Acquisition`. Invalid or missing records
+construct native metadata through the public Properties helpers, and validate
+it before publishing local Header and Properties. Invalid or missing records
 **MUST NOT** be synthesized from packet arrival time.
 
 Verification belongs to the selected transport implementation. It must include
@@ -239,218 +282,58 @@ golden vectors and round trips on both endian architectures where available,
 then exercise loss, reordering, duplication, fragmentation, and malformed
 records.
 
-## eGrabber status
+## Capability and migration gates
 
-The eGrabber source can derive exact identity from a configured nonzero
-acquisition domain, externally assigned generation, and qualified vendor event
-context. It retains the last observed sequence across Pause and Start and
-fails processing on a duplicate or reset sequence. A control plane must
-recreate or reconfigure the source with a new shared generation before a
-counter namespace can reset or be reused.
+Hardware PTP qualification and cross-host codecs are not established by local
+SPA transport tests. Device adapters must migrate their producers separately
+before using the new runtime cohort; missing facts cannot be manufactured.
 
-The current eGrabber timestamp mapper produces host-local header presentation
-timestamps. It does not yet establish a hardware-qualified PTP exposure-start
-mapping and therefore does not set the Version 2 PTP fields.
+| Gate | Required evidence | Status |
+| --- | --- | --- |
+| Semantic and native contract | Identity/range/clock/hold rules and additive keys reviewed | Reviewed; native boundary independently reviewed |
+| Native transport and queues | No retired record IDs; private-core Properties preservation, mismatch/reuse/fanout tests | Native focused tests and 17 queue tests pass |
+| Julia and Rust bindings | Regenerated ABI; no version selection or legacy transport readers | Rust tests pass; Julia integration in progress |
+| Scientific algorithms and HIL | Version-free chopping, joins, commands and held identities; zero-allocation warmed transport | Semantic tests pass; complete transport validation in progress |
+| RTC, capture, GUI and applications | New-schema-only source→queue→RTC→DM→GUI/capture, cold schemas and pins updated | Pending |
+| Retirement | Independent review, old-schema rejection, full dependency-cohort validation and release | Pending |
 
-## Capability and qualification status
+## Delivery plan and identifier preflight
 
-| Capability | Status |
+Native baseline `15525f80f`, PipeWireAO.jl `687d420`, JFG `68df2f5`, HIL `d676abc`,
+RTC `f7923eb`, Rust `e362a2c`, queue plugins `975c553`, GUI `a7ea558`, and instrument
+monorepo `37dc272` are isolated on `codex/metadata-migration` worktrees. Pre-existing
+checkouts and running unrelated sessions remain untouched. Simulators and GUI
+for this work remain stopped; integration uses private cores and bounded fixtures.
+
+The dependency order is native helpers/callback ABI and queues, regenerated
+Julia/Rust bindings, scientific adapters and HIL, then RTC/GUI/capture and authored
+instrument configuration. Only a complete validated replacement cohort is
+published; no v2 intermediate is a delivery. Frozen scientific calibration bytes
+and historical capture bytes are not hand-edited. Raw logs/builds are temporary.
+
+The following flow preserves publication and acquisition as separate facts:
+
+```mermaid
+flowchart LR
+    Source["Acquisition authority"] --> Facts["Identity, exposure and classification Properties"]
+    Header["Publication Header"] --> Buffer["One buffer lease"]
+    Facts --> Buffer
+    Buffer --> Queue["Queue or held sample"]
+    Queue --> SCC["SCC pairing by acquisition identity"]
+    Queue --> LL["LLOWFS measurements"]
+    SCC --> DM["Explicit shared-command provenance"]
+    LL --> DM
+```
+
+| Vocabulary | Authority and scope |
 | --- | --- |
-| Version 1 compatibility and Version 2 ABI validation | Implemented and unit-tested |
-| PTP authority comparison and uncertainty matching | Implemented and unit-tested |
-| eGrabber shared-generation fail-closed behavior | Implemented and unit-tested |
-| Hardware-qualified eGrabber PTP exposure timestamp | Not implemented or qualified |
-| RTP, AVB, or other network carriage profile | Not implemented or qualified |
-| Application-specific bounded multi-input join | Required in the consuming algorithm or join node |
+| Header, Properties, POD Id/Long/Bytes, mandatory flags | Adopted SPA metadata/POD boundary; existing Object contract |
+| acquisition domain/generation/sequence | ACQ-ID-001/002; full-width physical authority identity |
+| exposure start/duration, uncertainty, PTP grandmaster/domain | ACQ-TIME-001/002/003 and existing IEEE 1588 qualification semantics |
+| optical/trigger classifications | Existing independent key 1/2 contract; no inferred mapping |
+| publication sequence | Standard Header plus established held-sample contract; not an acquisition alias |
 
-The current requirement evidence is:
-
-| Requirement | Implementation or verification evidence |
-| --- | --- |
-| ACQ-ID-001 | Exact tuple validation and equality tests in `test/test-spa-buffer.c` |
-| ACQ-ID-002 | eGrabber non-increasing sequence tests in `test-acquisition-key.cpp` |
-| ACQ-ABI-001 | C ABI, validation, export, and negotiation tests plus Rust wrapper tests |
-| ACQ-TIME-001 through ACQ-TIME-003 | Contract defined; hardware producer qualification remains open |
-| ACQ-JOIN-001 and ACQ-JOIN-002 | Identity and PTP comparison helpers with boundary tests in C and Rust |
-| ACQ-JOIN-003 | Contract defined; consuming join implementation and overload tests remain open |
-| ACQ-WIRE-001 and ACQ-WIRE-002 | Contract defined; selected transport implementation and verification remain open |
-
-The implemented capabilities make the contract executable and prevent false
-cross-host matches. A deployment may claim operational multi-host joins only
-after its timestamp producer, network carriage, and join policy pass the
-corresponding verification obligations above.
-
-## Extensible per-buffer metadata: implementation plan
-
-Status: native implementation and focused CPU validation complete against PipeWireAO 1.7.2, commit
-`7a2cf5106`. Acquisition Versions 1/2/3, metadata ID 11, Header and all existing
-ndarray callback structures remain unchanged. Slot 12 remains retired.
-
-### Buffer properties contract and naming authority
-
-This section owns the following new protocol vocabulary. `Properties` follows
-SPA POD Object properties; `BufferProperties` distinguishes these per-buffer
-observations from node controls and static Port properties. `opticalClassification`
-records an optical classification supplied by the application. Its authority is
-an explicit optical model or measurement, never an electrical trigger level.
-No compatibility aliases are defined.
-
-| Name | Numeric value / representation | Meaning |
-|---|---|---|
-| `SPA_META_Properties` | 13 | One bounded POD Object in the buffer lease |
-| `SPA_TYPE_OBJECT_BufferProperties` | `0x40010` | Schema-defined per-buffer Object type |
-| `SPA_META_PROPERTIES_VERSION` | Object id 1 | Version 1 of this contract |
-| `SPA_META_FEATURE_PROPERTIES_VERSION_1` | bit 0 | ParamMeta schema capability |
-| `SPA_META_PROPERTY_opticalClassification` | key 1, POD Id | Optical classification of this payload |
-| `SPA_META_PROPERTY_triggerClassification` | key 2, POD Id | Electrical trigger classification, existing Acquisition trigger enum 0–3 |
-| `SPA_META_OPTICAL_ABSENT` | 0 | No optical classification established |
-| `SPA_META_OPTICAL_UNFRINGED` | 1 | Application classifies the payload as unfringed |
-| `SPA_META_OPTICAL_FRINGED` | 2 | Application classifies the payload as fringed |
-| `SPA_META_OPTICAL_MIXED` | 3 | Payload includes both optical classifications |
-
-An absent key differs from the present Id value `SPA_META_OPTICAL_ABSENT`.
-A required optical key **MUST** be present even when its value is absent.
-The trigger property adopts the existing Acquisition authority and exact enum:
-`SPA_META_ACQUISITION_TRIGGER_ABSENT` (0), `LOW` (1), `HIGH` (2), `MIXED` (3).
-It classifies the electrical trigger during this payload's acquisition; it does
-not replace canonical Acquisition identity or timing. Acquisition v1/v2 can
-coexist with the typed trigger property. A missing property remains missing;
-readers **MUST NOT** invent it from Acquisition v1/v2's zero reserved field.
-When the property and valid Acquisition v3 coexist, their electrical values
-**MUST** match. `spa_meta_properties_acquisition_is_consistent()` checks this
-relation after property validation; a missing Acquisition record or trigger
-property imposes no comparison, while a present invalid Acquisition fails.
-The ndarray boundary checks inputs before processing and completed outputs
-before publication. Acquisition v3 remains unchanged during this migration.
-
-Electrical Acquisition v3 trigger classification and optical classification
-**MUST** remain independent. An application relating them **MUST** define and
-validate its mapping, including mixed and absent values. Neither this container
-nor its helpers infer such a mapping. Header `seq` **MUST** equal Acquisition
-`sequence` whenever both records are published with valid acquisition identity.
-
-The allocation is 16–4096 bytes, aligned to 8 bytes, and a multiple of 8. It
-contains a `spa_pod_object` followed by ascending, unique, nonzero property keys.
-The Object's POD size bounds used bytes; all property padding and all unused
-allocation bytes **MUST** be zero. At most 64 properties and 64 requirements are
-accepted. Initial values are Bool, Id, Int, Long, Float, Double, String and Bytes;
-scalar sizes are exact, Bool is 0/1, and String has one terminating NUL and no
-embedded NUL. Pointers, FDs and nested containers are excluded. The optical and trigger keys
-accept only Id values 0–3. Unknown well-formed optional keys **MUST** be skipped.
-Unknown mandatory keys **MUST** fail unless explicitly understood through a
-consumer requirement. Unknown flags, duplicates, malformed bounds, unsupported
-values/types, missing required keys and required-type mismatches **MUST** fail.
-`spa_meta_property_requirement` is exactly two uint32 fields, `key` and `type`.
-A requirement declares understanding of that key's meaning and exact POD type;
-there is no conversion or implicit default.
-
-Negotiate `SPA_PARAM_Meta` with type 13, the bounded allocation size and mandatory
-`SPA_PARAM_META_features` bit 0. Require bit 13 in
-`SPA_PARAM_BUFFERS_metaType`. These standard parameters apply to `pw_stream`,
-`pw_filter` and ndarray ports. The feature proves the container schema; each
-consumer declares its required key/type pairs locally and validates each used
-record. It does not prove a producer will supply a particular optional key.
-An unsupported metadata type or schema **MUST** fail negotiation or buffer
-admission. The public SPA helpers implement allocation-free construction,
-validation and lookup in caller-owned storage. Initialize every reused output;
-absence **MUST NOT** reuse a previous publication's value.
-
-`pw_ndarray_filter_set_port_buffer_properties()` explicitly opts one direction
-and direction-local declaration index into this contract before connect. It
-copies the bounded requirement array and rejects capacities smaller than the
-minimum required POD content with `-ENOSPC`; Parameter Ports are excluded. A second
-configuration call replaces that declaration. Capacity zero disables the
-capability only with no requirements. Existing structs, event versions and old
-streams retain their ABI. The ndarray maximum capacity is 3968 bytes, leaving
-room for Header and Acquisition within its existing aggregate metadata bound.
-`pw_ndarray_filter_get_buffer_properties()` returns a borrowed `spa_meta`
-descriptor only during the synchronous process callback. Inputs are read-only;
-outputs are writable. Each opted-in output starts with an empty Object before
-every callback, including callbacks with retained outputs. A producer may call
-`spa_meta_properties_init()` explicitly; `spa_meta_properties_add()` appends one
-bounded scalar property. Completed outputs are checked against requirements;
-unavailable outputs are not published. Consumers reject malformed or incomplete
-input before invoking the process callback. Output Header/Acquisition sequence
-consistency is checked when properties are enabled; legacy streams retain their
-previous behavior.
-
-The buffer lease owns ndarray, Acquisition and property bytes together. Unchanged
-pass-through preserves all validated properties. Derived algorithm outputs need
-application-specific physical provenance; this API does not choose an input's
-facts for a sum or join. Native queue transfer already copies matching negotiated
-metadata types of equal size; both links must negotiate this capability. Busy
-and feature-only metadata remain endpoint-local. Native POD bytes do not define
-a cross-host wire encoding. GPU source/RTC/GUI trials, device qualification and
-callback deadline measurements remain separate from CPU/private-core evidence.
-
-### Validation evidence
-
-Native branch `codex/buffer-metadata`; queue branch `codex/buffer-properties`
-starts from `6dffd8dc722013ad7c62906042a230420c4e2ecc`. Validation on 2026-11-01:
-
-- `meson setup build -Dauto_features=disabled -Dtests=enabled -Dtest=enabled
-  -Dsupport=enabled -Dspa-plugins=enabled -Dexamples=disabled`; native library,
-  support plugin and required private-core modules built successfully.
-- `meson test -C build --num-processes 1` with `spa-test-buffer-properties`,
-  `pw-test-buffers-negotiate`, `pw-test-ndarray-filter-buffer-properties`,
-  `pw-test-ndarray-filter`, `pw-test-ndarray-filter-admission`,
-  `pw-test-ndarray-filter-acquisition-admission`,
-  `pw-test-ndarray-filter-remote`, `pw-test-ndarray-filter-acquisition-v3`,
-  `pw-test-ndarray-filter-buffer-properties-remote`,
-  `pw-test-ndarray-filter-fifo` and `pw-test-ndarray-filter-buffers32`: 11/11
-  passed. Tests cover required fields/types, 129 malformed cases, 64-field
-  limits, reset, callback borrowing, optical/electrical independence, exact
-  Header/Acquisition sequence, optional-field preservation and unchanged streams.
-- The same required-properties negotiation test linked against baseline
-  `buffers.c` returns success for an unsupported peer and fails its assertion
-  (`result=0`, expected `-ENOTSUP`). The changed implementation passes all five
-  Properties negotiation cases and 256 established buffer-allocation cases.
-  A missing ParamMeta remains permissive for established metadata types;
-  Properties alone requires both peers to advertise support. Unmet required
-  metadata masks now reject instead of falling back to default buffers. Feature
-  entries cannot shift the 32-bit required-metadata mask.
-- Both new native test sources passed GCC AddressSanitizer and
-  UndefinedBehaviorSanitizer (`-O1 -g -fsanitize=address,undefined
-  -fno-omit-frame-pointer`), including copied configuration requirements. The subsequent minimum-capacity
-  admission check passed the ndarray unit and private-core property tests.
-- `meson test -C build test-spa` checks the existing Header and Acquisition ABI
-  and behavior; those assertions remain unchanged. Enumeration sentinel tests
-  include the new metadata and Object IDs.
-- Queue validation passes its byte-copy test plus private-core copy/fanout,
-  copy/queue-only and MemFd lease/queue-only tests. All four optical Id values
-  and unknown optional fields remain attached to their Acquisition sequence
-  through retention, drops and reuse. The unmodified queue rejects the same
-  required-properties private-core fixture with `-ENOTSUP`; all cores close.
-  Nine existing queue Header/Acquisition/lifecycle tests pass.
-
-The typed-trigger migration slice additionally passed six focused tests:
-`spa-test-buffer-properties`, `pw-test-ndarray-filter-buffer-properties`,
-`pw-test-ndarray-filter-buffer-properties-remote` and
-`pw-test-ndarray-filter-trigger-properties-{v2,input-mismatch,output-mismatch}`.
-These cover all four electrical values, explicit absent versus missing, exact
-Id type/range, Acquisition v2 coexistence, matching v3, conflicts rejected before
-input processing/output publication, and the effective default v3 output record.
-The two mismatch private-core fixtures also assert no sink buffer arrives.
-The same new input-mismatch unit invariant compiled against the prior native
-ndarray implementation (`da0738ace`) fails because it accepts the input; the
-changed implementation passes. Both new unit sources passed AddressSanitizer
-and UndefinedBehaviorSanitizer again. Queue byte-copy and all three private-core
-Properties fixtures passed with typed trigger preservation added; the generic
-queue transfer code required no new field-specific handling.
-
-One parallel native regression run timed out during Version 3 client teardown
-**after** its successful data-receipt result. That test passed in isolation and
-in the complete sequential run; no root cause is established. Minimal builds
-emit an expected missing optional D-Bus-support warning. No simulator or desktop
-core is used. GPU source/RTC/GUI integration, device qualification, and callback
-deadline measurements remain separate evidence. Independent review is recorded
-by the owning integration workstream.
-Higher-rate scheduling, asynchronous joins and shared-DM attribution remain
-separate work.
-
-Final release review finding NATIVE-R1 identified that an output callback could
-omit Header validity while supplying a nonzero valid Acquisition sequence.
-Validation now compares the Header sequence that will actually be published,
-including its zero default. The added regression failed before the fix and passed
-after it with `meson test -C build pw-test-ndarray-filter-buffer-properties`;
-it also accepts a valid zero Acquisition sequence with the default Header.
+Existing ACQ-ID/TIME/JOIN/WIRE requirement identities and meanings remain intact.
+ACQ-ABI and TRIGGER clauses now define the replacement boundary; ACQ-PROP clauses
+make extensibility and complete semantic groups explicit. The native header is
+implemented against this authority, not used to invent competing terminology.
