@@ -137,6 +137,23 @@ Strict GUI Clippy retains six pre-existing compiler-lint findings outside this
 change; the scoped check passed. Installed applications and device calibration
 bytes were not changed.
 
+Final queue export regression passed 140 focused checks. The failing source
+version omitted SCC classification slots from observation queues; the replacement
+uses resolved graph/simulator profiles and session links. Queue chains preserve
+explicit upstream classifications; incompatible authored downstream layouts reject.
+Independent review confirmed the propagation fix. Ordinary LLOWFS and unconnected
+queues retain the smaller profile.
+
+The regenerated offline SPIDERS application passed 91/91 private-core command
+handoff checks: all 16 commands were consumed, with zero reported drops,
+rejections or gaps. Camera, controller and observer metadata profiles agree;
+test observers now request the exact output profile, as the production GUI does.
+This is synthetic-pixel CPU transport validation, not optical or deadline
+qualification. The offline export has no deployable registered dependency closure;
+no installed application, simulator service or GUI was started or updated.
+Temporary SDKs, source-validation environments, builds and logs were removed
+after recording these results.
+
 Representative source-validation commands (the validation environments select
 the scratch SDK and unpublished source cohort):
 
