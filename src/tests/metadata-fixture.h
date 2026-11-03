@@ -11,8 +11,8 @@ static const struct spa_meta_requirement test_metadata[] = {
      SPA_META_REQUIREMENT_REQUIRED, 0},
     {SPA_META_ExposureTiming, sizeof(struct spa_meta_exposure_timing),
      SPA_META_REQUIREMENT_REQUIRED, 0},
-    {SPA_META_AbsoluteTime, sizeof(struct spa_meta_absolute_time), SPA_META_REQUIREMENT_REQUIRED,
-     0},
+    {SPA_META_ReferenceTimestamp, sizeof(struct spa_meta_reference_timestamp),
+     SPA_META_REQUIREMENT_REQUIRED, 0},
     {SPA_META_OpticalChopping, sizeof(struct spa_meta_optical_chopping), 0, 0},
     {SPA_META_ElectricalTrigger, sizeof(struct spa_meta_electrical_trigger), 0, 0},
     {TEST_OPAQUE_META, 8, 0, 0},
@@ -30,7 +30,7 @@ static inline bool test_add_acquisition(struct spa_meta *metas, uint32_t count, 
 	struct spa_meta *identity =
 	    spa_meta_records_find(metas, count, SPA_META_AcquisitionIdentity);
 	struct spa_meta *timing = spa_meta_records_find(metas, count, SPA_META_ExposureTiming);
-	struct spa_meta *time = spa_meta_records_find(metas, count, SPA_META_AbsoluteTime);
+	struct spa_meta *time = spa_meta_records_find(metas, count, SPA_META_ReferenceTimestamp);
 	if (!identity || !timing || !time)
 		return false;
 	*(struct spa_meta_acquisition_identity *)identity->data =
@@ -39,22 +39,14 @@ static inline bool test_add_acquisition(struct spa_meta *metas, uint32_t count, 
 						   .generation = 7,
 						   .sequence = sequence};
 	*(struct spa_meta_exposure_timing *)timing->data = (struct spa_meta_exposure_timing){
-	    .flags = SPA_META_EXPOSURE_START_VALID | SPA_META_EXPOSURE_DURATION_VALID |
-		     SPA_META_EXPOSURE_UNCERTAINTY,
+	    .flags = SPA_META_EXPOSURE_START_VALID | SPA_META_EXPOSURE_DURATION_VALID,
 	    .clock = SPA_META_CLOCK_MONOTONIC,
-	    .clock_domain = {2},
 	    .start_nsec = start,
-	    .duration_nsec = 100,
-	    .uncertainty_nsec = 50};
-	*(struct spa_meta_absolute_time *)time->data = (struct spa_meta_absolute_time){
-	    .count = 1,
-	    .events = {{.seconds = 1700000000,
-			.nanoseconds = (uint32_t)sequence,
-			.clock = sequence & 1 ? SPA_META_CLOCK_REALTIME : SPA_META_CLOCK_TAI,
-			.event = SPA_META_TIME_EVENT_ACQUISITION,
-			.flags = SPA_META_RECORD_VALID,
-			.origin = {1},
-			.clock_domain = {2}}}};
+	    .duration_nsec = 100};
+	*(struct spa_meta_reference_timestamp *)time->data = (struct spa_meta_reference_timestamp){
+	    .clock = sequence & 1 ? SPA_META_CLOCK_REALTIME : SPA_META_CLOCK_TAI,
+	    .timestamp_nsec = UINT64_C(1700000000000000000) + sequence,
+	    .duration_nsec = UINT64_MAX};
 	return true;
 }
 static inline bool test_check_acquisition(struct spa_meta *metas, uint32_t count, uint64_t sequence,
@@ -63,18 +55,19 @@ static inline bool test_check_acquisition(struct spa_meta *metas, uint32_t count
 	struct spa_meta *identity =
 	    spa_meta_records_find(metas, count, SPA_META_AcquisitionIdentity);
 	struct spa_meta *timing = spa_meta_records_find(metas, count, SPA_META_ExposureTiming);
-	struct spa_meta *time = spa_meta_records_find(metas, count, SPA_META_AbsoluteTime);
+	struct spa_meta *time = spa_meta_records_find(metas, count, SPA_META_ReferenceTimestamp);
 	if (!identity || !timing || !time ||
 	    !spa_meta_records_validate(metas, count, test_metadata, SPA_N_ELEMENTS(test_metadata)))
 		return false;
 	const struct spa_meta_acquisition_identity *id = identity->data;
 	const struct spa_meta_exposure_timing *t = timing->data;
-	const struct spa_meta_absolute_time *a = time->data;
+	const struct spa_meta_reference_timestamp *a = time->data;
 	return id->domain[0] == 1 && id->generation == 7 && id->sequence == sequence &&
-	       t->start_nsec == start && t->uncertainty_nsec == 50 &&
-	       t->clock == SPA_META_CLOCK_MONOTONIC && a->count == 1 &&
-	       a->events[0].seconds == 1700000000 && a->events[0].nanoseconds == sequence &&
-	       a->events[0].event == SPA_META_TIME_EVENT_ACQUISITION;
+	       t->start_nsec == start && t->duration_nsec == 100 &&
+	       t->clock == SPA_META_CLOCK_MONOTONIC &&
+	       a->clock == (sequence & 1 ? SPA_META_CLOCK_REALTIME : SPA_META_CLOCK_TAI) &&
+	       a->timestamp_nsec == UINT64_C(1700000000000000000) + sequence &&
+	       a->duration_nsec == UINT64_MAX;
 }
 static inline uint32_t test_build_metadata(struct spa_pod_builder *b, struct spa_pod **params)
 {

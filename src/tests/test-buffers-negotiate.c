@@ -224,14 +224,18 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	for (uint32_t type = SPA_META_AcquisitionIdentity; type <= SPA_META_ElectricalTrigger;
+	for (uint32_t type = SPA_META_AcquisitionIdentity; type <= SPA_META_ReferenceTimestamp;
 	     type++) {
+		if (type == 0x302)
+			continue;
 		check_metadata_negotiate(&context, true, true, type, 0, 0);
 		check_metadata_negotiate(&context, false, true, type, 0, -ENOTSUP);
 		check_metadata_negotiate(&context, true, false, type, 0, -ENOTSUP);
 		check_metadata_negotiate(&context, true, true, type, spa_meta_record_size(type) + 8,
 					 -ENOTSUP);
 	}
+	check_metadata_negotiate(&context, true, true, 0x302, 336, -ENOTSUP);
+	check_metadata_negotiate(&context, true, true, SPA_META_ExposureTiming, 64, -ENOTSUP);
 	check_metadata_negotiate(&context, true, true, SPA_META_Bitmap, 8192, 0);
 	check_metadata_negotiate(&context, true, true, SPA_META_Invalid, 128, -ENOTSUP);
 	check_metadata_negotiate(&context, true, true, 0x3f0, 0, 0);

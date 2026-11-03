@@ -52,7 +52,7 @@ PWTEST(buffer_abi_types)
 	/* PipeWireAO records use the custom namespace; 11/12/13 stay retired. */
 	pwtest_int_eq(SPA_META_AcquisitionIdentity, 0x300);
 	pwtest_int_eq(SPA_META_ExposureTiming, 0x301);
-	pwtest_int_eq(SPA_META_AbsoluteTime, 0x302);
+	pwtest_int_eq(SPA_META_ReferenceTimestamp, 0x305);
 	pwtest_int_eq(SPA_META_OpticalChopping, 0x303);
 	pwtest_int_eq(SPA_META_ElectricalTrigger, 0x304);
 	pwtest_int_eq(_SPA_META_LAST, 10);

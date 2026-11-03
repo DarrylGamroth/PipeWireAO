@@ -656,7 +656,7 @@ static const struct spa_fgn_descriptor descriptor = {
 static const struct spa_meta_requirement metadata_layout[] = {
 	{ SPA_META_AcquisitionIdentity, sizeof(struct spa_meta_acquisition_identity), SPA_META_REQUIREMENT_REQUIRED, 0 },
 	{ SPA_META_ExposureTiming, sizeof(struct spa_meta_exposure_timing), 0, 0 },
-	{ SPA_META_AbsoluteTime, sizeof(struct spa_meta_absolute_time), SPA_META_REQUIREMENT_REQUIRED, 0 },
+	{ SPA_META_ReferenceTimestamp, sizeof(struct spa_meta_reference_timestamp), SPA_META_REQUIREMENT_REQUIRED, 0 },
 	{ SPA_META_OpticalChopping, sizeof(struct spa_meta_optical_chopping), 0, 0 },
 	{ SPA_META_ElectricalTrigger, sizeof(struct spa_meta_electrical_trigger), 0, 0 },
 	{ 0x3f0, 8, 0, 0 },

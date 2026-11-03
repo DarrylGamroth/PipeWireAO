@@ -47,9 +47,10 @@ enum spa_meta_type {
 	SPA_META_START_PipeWireAO = 0x300,
 	SPA_META_AcquisitionIdentity = 0x300,
 	SPA_META_ExposureTiming = 0x301,
-	SPA_META_AbsoluteTime = 0x302,
+	/* 0x302: retired absolute event array. */
 	SPA_META_OpticalChopping = 0x303,
 	SPA_META_ElectricalTrigger = 0x304,
+	SPA_META_ReferenceTimestamp = 0x305,
 
 	SPA_META_START_features		= 0x10000,	/* features start, these have 0 size, the
 							 * type in the upper 16 bits and a bitmask in
@@ -217,32 +218,20 @@ struct spa_meta_sync_timeline {
 /** Independent PipeWireAO records. Native shared memory, never a wire encoding. */
 #define SPA_META_MAX_RECORDS 64u
 #define SPA_META_MAX_BYTES 4096u
-#define SPA_META_ABSOLUTE_TIME_MAX_EVENTS 4u
 #define SPA_ACQUISITION_DOMAIN_SIZE 16u
 
 enum spa_meta_record_flag {
 	SPA_META_RECORD_VALID = (1u << 0),
-	SPA_META_RECORD_UNCERTAINTY = (1u << 1),
-	SPA_META_RECORD_MAPPED = (1u << 2),
-	SPA_META_RECORD_CLOCK_STEP = (1u << 3),
 };
 enum spa_meta_exposure_flag {
 	SPA_META_EXPOSURE_START_VALID = (1u << 0),
 	SPA_META_EXPOSURE_DURATION_VALID = (1u << 1),
-	SPA_META_EXPOSURE_UNCERTAINTY = (1u << 2),
-	SPA_META_EXPOSURE_MAPPED = (1u << 3),
 };
 enum spa_meta_clock {
 	SPA_META_CLOCK_MONOTONIC = 1u,
 	SPA_META_CLOCK_REALTIME = 2u,
 	SPA_META_CLOCK_TAI = 3u,
 	SPA_META_CLOCK_MODEL = 4u,
-};
-enum spa_meta_time_event {
-	SPA_META_TIME_EVENT_ACQUISITION = 1u,
-	SPA_META_TIME_EVENT_PRODUCTION = 2u,
-	SPA_META_TIME_EVENT_RECEIPT = 3u,
-	SPA_META_TIME_EVENT_FILE_WRITE = 4u,
 };
 enum spa_meta_optical_classification {
 	SPA_META_OPTICAL_ABSENT = 0u,
@@ -267,28 +256,16 @@ struct spa_meta_acquisition_identity {
 struct spa_meta_exposure_timing {
 	uint32_t flags;
 	uint32_t clock;
-	uint8_t clock_domain[16];
-	uint8_t mapping[16];
 	int64_t start_nsec;
 	uint64_t duration_nsec;
-	uint64_t uncertainty_nsec;
 };
-/** Epoch seconds and normalized nanoseconds; labels do not assert synchronization. */
-struct spa_meta_absolute_time_event {
-	int64_t seconds;
-	uint32_t nanoseconds;
+/** One sample-associated timestamp; clock labels do not assert synchronization.
+ * UINT64_MAX denotes unspecified duration and is not a valid timestamp. */
+struct spa_meta_reference_timestamp {
 	uint32_t clock;
-	uint32_t event;
-	uint32_t flags;
-	uint8_t origin[16];
-	uint8_t clock_domain[16];
-	uint8_t mapping[16];
-	uint64_t uncertainty_nsec;
-};
-struct spa_meta_absolute_time {
-	uint32_t count;
-	uint32_t reserved[3];
-	struct spa_meta_absolute_time_event events[SPA_META_ABSOLUTE_TIME_MAX_EVENTS];
+	uint32_t reserved;
+	uint64_t timestamp_nsec;
+	uint64_t duration_nsec;
 };
 struct spa_meta_optical_chopping {
 	uint32_t flags;
@@ -316,13 +293,12 @@ enum spa_meta_propagation {
 SPA_STATIC_ASSERT(sizeof(struct spa_meta_acquisition_identity) == 40, "identity ABI");
 SPA_STATIC_ASSERT(offsetof(struct spa_meta_acquisition_identity, generation) == 24,
 		  "identity generation ABI");
-SPA_STATIC_ASSERT(sizeof(struct spa_meta_exposure_timing) == 64, "exposure ABI");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_exposure_timing, start_nsec) == 40,
+SPA_STATIC_ASSERT(sizeof(struct spa_meta_exposure_timing) == 24, "exposure ABI");
+SPA_STATIC_ASSERT(offsetof(struct spa_meta_exposure_timing, start_nsec) == 8,
 		  "exposure start ABI");
-SPA_STATIC_ASSERT(sizeof(struct spa_meta_absolute_time_event) == 80, "absolute event ABI");
-SPA_STATIC_ASSERT(offsetof(struct spa_meta_absolute_time_event, uncertainty_nsec) == 72,
-		  "uncertainty ABI");
-SPA_STATIC_ASSERT(sizeof(struct spa_meta_absolute_time) == 336, "absolute time ABI");
+SPA_STATIC_ASSERT(sizeof(struct spa_meta_reference_timestamp) == 24, "reference timestamp ABI");
+SPA_STATIC_ASSERT(offsetof(struct spa_meta_reference_timestamp, timestamp_nsec) == 8,
+		  "reference timestamp offset ABI");
 SPA_STATIC_ASSERT(sizeof(struct spa_meta_optical_chopping) == 8, "optical ABI");
 SPA_STATIC_ASSERT(sizeof(struct spa_meta_electrical_trigger) == 8, "trigger ABI");
 
@@ -350,8 +326,8 @@ SPA_API_META uint32_t spa_meta_record_size(uint32_t type)
 		return sizeof(struct spa_meta_acquisition_identity);
 	case SPA_META_ExposureTiming:
 		return sizeof(struct spa_meta_exposure_timing);
-	case SPA_META_AbsoluteTime:
-		return sizeof(struct spa_meta_absolute_time);
+	case SPA_META_ReferenceTimestamp:
+		return sizeof(struct spa_meta_reference_timestamp);
 	case SPA_META_OpticalChopping:
 		return sizeof(struct spa_meta_optical_chopping);
 	case SPA_META_ElectricalTrigger:
@@ -363,10 +339,12 @@ SPA_API_META uint32_t spa_meta_record_size(uint32_t type)
 /** Pure cold layout check; the caller supplies its profile's finite byte limit. */
 SPA_API_META bool spa_meta_record_layout_validate(uint32_t type, uint32_t size, uint32_t max_bytes)
 {
-	if (type == SPA_META_Invalid || type == 11 || type == 12 || type == 13 || size > max_bytes)
+	if (type == SPA_META_Invalid || type == 11 || type == 12 || type == 13 ||
+	    type == 0x302 || size > max_bytes)
 		return false;
 	if (type >= SPA_META_START_features)
-		return size == 0 && !((type >> 16) >= 11 && (type >> 16) <= 13);
+		return size == 0 && !((type >> 16) >= 11 && (type >> 16) <= 13) &&
+		       (type >> 16) != 0x302;
 	uint32_t expected = spa_meta_record_size(type);
 	return expected == 0 || expected == size;
 }
@@ -401,54 +379,21 @@ SPA_API_META bool spa_meta_record_validate(const struct spa_meta *meta, bool req
 		    (const struct spa_meta_exposure_timing *)meta->data;
 		if (m->flags == 0)
 			return !require_valid && spa_meta_bytes_zero(m, sizeof(*m));
-		if (m->flags & ~15u || !(m->flags & 3u))
+		if (m->flags & ~3u)
 			return false;
 		if (!(m->flags & SPA_META_EXPOSURE_START_VALID))
 			return m->flags == SPA_META_EXPOSURE_DURATION_VALID &&
-			       m->duration_nsec > 0 && m->clock == 0 && m->start_nsec == 0 &&
-			       m->uncertainty_nsec == 0 &&
-			       spa_meta_bytes_zero(m->clock_domain, 16) &&
-			       spa_meta_bytes_zero(m->mapping, 16);
+			       m->duration_nsec > 0 && m->clock == 0 && m->start_nsec == 0;
 		return m->clock >= SPA_META_CLOCK_MONOTONIC && m->clock <= SPA_META_CLOCK_MODEL &&
-		       !spa_meta_bytes_zero(m->clock_domain, 16) &&
 		       ((m->flags & SPA_META_EXPOSURE_DURATION_VALID) ? m->duration_nsec > 0
-								      : m->duration_nsec == 0) &&
-		       ((m->flags & SPA_META_EXPOSURE_UNCERTAINTY) || m->uncertainty_nsec == 0) &&
-		       ((m->flags & SPA_META_EXPOSURE_MAPPED)
-			    ? !spa_meta_bytes_zero(m->mapping, 16)
-			    : spa_meta_bytes_zero(m->mapping, 16));
-	} else if (meta->type == SPA_META_AbsoluteTime) {
-		const struct spa_meta_absolute_time *m =
-		    (const struct spa_meta_absolute_time *)meta->data;
-		if (m->count > SPA_META_ABSOLUTE_TIME_MAX_EVENTS ||
-		    (require_valid && m->count == 0) ||
-		    !spa_meta_bytes_zero(m->reserved, sizeof(m->reserved)))
-			return false;
-		for (uint32_t i = 0; i < SPA_META_ABSOLUTE_TIME_MAX_EVENTS; i++) {
-			const struct spa_meta_absolute_time_event *e = &m->events[i];
-			if (i >= m->count) {
-				if (!spa_meta_bytes_zero(e, sizeof(*e)))
-					return false;
-				continue;
-			}
-			if (!(e->flags & SPA_META_RECORD_VALID) || e->flags & ~15u ||
-			    (e->clock != SPA_META_CLOCK_REALTIME &&
-			     e->clock != SPA_META_CLOCK_TAI) ||
-			    e->nanoseconds >= 1000000000u || e->event < 1 || e->event > 4 ||
-			    spa_meta_bytes_zero(e->origin, 16) ||
-			    spa_meta_bytes_zero(e->clock_domain, 16) ||
-			    (!(e->flags & SPA_META_RECORD_UNCERTAINTY) &&
-			     e->uncertainty_nsec != 0) ||
-			    ((e->flags & SPA_META_RECORD_MAPPED)
-				 ? spa_meta_bytes_zero(e->mapping, 16)
-				 : !spa_meta_bytes_zero(e->mapping, 16)))
-				return false;
-			for (uint32_t j = 0; j < i; j++)
-				if (e->event == m->events[j].event &&
-				    memcmp(e->origin, m->events[j].origin, 16) == 0)
-					return false;
-		}
-		return true;
+								      : m->duration_nsec == 0);
+	} else if (meta->type == SPA_META_ReferenceTimestamp) {
+		const struct spa_meta_reference_timestamp *m =
+		    (const struct spa_meta_reference_timestamp *)meta->data;
+		if (m->clock == 0)
+			return !require_valid && spa_meta_bytes_zero(m, sizeof(*m));
+		return m->clock >= SPA_META_CLOCK_MONOTONIC && m->clock <= SPA_META_CLOCK_MODEL &&
+		       m->reserved == 0 && m->timestamp_nsec != UINT64_MAX;
 	} else if (meta->type == SPA_META_OpticalChopping ||
 		   meta->type == SPA_META_ElectricalTrigger) {
 		const uint32_t *m = (const uint32_t *)meta->data;

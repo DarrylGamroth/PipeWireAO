@@ -80,7 +80,7 @@ static const struct spa_type_info spa_type_meta_type[] = {
 	{ SPA_META_SyncTimeline, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "SyncTimeline", NULL },
 	{ SPA_META_AcquisitionIdentity, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "AcquisitionIdentity", NULL },
 	{ SPA_META_ExposureTiming, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "ExposureTiming", NULL },
-	{ SPA_META_AbsoluteTime, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "AbsoluteTime", NULL },
+	{ SPA_META_ReferenceTimestamp, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "ReferenceTimestamp", NULL },
 	{ SPA_META_OpticalChopping, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "OpticalChopping", NULL },
 	{ SPA_META_ElectricalTrigger, SPA_TYPE_Pointer, SPA_TYPE_INFO_META_BASE "ElectricalTrigger", NULL },
 	{ 0, 0, NULL, NULL },

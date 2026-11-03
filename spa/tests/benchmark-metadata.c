@@ -113,12 +113,10 @@ static void initialize(bool maximum)
 							   .generation = UINT64_MAX,
 							   .sequence = UINT64_MAX};
 		*(struct spa_meta_exposure_timing *)source[2].data =
-		    (struct spa_meta_exposure_timing){.flags = 7,
+		    (struct spa_meta_exposure_timing){.flags = 3,
 						      .clock = SPA_META_CLOCK_MONOTONIC,
-						      .clock_domain = {1},
 						      .start_nsec = 1000,
-						      .duration_nsec = 100,
-						      .uncertainty_nsec = 50};
+						      .duration_nsec = 100};
 		*(struct spa_meta_optical_chopping *)source[3].data =
 		    (struct spa_meta_optical_chopping){SPA_META_RECORD_VALID,
 						       SPA_META_OPTICAL_FRINGED};
