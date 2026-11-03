@@ -1475,7 +1475,7 @@ struct metadata_buffer {
 	struct spa_meta metas[7];
 	struct spa_meta_acquisition_identity identity;
 	struct spa_meta_exposure_timing exposure;
-	struct spa_meta_absolute_time absolute;
+	struct spa_meta_reference_timestamp reference;
 	uint64_t optical, trigger, opaque;
 };
 
@@ -1487,7 +1487,7 @@ static void init_metadata_buffer(struct metadata_buffer *b)
 		{ SPA_META_Header, sizeof(b->frame.header), &b->frame.header },
 		{ SPA_META_AcquisitionIdentity, sizeof(b->identity), &b->identity },
 		{ SPA_META_ExposureTiming, sizeof(b->exposure), &b->exposure },
-		{ SPA_META_AbsoluteTime, sizeof(b->absolute), &b->absolute },
+		{ SPA_META_ReferenceTimestamp, sizeof(b->reference), &b->reference },
 		{ SPA_META_OpticalChopping, sizeof(b->optical), &b->optical },
 		{ SPA_META_ElectricalTrigger, sizeof(b->trigger), &b->trigger },
 		{ 0x3f0, sizeof(b->opaque), &b->opaque },
@@ -1517,10 +1517,8 @@ static void test_independent_metadata(const char *plugin)
 	assert(spa_fgn_graph_activate(graph) == 0);
 	input.identity = (struct spa_meta_acquisition_identity){.flags=SPA_META_RECORD_VALID,.domain={1},.generation=UINT64_MAX,.sequence=UINT64_MAX};
 	input.exposure = (struct spa_meta_exposure_timing){.flags=SPA_META_EXPOSURE_DURATION_VALID,.duration_nsec=123};
-	input.absolute = (struct spa_meta_absolute_time){.count=2,.events={
-		{.seconds=1700000000,.nanoseconds=999999999,.clock=SPA_META_CLOCK_REALTIME,.event=SPA_META_TIME_EVENT_ACQUISITION,.flags=SPA_META_RECORD_VALID,.origin={1},.clock_domain={2}},
-		{.seconds=1700000037,.nanoseconds=999999999,.clock=SPA_META_CLOCK_TAI,.event=SPA_META_TIME_EVENT_PRODUCTION,.flags=SPA_META_RECORD_VALID,.origin={3},.clock_domain={2}},
-	}};
+	input.reference = (struct spa_meta_reference_timestamp){.clock=SPA_META_CLOCK_REALTIME,
+		.timestamp_nsec=UINT64_C(1700000000999999999),.duration_nsec=UINT64_MAX};
 	input.opaque = UINT64_MAX;
 	for (uint32_t seq=1; seq<=2; seq++) {
 		input.frame.header.seq=seq;

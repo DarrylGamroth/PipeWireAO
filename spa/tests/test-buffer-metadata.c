@@ -9,7 +9,7 @@ int main(void)
 {
 	struct spa_meta_acquisition_identity id = {0}, saved_id;
 	struct spa_meta_exposure_timing exposure = {0};
-	struct spa_meta_absolute_time absolute = {0};
+	struct spa_meta_reference_timestamp reference = {0};
 	struct spa_meta_optical_chopping optical = {0};
 	struct spa_meta_electrical_trigger trigger = {0};
 	struct spa_meta_header header = {0};
@@ -18,7 +18,7 @@ int main(void)
 	    {SPA_META_Header, sizeof(header), &header},
 	    {SPA_META_AcquisitionIdentity, sizeof(id), &id},
 	    {SPA_META_ExposureTiming, sizeof(exposure), &exposure},
-	    {SPA_META_AbsoluteTime, sizeof(absolute), &absolute},
+	    {SPA_META_ReferenceTimestamp, sizeof(reference), &reference},
 	    {SPA_META_OpticalChopping, sizeof(optical), &optical},
 	    {SPA_META_ElectricalTrigger, sizeof(trigger), &trigger},
 	    {0x3f0, sizeof(opaque), opaque},
@@ -56,40 +56,35 @@ int main(void)
 	exposure.duration_nsec = 10;
 	exposure.flags |= SPA_META_EXPOSURE_START_VALID;
 	exposure.clock = SPA_META_CLOCK_MODEL;
-	exposure.clock_domain[0] = 1;
 	exposure.start_nsec = INT64_MIN;
 	assert(spa_meta_record_validate(&source[2], true));
-	exposure.mapping[0] = 1;
+	exposure.flags |= 4u; /* Retired uncertainty flag. */
 	assert(!spa_meta_record_validate(&source[2], true));
-	exposure.flags |= SPA_META_EXPOSURE_MAPPED;
-	assert(spa_meta_record_validate(&source[2], true));
-	for (unsigned clock = SPA_META_CLOCK_REALTIME; clock <= SPA_META_CLOCK_TAI; clock++) {
-		absolute.count = 1;
-		absolute.events[0] =
-		    (struct spa_meta_absolute_time_event){.seconds = INT64_MIN,
-							  .nanoseconds = 999999999,
-							  .clock = clock,
-							  .event = SPA_META_TIME_EVENT_PRODUCTION,
-							  .flags = SPA_META_RECORD_VALID,
-							  .origin = {1},
-							  .clock_domain = {2}};
+	exposure.flags &= ~4u;
+	for (unsigned clock = SPA_META_CLOCK_MONOTONIC; clock <= SPA_META_CLOCK_MODEL; clock++) {
+		reference = (struct spa_meta_reference_timestamp){.clock = clock,
+			.timestamp_nsec = UINT64_MAX - 1, .duration_nsec = UINT64_MAX};
 		assert(spa_meta_record_validate(&source[3], true));
-		absolute.events[0].seconds = INT64_MAX;
-		assert(spa_meta_record_validate(&source[3], true));
-		absolute.events[0].nanoseconds = 1000000000;
+		reference.timestamp_nsec = UINT64_MAX;
 		assert(!spa_meta_record_validate(&source[3], false));
-		absolute.events[0].nanoseconds = 0;
-		absolute.events[0].uncertainty_nsec = UINT64_MAX;
-		assert(!spa_meta_record_validate(&source[3], false));
-		absolute.events[0].flags |= SPA_META_RECORD_UNCERTAINTY;
+		reference.timestamp_nsec = 0;
+		reference.duration_nsec = 0;
 		assert(spa_meta_record_validate(&source[3], true));
+		reference.reserved = 1;
+		assert(!spa_meta_record_validate(&source[3], false));
 	}
-	absolute.events[1] = absolute.events[0];
+	reference = (struct spa_meta_reference_timestamp){0};
+	assert(spa_meta_record_validate(&source[3], false));
+	assert(!spa_meta_record_validate(&source[3], true));
+	reference.timestamp_nsec = 1;
 	assert(!spa_meta_record_validate(&source[3], false));
-	absolute.count = 2;
+	reference = (struct spa_meta_reference_timestamp){.clock = 5};
 	assert(!spa_meta_record_validate(&source[3], false));
-	absolute.events[1].event = SPA_META_TIME_EVENT_ACQUISITION;
-	assert(spa_meta_record_validate(&source[3], true));
+	reference = (struct spa_meta_reference_timestamp){.clock = SPA_META_CLOCK_REALTIME,
+		.timestamp_nsec = UINT64_C(1700000000999999999), .duration_nsec = UINT64_MAX};
+	assert(!spa_meta_record_layout_validate(0x302, 336, SPA_META_MAX_BYTES));
+	assert(!spa_meta_record_layout_validate(SPA_META_TYPE_FEATURES(0x302, 1), 0, SPA_META_MAX_BYTES));
+	assert(!spa_meta_record_layout_validate(SPA_META_ExposureTiming, 64, SPA_META_MAX_BYTES));
 	for (unsigned v = 0; v < 4; v++) {
 		optical.flags = trigger.flags = SPA_META_RECORD_VALID;
 		optical.classification = trigger.classification = v;
