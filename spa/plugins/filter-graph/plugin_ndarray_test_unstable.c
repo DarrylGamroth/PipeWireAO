@@ -14,6 +14,7 @@
 #include <spa/buffer/meta.h>
 #include <spa/filter-graph/ndarray-plugin.h>
 #include <spa/pod/pod.h>
+#include <spa/utils/json.h>
 
 static const uint32_t shape[] = { 1 };
 
@@ -366,6 +367,108 @@ static const struct spa_fgn_descriptor flow_descriptors[] = {
 	FLOW_DESCRIPTOR("fail-marker-f32"),
 };
 
+/* Prepared requirements share static geometry, but belong to each instance. */
+static const struct spa_meta_requirement prepared_metas[] = {
+	{ SPA_META_AcquisitionIdentity, sizeof(struct spa_meta_acquisition_identity), 0, 0 },
+	{ SPA_META_ElectricalTrigger, sizeof(struct spa_meta_electrical_trigger), SPA_META_REQUIREMENT_REQUIRED, 0 },
+};
+static const struct spa_fgn_port_info prepared_input[] = {{
+	.struct_size = sizeof(struct spa_fgn_port_info), .index = 0,
+	.direction = SPA_DIRECTION_INPUT, .name = "in",
+	.n_metas = SPA_N_ELEMENTS(prepared_metas), .metas = prepared_metas,
+}};
+static const struct spa_fgn_port_info prepared_output[] = {{
+	.struct_size = sizeof(struct spa_fgn_port_info), .index = 0,
+	.direction = SPA_DIRECTION_OUTPUT, .name = "out",
+	.n_metas = SPA_N_ELEMENTS(prepared_metas), .metas = prepared_metas,
+}};
+static const struct spa_fgn_port_info prepared_output_missing[] = {{
+	.struct_size = sizeof(struct spa_fgn_port_info), .index = 0,
+	.direction = SPA_DIRECTION_OUTPUT, .name = "out",
+	.n_metas = 1, .metas = &prepared_metas[1],
+}};
+struct prepared_metadata_instance {
+	struct spa_meta_requirement metas[SPA_N_ELEMENTS(prepared_metas)];
+	char mode[32];
+};
+static int prepared_metadata_instantiate(const struct spa_fgn_descriptor *descriptor SPA_UNUSED,
+		const char *config, const struct spa_fgn_executor *executor SPA_UNUSED,
+		void **result)
+{
+	struct prepared_metadata_instance *instance = calloc(1, sizeof(*instance));
+	struct spa_json object;
+	const char *token;
+	char key[32];
+	int len;
+	if (instance == NULL)
+		return -ENOMEM;
+	memcpy(instance->metas, prepared_metas, sizeof(prepared_metas));
+	if (spa_json_begin_object(&object, config, strlen(config)) <= 0)
+		goto invalid;
+	while ((len = spa_json_object_next(&object, key, sizeof(key), &token)) > 0) {
+		if (!spa_streq(key, "mode") ||
+		    spa_json_parse_stringn(token, len, instance->mode, sizeof(instance->mode)) <= 0)
+			goto invalid;
+	}
+	if (len < 0)
+		goto invalid;
+	if (spa_streq(instance->mode, "strict"))
+		instance->metas[0].flags |= SPA_META_REQUIREMENT_REQUIRED;
+	else if (spa_streq(instance->mode, "bad-size"))
+		instance->metas[0].size++;
+	else if (spa_streq(instance->mode, "drop-required"))
+		instance->metas[1].flags = 0;
+	else if (spa_streq(instance->mode, "duplicate"))
+		instance->metas[1] = instance->metas[0];
+	else if (spa_streq(instance->mode, "unknown-id"))
+		instance->metas[0].type = SPA_META_ReferenceTimestamp;
+	else if (spa_streq(instance->mode, "reserved"))
+		instance->metas[0].reserved = 1;
+	else if (spa_streq(instance->mode, "unknown-flags"))
+		instance->metas[0].flags = 2;
+	else if (spa_streq(instance->mode, "reordered")) {
+		instance->metas[0] = prepared_metas[1];
+		instance->metas[1] = prepared_metas[0];
+	}
+	*result = instance;
+	return 0;
+invalid:
+	free(instance);
+	return -EINVAL;
+}
+static int prepared_metadata_get(void *opaque, uint32_t port,
+		const struct spa_meta_requirement **metas, uint32_t *n_metas)
+{
+	struct prepared_metadata_instance *instance = opaque;
+	if (port != 0 || instance == NULL || metas == NULL || n_metas == NULL)
+		return -EINVAL;
+	if (spa_streq(instance->mode, "failure"))
+		return -EIO;
+	*metas = spa_streq(instance->mode, "null") ? NULL : instance->metas;
+	*n_metas = spa_streq(instance->mode, "bounds") ? UINT32_MAX :
+		spa_streq(instance->mode, "drop-count") ? 1 : SPA_N_ELEMENTS(prepared_metas);
+	return 0;
+}
+#define PREPARED_INPUT_DESCRIPTOR(label, descriptor_size, callback) { \
+	.struct_size = descriptor_size, .version = SPA_FGN_PLUGIN_ABI_VERSION, \
+	.name = label, .n_ports = SPA_N_ELEMENTS(prepared_input), .ports = prepared_input, \
+	.instantiate = prepared_metadata_instantiate, .cleanup = free, \
+	.get_port_format = get_port_format, .process = process, .get_port_metadata = callback, \
+}
+#define PREPARED_OUTPUT_DESCRIPTOR(label, table) { \
+	.struct_size = sizeof(struct spa_fgn_descriptor), .version = SPA_FGN_PLUGIN_ABI_VERSION, \
+	.name = label, .n_ports = SPA_N_ELEMENTS(table), .ports = table, \
+	.instantiate = instantiate, .cleanup = cleanup, \
+	.get_port_format = get_port_format, .process = process, \
+}
+static const struct spa_fgn_descriptor prepared_descriptors[] = {
+	PREPARED_INPUT_DESCRIPTOR("prepared-metadata", sizeof(struct spa_fgn_descriptor), prepared_metadata_get),
+	PREPARED_INPUT_DESCRIPTOR("prepared-metadata-null", sizeof(struct spa_fgn_descriptor), NULL),
+	PREPARED_INPUT_DESCRIPTOR("prepared-metadata-short", offsetof(struct spa_fgn_descriptor, get_port_metadata), prepared_metadata_get),
+	PREPARED_OUTPUT_DESCRIPTOR("metadata-producer", prepared_output),
+	PREPARED_OUTPUT_DESCRIPTOR("metadata-producer-missing", prepared_output_missing),
+};
+
 static const struct spa_fgn_descriptor *find_descriptor(const char *name)
 {
 	uint32_t i;
@@ -379,6 +482,9 @@ static const struct spa_fgn_descriptor *find_descriptor(const char *name)
 	for (i = 0; i < SPA_N_ELEMENTS(flow_descriptors); i++)
 		if (strcmp(name, flow_descriptors[i].name) == 0)
 			return &flow_descriptors[i];
+	for (i = 0; i < SPA_N_ELEMENTS(prepared_descriptors); i++)
+		if (strcmp(name, prepared_descriptors[i].name) == 0)
+			return &prepared_descriptors[i];
 	return NULL;
 }
 

@@ -61,6 +61,7 @@ struct fgn_storage {
 
 struct fgn_port {
 	struct fgn_node *node;
+	struct spa_fgn_port_info effective_info;
 	const struct spa_fgn_port_info *info;
 	const struct spa_fgn_format *format;
 	size_t payload_size;
@@ -779,6 +780,43 @@ static void node_free(struct fgn_node *node)
 	free(node);
 }
 
+static int prepare_port_metadata(struct fgn_node *node,
+		const struct spa_fgn_port_info *info, struct fgn_port *port)
+{
+	const struct spa_meta_requirement *metas = NULL;
+	uint32_t n_metas = 0;
+	int res;
+
+	port->effective_info = *info;
+	port->info = &port->effective_info;
+	if (!spa_fgn_descriptor_has_get_port_metadata(node->descriptor) ||
+	    node->descriptor->get_port_metadata == NULL)
+		return 0;
+	if ((res = node->descriptor->get_port_metadata(node->instance,
+			info->index, &metas, &n_metas)) < 0)
+		return res;
+	if (n_metas >= SPA_FGN_MAX_METAS || n_metas != info->n_metas ||
+	    (n_metas > 0 && metas == NULL))
+		return -EINVAL;
+	for (uint32_t i = 0; i < n_metas; i++) {
+		const struct spa_meta_requirement *requirement = &metas[i];
+		const struct spa_meta_requirement *declared = NULL;
+		for (uint32_t j = 0; j < i; j++)
+			if (metas[j].type == requirement->type)
+				return -EEXIST;
+		for (uint32_t j = 0; j < info->n_metas; j++)
+			if (info->metas[j].type == requirement->type)
+				declared = &info->metas[j];
+		if (declared == NULL || requirement->size != declared->size ||
+		    requirement->reserved != 0 ||
+		    (requirement->flags & ~SPA_META_REQUIREMENT_REQUIRED) != 0 ||
+		    (requirement->flags & declared->flags) != declared->flags)
+			return -EINVAL;
+	}
+	port->effective_info.metas = metas;
+	return 0;
+}
+
 static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 {
 	struct spa_json props;
@@ -951,7 +989,8 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 			for (uint32_t l = 0; l < k; l++) if (info->metas[l].type == r->type) { res = -EEXIST; goto error; }
 		}
 		port->node = node;
-		port->info = info;
+		if ((res = prepare_port_metadata(node, info, port)) < 0)
+			goto error;
 		port->external = SPA_ID_INVALID;
 		if ((res = node->descriptor->get_port_format(node->instance,
 				info->index, &port->format)) < 0 ||
@@ -977,10 +1016,10 @@ static int load_node(struct spa_fgn_graph *graph, struct spa_json *json)
 		goto error;
 	}
 	for (uint32_t o = 0; o < node->descriptor->n_ports; o++) {
-		const struct spa_fgn_port_info *out = &node->descriptor->ports[o];
+		const struct spa_fgn_port_info *out = node->ports[o].info;
 		if (out->direction != SPA_DIRECTION_OUTPUT || out->propagation != SPA_META_PROPAGATION_PRESERVE) continue;
 		for (uint32_t in = 0; in < node->descriptor->n_ports; in++) {
-			const struct spa_fgn_port_info *source = &node->descriptor->ports[in];
+			const struct spa_fgn_port_info *source = node->ports[in].info;
 			if (source->direction != SPA_DIRECTION_INPUT || source->flags & SPA_FGN_PORT_FLAG_PARAMETER) continue;
 			for (uint32_t m = 0; m < source->n_metas; m++) {
 				if (spa_meta_type_is_transport_owned(source->metas[m].type)) continue;
