@@ -1543,6 +1543,67 @@ static void test_independent_metadata(const char *plugin)
 	graph=NULL;assert(spa_fgn_graph_new(config,&graph)==-ENOTSUP);assert(graph==NULL);
 }
 
+static void test_prepared_metadata(const char *plugin)
+{
+	struct spa_fgn_graph *graph = NULL, *strict = NULL;
+	const struct spa_fgn_port_info *strict_info, *ordinary_info;
+	const char *node_name;
+	char config[2048];
+	int len;
+	const char *invalid[] = { "bad-size", "drop-required", "duplicate", "unknown-id",
+		"reserved", "unknown-flags", "bounds", "null", "drop-count", "failure" };
+
+	/* A strict prepared input rejects an upstream layout missing its identity. */
+	for (unsigned i = 0; i < 2; i++) {
+		len = snprintf(config, sizeof(config),
+			"{ nodes = [ { type = ndarray name = source plugin = \"%s\" label = metadata-producer-missing }"
+			" { type = ndarray name = sink plugin = \"%s\" label = prepared-metadata config = { mode = %s } } ]"
+			" links = [ { output = \"source:out\" input = \"sink:in\" } ] outputs = [ \"source:out\" ] }", plugin, plugin, i ? "strict" : "ordinary");
+		assert(len > 0 && (size_t)len < sizeof(config));
+		int result = spa_fgn_graph_new(config, &graph);
+		if (result != (i ? -ENOTSUP : 0))
+			fprintf(stderr, "prepared-metadata mode=%s result=%d expected=%d\n", i ? "strict" : "ordinary", result, i ? -ENOTSUP : 0);
+		assert(result == (i ? -ENOTSUP : 0));
+		if (i) assert(graph == NULL);
+		spa_fgn_graph_free(graph); graph = NULL;
+	}
+	len = snprintf(config, sizeof(config),
+		"{ nodes = [ { type = ndarray name = source plugin = \"%s\" label = metadata-producer }"
+		" { type = ndarray name = sink plugin = \"%s\" label = prepared-metadata config = { mode = strict } } ]"
+		" links = [ { output = \"source:out\" input = \"sink:in\" } ] outputs = [ \"source:out\" ] }", plugin, plugin);
+	assert(len > 0 && (size_t)len < sizeof(config));
+	assert(spa_fgn_graph_new(config, &graph) == 0);
+	spa_fgn_graph_free(graph); graph = NULL;
+
+	/* Two live instances expose different requirements without changing the static table. */
+	len = snprintf(config, sizeof(config), "{ nodes = [ { type = ndarray name = sink plugin = \"%s\" label = prepared-metadata config = { mode = strict } } ] }", plugin);
+	assert(len > 0 && (size_t)len < sizeof(config));
+	assert(spa_fgn_graph_new(config, &strict) == 0);
+	assert(spa_fgn_graph_get_port_info(strict, SPA_DIRECTION_INPUT, 0, &node_name, &strict_info) == 0);
+	assert(strict_info->metas[0].flags == SPA_META_REQUIREMENT_REQUIRED);
+	for (unsigned i = 0; i < 4; i++) {
+		const char *label = i == 2 ? "prepared-metadata-null" : i == 3 ? "prepared-metadata-short" : "prepared-metadata";
+		const char *mode = i == 0 ? "ordinary" : i == 1 ? "reordered" : "strict";
+		len = snprintf(config, sizeof(config), "{ nodes = [ { type = ndarray name = sink plugin = \"%s\" label = %s config = { mode = %s } } ] }", plugin, label, mode);
+		assert(len > 0 && (size_t)len < sizeof(config));
+		assert(spa_fgn_graph_new(config, &graph) == 0);
+		assert(spa_fgn_graph_get_port_info(graph, SPA_DIRECTION_INPUT, 0, &node_name, &ordinary_info) == 0);
+		assert(ordinary_info != strict_info);
+		for (uint32_t j = 0; j < ordinary_info->n_metas; j++)
+			if (ordinary_info->metas[j].type == SPA_META_AcquisitionIdentity)
+				assert(ordinary_info->metas[j].flags == 0);
+		assert(strict_info->metas[0].flags == SPA_META_REQUIREMENT_REQUIRED);
+		spa_fgn_graph_free(graph); graph = NULL;
+	}
+	spa_fgn_graph_free(strict);
+	for (unsigned i = 0; i < SPA_N_ELEMENTS(invalid); i++) {
+		len = snprintf(config, sizeof(config), "{ nodes = [ { type = ndarray name = sink plugin = \"%s\" label = prepared-metadata config = { mode = %s } } ] }", plugin, invalid[i]);
+		assert(len > 0 && (size_t)len < sizeof(config));
+		assert(spa_fgn_graph_new(config, &graph) < 0);
+		assert(graph == NULL);
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	struct spa_fgn_graph *graph = NULL;
@@ -1572,6 +1633,7 @@ int main(int argc, char *argv[])
 	test_graph_admission(argv[1]);
 	if (argc >= 4) test_independent_metadata(argv[1]);
 	if (argc >= 3) {
+		test_prepared_metadata(argv[2]);
 		check_failed_property_snapshot(argv[2]);
 		test_process_failure_state_boundary(argv[2]);
 	}

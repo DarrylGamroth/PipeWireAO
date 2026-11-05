@@ -397,6 +397,24 @@ struct spa_fgn_descriptor {
 	 * struct_size ends before this field are equivalent to a NULL callback.
 	 */
 	int (*prepare_process_thread)(void *instance);
+
+	/**
+	 * Return prepared metadata requirements for one descriptor port index.
+	 *
+	 * This optional ABI-v8 tail callback runs only during cold graph construction,
+	 * after instantiate(). Return zero on success or a negative errno on failure.
+	 * The returned table is immutable, borrowed, and valid until cleanup(). It
+	 * must contain exactly the static port's metadata IDs and sizes, without
+	 * duplicates or reserved fields. Only SPA_META_REQUIREMENT_REQUIRED may be
+	 * added to an optional record; static required records cannot be weakened.
+	 * Record geometry, port layouts, and the global descriptor remain unchanged.
+	 * The host validates the table before link admission or storage allocation.
+	 * Descriptors ending before this field, or a NULL callback, use the static
+	 * requirements. The callback does not run during processing or property and
+	 * parameter replacement; changed requirements require graph reconstruction.
+	 */
+	int (*get_port_metadata)(void *instance, uint32_t port,
+			const struct spa_meta_requirement **metas, uint32_t *n_metas);
 };
 
 /** Size of the original ABI-v7 descriptor prefix. */
@@ -410,6 +428,15 @@ static inline bool spa_fgn_descriptor_has_prepare_process_thread(
 	return descriptor != NULL && descriptor->struct_size >=
 		offsetof(struct spa_fgn_descriptor, prepare_process_thread) +
 		sizeof(descriptor->prepare_process_thread);
+}
+
+/** Whether an ABI-v8 descriptor contains the optional prepared-metadata field. */
+static inline bool spa_fgn_descriptor_has_get_port_metadata(
+		const struct spa_fgn_descriptor *descriptor)
+{
+	return descriptor != NULL && descriptor->struct_size >=
+		offsetof(struct spa_fgn_descriptor, get_port_metadata) +
+		sizeof(descriptor->get_port_metadata);
 }
 
 /** Interface returned by one shared library. */

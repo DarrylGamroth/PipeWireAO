@@ -69,6 +69,18 @@ storage. Populate payloads per frame without allocation; do not resize or rewrit
 exported descriptor arrays during processing. Initialize owned slots on reuse so
 stale facts cannot leak. Preserve borrowed data only for the buffer lease.
 
+FGN ABI 8 provides an optional `get_port_metadata()` descriptor tail callback for
+requirements determined during instance preparation. The callback returns an
+immutable borrowed table valid until instance cleanup. Its record IDs and sizes
+must match the static descriptor exactly; it can only strengthen optional records
+to required records. It cannot remove static requirements, change geometry, or
+mutate the global descriptor. The host validates this table during cold graph
+construction and uses its per-instance port description for upstream link
+admission, external port inspection, propagation checks, and storage allocation.
+A missing tail field or null callback retains the static requirements. Updating
+prepared requirements requires graph reconstruction; no callback or table mutation
+occurs in processing.
+
 The normal GUI shows populated values: sequence, timestamp in nanoseconds, clock,
 exposure and applicable chopping/trigger state. It does not show event indices,
 allocation status, type IDs, record byte sizes, empty fields or duplicated Header
