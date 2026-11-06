@@ -4,6 +4,7 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,7 @@
 #include <spa/pod/filter.h>
 
 #include <pipewire/ndarray-filter.h>
+#include <pipewire/loop.h>
 
 static int process(void *data SPA_UNUSED,
 		const struct pw_ndarray_filter_buffer *inputs SPA_UNUSED,
@@ -255,6 +257,64 @@ static void test_valid_config(void)
 	config.flags = saved_flags;
 }
 
+struct command_data {
+	struct pw_loop *loop;
+	struct spa_source *source;
+	pthread_t owner;
+	uint64_t count;
+};
+
+static void command_event(void *userdata, uint64_t count)
+{
+	struct command_data *data = userdata;
+
+	spa_assert_se(pthread_equal(data->owner, pthread_self()));
+	data->count += count;
+}
+
+static void *signal_command(void *userdata)
+{
+	struct command_data *data = userdata;
+
+	spa_assert_se(!pthread_equal(data->owner, pthread_self()));
+	spa_assert_se(pw_loop_signal_event(data->loop, data->source) == 0);
+	return NULL;
+}
+
+static void test_owner_loop(void)
+{
+	struct pw_ndarray_filter *filter = NULL;
+	struct command_data data = { .owner = pthread_self() };
+	pthread_t sender;
+
+	spa_assert_se(pw_ndarray_filter_get_loop(NULL) == NULL);
+	spa_assert_se(pw_ndarray_filter_new(&config, &filter) == 0);
+	data.loop = pw_ndarray_filter_get_loop(filter);
+	spa_assert_se(data.loop != NULL);
+	spa_assert_se(pw_ndarray_filter_get_loop(filter) == data.loop);
+	data.source = pw_loop_add_event(data.loop, command_event, &data);
+	spa_assert_se(data.source != NULL);
+
+	/* Both commands are pending before the owner starts dispatching. */
+	spa_assert_se(pw_loop_signal_event(data.loop, data.source) == 0);
+	spa_assert_se(pthread_create(&sender, NULL, signal_command, &data) == 0);
+	spa_assert_se(pthread_join(sender, NULL) == 0);
+	spa_assert_se(data.count == 0);
+	pw_loop_enter(data.loop);
+	spa_assert_se(pw_loop_iterate(data.loop, 1000) >= 0);
+	pw_loop_leave(data.loop);
+	spa_assert_se(data.count == 2);
+
+	/* Removing a pending source must prevent its callback after teardown. */
+	spa_assert_se(pw_loop_signal_event(data.loop, data.source) == 0);
+	pw_loop_destroy_source(data.loop, data.source);
+	pw_loop_enter(data.loop);
+	spa_assert_se(pw_loop_iterate(data.loop, 0) >= 0);
+	pw_loop_leave(data.loop);
+	spa_assert_se(data.count == 2);
+	pw_ndarray_filter_destroy(filter);
+}
+
 static void test_config_validation(void)
 {
 	struct pw_ndarray_filter_config saved_config = config;
@@ -393,6 +453,7 @@ int main(void)
 {
 	test_negotiated_format_strings();
 	test_valid_config();
+	test_owner_loop();
 	test_config_validation();
 	return 0;
 }

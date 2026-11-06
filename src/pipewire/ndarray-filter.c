@@ -2104,6 +2104,14 @@ error:
 }
 
 SPA_EXPORT
+struct pw_loop *pw_ndarray_filter_get_loop(struct pw_ndarray_filter *filter)
+{
+	if (filter == NULL || filter->main_loop == NULL)
+		return NULL;
+	return pw_main_loop_get_loop(filter->main_loop);
+}
+
+SPA_EXPORT
 int pw_ndarray_filter_connect(struct pw_ndarray_filter *filter)
 {
 	enum pw_filter_flags flags = 0;
