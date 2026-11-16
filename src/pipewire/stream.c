@@ -1738,6 +1738,9 @@ static int stream_disconnect(struct stream *impl)
 		return -EBUSY;
 
 	impl->disconnecting = true;
+	/* Retire queued driver callbacks before destroying their node. */
+	if (impl->data_loop != NULL)
+		pw_loop_invoke(impl->data_loop, NULL, 0, NULL, 0, true, impl);
 
 	if (stream->node)
 		pw_impl_node_set_active(stream->node, false);
