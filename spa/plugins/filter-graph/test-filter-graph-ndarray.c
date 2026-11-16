@@ -1085,16 +1085,21 @@ static void test_conditional_outputs(const char *plugin)
 	spa_fgn_graph_free(graph);
 
 	/* A frame-rate external input is consumed only when the required
-	 * conditional output of the block-rate aggregator is present. */
+	 * conditional output reaches the consumer through an ordinary node. */
 	res = snprintf(config, sizeof(config),
 		"{ nodes = ["
 		" { type = ndarray name = aggregate plugin = \"%s\""
 		"   label = aggregate-f32 }"
+		" { type = ndarray name = intermediate plugin = \"%s\""
+		"   label = gated-add-f32 }"
 		" { type = ndarray name = gated plugin = \"%s\""
 		"   label = gated-add-f32 }"
-		"] links = [ { output = \"aggregate:out\" input = \"gated:in\" } ]"
+		"] links = ["
+		" { output = \"aggregate:out\" input = \"intermediate:in\" }"
+		" { output = \"aggregate:out\" input = \"intermediate:feedback\" }"
+		" { output = \"intermediate:out\" input = \"gated:in\" } ]"
 		" inputs = [ \"aggregate:in\" \"gated:feedback\" ]"
-		" outputs = [ \"gated:out\" ] }", plugin, plugin);
+		" outputs = [ \"gated:out\" ] }", plugin, plugin, plugin);
 	assert(res > 0 && (size_t)res < sizeof(config));
 	assert(spa_fgn_graph_new(config, &graph) == 0);
 	assert(spa_fgn_graph_get_port_format(graph, SPA_DIRECTION_INPUT,
@@ -1115,7 +1120,7 @@ static void test_conditional_outputs(const char *plugin)
 	assert(spa_fgn_graph_process(graph, inputs, 2, outputs, 1) == 0);
 	assert(output.chunk.size == 4 * sizeof(float));
 	for (i = 0; i < 4; i++)
-		assert(output.values[i] == input.values[i] + feedback.values[i]);
+		assert(output.values[i] == 2.0f * input.values[i] + feedback.values[i]);
 	assert(spa_fgn_graph_deactivate(graph) == 0);
 	spa_fgn_graph_free(graph);
 

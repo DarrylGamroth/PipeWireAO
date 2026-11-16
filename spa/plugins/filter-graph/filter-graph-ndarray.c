@@ -75,6 +75,7 @@ struct fgn_port {
 };
 
 struct fgn_node {
+	bool conditionally_scheduled;
 	char *name;
 	void *library;
 	bool retain_library;
@@ -1292,11 +1293,32 @@ static bool input_gated_by_conditional_output(const struct fgn_port *port)
 
 		if (source != NULL &&
 		    !(input->info->flags & SPA_FGN_PORT_FLAG_OPTIONAL) &&
-		    (source->info->flags & SPA_FGN_PORT_FLAG_CONDITIONAL) &&
+		    ((source->info->flags & SPA_FGN_PORT_FLAG_CONDITIONAL) ||
+		     source->node->conditionally_scheduled) &&
 		    format_rate_equal(source->format, port->format))
 			return true;
 	}
 	return false;
+}
+
+/* A node with a required, unavailable input cannot publish in that cycle.
+ * Walk in execution order so this applies through ordinary frame stages. */
+static void mark_conditional_nodes(const struct spa_fgn_graph *graph)
+{
+	for (uint32_t i = 0; i < graph->n_nodes; i++) {
+		struct fgn_node *node = graph->order[i];
+		for (uint32_t j = 0; j < node->n_inputs; j++) {
+			const struct fgn_port *input = node->inputs[j];
+			const struct fgn_port *source = input->source;
+			if (source == NULL || input->info->flags & SPA_FGN_PORT_FLAG_OPTIONAL)
+				continue;
+			if (source->info->flags & SPA_FGN_PORT_FLAG_CONDITIONAL ||
+			    source->node->conditionally_scheduled) {
+				node->conditionally_scheduled = true;
+				break;
+			}
+		}
+	}
 }
 
 static int validate_graph(const struct spa_fgn_graph *graph)
@@ -1486,7 +1508,10 @@ int spa_fgn_graph_new(const char *config, struct spa_fgn_graph **result)
 	if (!have_outputs && (res = load_default_ports(graph,
 			SPA_DIRECTION_OUTPUT)) < 0)
 		goto error;
-	if ((res = validate_graph(graph)) < 0 || (res = sort_graph(graph)) < 0 ||
+	if ((res = sort_graph(graph)) < 0)
+		goto error;
+	mark_conditional_nodes(graph);
+	if ((res = validate_graph(graph)) < 0 ||
 	    (res = queue_initial_property_transaction(graph)) < 0)
 		goto error;
 	*result = graph;
