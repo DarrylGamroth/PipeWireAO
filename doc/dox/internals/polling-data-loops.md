@@ -158,6 +158,19 @@ queue at that topology boundary.
 The flag describes process ownership and is immutable after the node first
 reports its flags. A poll driver cannot be assigned an external driver.
 
+Whole-frame video poll drivers using the default output mode loan
+host-allocated output buffers to the linked inputs. Each link has a mailbox for one frame.
+A full mailbox skips new frames for that input without disturbing its pending
+frame. The driver recycles each ID after all inputs that received it return it.
+If the pool fills, the driver can run cycles without an output frame to collect
+returns and resume acquisition.
+
+This transport uses the native client-node protocol to negotiate the mailbox
+with exported inputs. The default video input mixer and clients with mailbox
+support are required. With the current buffer table, the source pool can have
+up to 64 buffers. If a remote input disconnects before acknowledging buffer
+revocation, its remaining loans are held until the output pool is replaced.
+
 ## Exported and remote nodes
 
 Activation version 2 is shared between the daemon and an exported node's

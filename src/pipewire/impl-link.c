@@ -52,6 +52,7 @@ struct impl {
 	struct pw_properties *properties;
 
 	struct spa_io_buffers io[2];
+	struct pw_memblock *poll_io;
 };
 
 /** \endcond */
@@ -646,7 +647,7 @@ static void select_io(struct pw_impl_link *this)
 	struct impl *impl = SPA_CONTAINER_OF(this, struct impl, this);
 	struct spa_io_buffers *io;
 
-	io = this->rt.in_mix.io_data;
+	io = impl->poll_io != NULL ? impl->poll_io->map->ptr : this->rt.in_mix.io_data;
 	if (io == NULL)
 		io = this->rt.out_mix.io_data;
 	if (io == NULL)
@@ -742,6 +743,12 @@ static int do_allocation(struct pw_impl_link *this)
 		pw_log_debug("%p: allocating %d buffers %p", this,
 			     output->buffers.n_buffers, output->buffers.buffers);
 
+		if (this->rt.in_mix.poll_buffers && output->buffers.n_buffers > PW_POLL_MAX_BUFFERS) {
+			res = -ENOTSUP;
+			error = strdup("poll driver output buffer count exceeds 64");
+			goto error_clear;
+		}
+
 		if ((res = pw_impl_port_use_buffers(output, &this->rt.out_mix, flags,
 						output->buffers.buffers,
 						output->buffers.n_buffers)) < 0) {
@@ -811,7 +818,9 @@ int pw_impl_link_activate(struct pw_impl_link *this)
 	reliable_driver = (impl->output.node == impl->input.node->driver_node) &&
 		impl->output.node->reliable;
 
-	if (this->async && !reliable_driver) {
+	/* Poll-driver links have an atomic mailbox, even for async clients.
+	 * A single slot also keeps delayed deliveries in publication order. */
+	if (this->async && !reliable_driver && !this->rt.in_mix.poll_buffers) {
 		io_type = SPA_IO_AsyncBuffers;
 		io_size = sizeof(struct spa_io_async_buffers);
 	} else {
@@ -912,13 +921,92 @@ exit:
 			  this, -EBUSY, (pw_work_func_t) check_states, this);
 }
 
+struct poll_loan_retirement {
+	struct spa_hook input_listener;
+	struct spa_hook output_listener;
+	struct pw_impl_port *output;
+	struct pw_poll_buffer_loans loans;
+	int seq, revoke_seq;
+	bool revoke_failed;
+};
+
+static void discard_poll_loan_retirement(void *data)
+{
+	struct poll_loan_retirement *retirement = data;
+
+	spa_hook_remove(&retirement->input_listener);
+	spa_hook_remove(&retirement->output_listener);
+	free(retirement);
+}
+
+static void poll_loan_revocation_result(void *data, int seq, int res,
+		uint32_t type, const void *result)
+{
+	struct poll_loan_retirement *retirement = data;
+
+	if (type == SPA_RESULT_TYPE_NODE_ERROR && res < 0 &&
+			SPA_RESULT_ASYNC_SEQ(seq) == retirement->revoke_seq)
+		retirement->revoke_failed = true;
+	if (seq != retirement->seq)
+		return;
+	if (res >= 0 && !retirement->revoke_failed)
+		pw_impl_port_restore_poll_loans(retirement->output, &retirement->loans);
+	discard_poll_loan_retirement(retirement);
+}
+
+static const struct pw_impl_node_events poll_loan_input_events = {
+	PW_VERSION_IMPL_NODE_EVENTS,
+	.destroy = discard_poll_loan_retirement,
+	.result = poll_loan_revocation_result,
+};
+
+static const struct pw_impl_port_events poll_loan_output_events = {
+	PW_VERSION_IMPL_PORT_EVENTS,
+	.destroy = discard_poll_loan_retirement,
+};
+
+static void retire_poll_loans(struct pw_impl_node *input, struct pw_impl_port *output,
+		const struct pw_poll_buffer_loans *loans, int result)
+{
+	struct poll_loan_retirement *retirement;
+
+	/* Until revocation succeeds the IDs remain out of circulation. */
+	if (loans->ids == 0 || result < 0 || output->destroying)
+		return;
+	if (!SPA_RESULT_IS_ASYNC(result)) {
+		if (!input->remote)
+			pw_impl_port_restore_poll_loans(output, loans);
+		return;
+	}
+
+	retirement = calloc(1, sizeof(*retirement));
+	if (retirement == NULL)
+		return;
+	retirement->output = output;
+	retirement->loans = *loans;
+	retirement->revoke_seq = SPA_RESULT_ASYNC_SEQ(result);
+	retirement->seq = spa_node_sync(input->node, result);
+	if (!SPA_RESULT_IS_ASYNC(retirement->seq)) {
+		free(retirement);
+		return;
+	}
+	pw_impl_node_add_listener(input, &retirement->input_listener,
+			&poll_loan_input_events, retirement);
+	pw_impl_port_add_listener(output, &retirement->output_listener,
+			&poll_loan_output_events, retirement);
+}
+
 static void input_remove(struct pw_impl_link *this)
 {
 	struct impl *impl = (struct impl *) this;
 	struct port_info *info = &impl->input;
 	struct pw_impl_port_mix *mix = info->mix;
 	struct pw_impl_port *port = info->port;
+	struct pw_poll_buffer_loans loans = { 0 };
 	int res;
+
+	if (mix->poll_buffers)
+		loans = pw_impl_port_detach_poll_loans(&this->rt.out_mix);
 
 	pw_log_debug("%p: remove input port %p", this, port);
 
@@ -941,6 +1029,8 @@ static void input_remove(struct pw_impl_link *this)
 		pw_log_warn("%p: port %p clear error %s", this, port, spa_strerror(res));
 
 	pw_impl_port_release_mix(port, mix);
+	if (mix->poll_buffers)
+		retire_poll_loans(port->node, this->output, &loans, res);
 
 	pw_work_queue_cancel(impl->work, info, SPA_ID_INVALID);
 	this->input = NULL;
@@ -1551,6 +1641,19 @@ struct pw_impl_link *pw_context_create_link(struct pw_context *context,
 	this->rt.out_mix.peer_id = input->global->id;
 	this->rt.in_mix.peer_id = output->global->id;
 
+	this->rt.out_mix.poll_buffers = this->rt.in_mix.poll_buffers =
+		pw_impl_port_uses_poll_buffers(output);
+	if (this->rt.in_mix.poll_buffers && (input_node->remote || output_node->remote)) {
+		/* A link to the same client can be created before it revokes this
+		 * link. Keep their shared I/O storage distinct. */
+		impl->poll_io = pw_mempool_alloc(context->pool,
+				PW_MEMBLOCK_FLAG_READWRITE | PW_MEMBLOCK_FLAG_SEAL |
+				PW_MEMBLOCK_FLAG_MAP, SPA_DATA_MemFd, sizeof(impl->io));
+		if (impl->poll_io == NULL) {
+			res = -errno;
+			goto error_free;
+		}
+	}
 	if ((res = pw_impl_port_init_mix(output, &this->rt.out_mix)) < 0)
 		goto error_output_mix;
 	this->rt.out_mix.peer = &this->rt.in_mix;
@@ -1643,6 +1746,8 @@ error_input_mix:
 	pw_impl_port_release_mix(output, &this->rt.out_mix);
 	goto error_free;
 error_free:
+	if (impl->poll_io != NULL)
+		pw_memblock_unref(impl->poll_io);
 	free(impl);
 error_exit:
 	pw_properties_free(properties);
@@ -1778,6 +1883,8 @@ void pw_impl_link_destroy(struct pw_impl_link *link)
 	free(link->name);
 	free(link->info.format);
 	free((char *) link->info.error);
+	if (impl->poll_io != NULL)
+		pw_memblock_unref(impl->poll_io);
 	free(impl);
 }
 

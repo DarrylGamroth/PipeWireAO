@@ -123,6 +123,12 @@ struct impl {
 
 	struct spa_hook node_listener;
 
+	uint32_t poll_refs[PW_POLL_MAX_BUFFERS];
+	uint32_t poll_outstanding;
+	uint64_t poll_returns;
+	uint64_t poll_generation;
+	uint32_t poll_links;
+	bool poll_pool;
 	unsigned int cache_params:1;
 };
 
@@ -384,6 +390,109 @@ struct mix_io_update {
 	struct spa_io_buffers *io[2];
 };
 
+bool pw_impl_port_uses_poll_buffers(const struct pw_impl_port *port)
+{
+	const struct impl *impl = SPA_CONTAINER_OF(port, const struct impl, this);
+	const char *media_class;
+
+	if (port->direction != PW_DIRECTION_OUTPUT)
+		return false;
+	if (SPA_ATOMIC_LOAD(impl->poll_pool))
+		return true;
+	if (port->n_mix != 0)
+		return false;
+	media_class = pw_properties_get(port->node->properties, PW_KEY_MEDIA_CLASS);
+	return port->mix == &impl->mix_node && !PW_IMPL_PORT_IS_CONTROL(port) &&
+		!(port->spa_flags & SPA_PORT_FLAG_CAN_ALLOC_BUFFERS) &&
+		(port->node->spa_flags & SPA_NODE_FLAG_POLL_DRIVER) &&
+		!port->node->row_transport && !port->reliable &&
+		media_class != NULL && spa_strstartswith(media_class, "Video/");
+}
+
+static bool claim_poll_buffer(struct spa_io_buffers *io, int32_t status)
+{
+	return SPA_ATOMIC_CAS(io->status, status, -EBUSY);
+}
+
+static void drop_poll_ref(struct impl *impl, uint32_t id)
+{
+	if (--impl->poll_refs[id] == 0) {
+		impl->poll_outstanding--;
+		impl->poll_returns |= UINT64_C(1) << id;
+	}
+}
+
+static void drop_poll_lease(struct impl *impl, struct pw_impl_port_mix *mix, uint32_t id)
+{
+	if (mix->rt.poll_generation == impl->poll_generation && id < PW_POLL_MAX_BUFFERS &&
+			(mix->rt.poll_leases & (UINT64_C(1) << id))) {
+		mix->rt.poll_leases &= ~(UINT64_C(1) << id);
+		drop_poll_ref(impl, id);
+	}
+}
+
+static void cancel_poll_publication(struct impl *impl, struct pw_impl_port_mix *mix)
+{
+	struct spa_io_buffers *io = mix->io[0];
+	int32_t status = SPA_ATOMIC_LOAD(io->status);
+
+	if ((status == SPA_STATUS_HAVE_DATA || status == SPA_STATUS_NEED_DATA) &&
+			claim_poll_buffer(io, status)) {
+		drop_poll_lease(impl, mix, SPA_ATOMIC_LOAD(io->buffer_id));
+		SPA_ATOMIC_STORE(io->buffer_id, SPA_ID_INVALID);
+		SPA_ATOMIC_STORE(io->status, SPA_STATUS_NEED_DATA);
+	}
+}
+
+static int detach_poll_loans(struct spa_loop *loop, bool async, uint32_t seq,
+		const void *data, size_t size, void *user_data)
+{
+	struct pw_impl_port_mix *mix = user_data;
+	struct pw_poll_buffer_loans *loans = *(struct pw_poll_buffer_loans **)data;
+	struct impl *impl = SPA_CONTAINER_OF(mix->p, struct impl, this);
+
+	if (mix->rt.poll_generation == impl->poll_generation)
+		*loans = (struct pw_poll_buffer_loans) { mix->rt.poll_leases, mix->rt.poll_generation };
+	mix->rt.poll_leases = 0;
+	return 0;
+}
+
+struct pw_poll_buffer_loans pw_impl_port_detach_poll_loans(struct pw_impl_port_mix *mix)
+{
+	struct pw_poll_buffer_loans loans = { 0 }, *result = &loans;
+
+	pw_loop_locked(mix->p->node->data_loop, detach_poll_loans,
+			SPA_ID_INVALID, &result, sizeof(result), mix);
+	return loans;
+}
+
+static int restore_poll_loans(struct spa_loop *loop, bool async, uint32_t seq,
+		const void *data, size_t size, void *user_data)
+{
+	struct impl *impl = user_data;
+	const struct pw_poll_buffer_loans *loans = data;
+	uint64_t ids = loans->ids;
+
+	if (loans->generation != impl->poll_generation)
+		return 0;
+	while (ids) {
+		uint32_t id = __builtin_ctzll(ids);
+		ids &= ids - 1;
+		drop_poll_ref(impl, id);
+	}
+	return 0;
+}
+
+void pw_impl_port_restore_poll_loans(struct pw_impl_port *port,
+		const struct pw_poll_buffer_loans *loans)
+{
+	struct impl *impl = SPA_CONTAINER_OF(port, struct impl, this);
+
+	if (loans->ids != 0)
+		pw_loop_locked(port->node->data_loop, restore_poll_loans,
+				SPA_ID_INVALID, loans, sizeof(*loans), impl);
+}
+
 static int do_set_mix_io(struct spa_loop *loop,
 		bool async, uint32_t seq, const void *data, size_t size, void *user_data)
 {
@@ -392,6 +501,9 @@ static int do_set_mix_io(struct spa_loop *loop,
 	struct pw_impl_port *this = mix->p;
 	struct impl *impl = SPA_CONTAINER_OF(this, struct impl, this);
 
+	if (mix->rt.active && update->io[0] != mix->io[0] &&
+			this->direction == PW_DIRECTION_OUTPUT && mix->poll_buffers)
+		cancel_poll_publication(impl, mix);
 	if (update->data == NULL && mix->rt.active) {
 		spa_list_remove(&mix->rt.link);
 		mix->rt.active = false;
@@ -410,7 +522,10 @@ static int do_remove_mix(struct spa_loop *loop,
 		bool async, uint32_t seq, const void *data, size_t size, void *user_data)
 {
 	struct pw_impl_port_mix *mix = user_data;
+	struct impl *impl = SPA_CONTAINER_OF(mix->p, struct impl, this);
 
+	if (mix->poll_buffers && mix->p->direction == PW_DIRECTION_OUTPUT)
+		SPA_ATOMIC_DEC(impl->poll_links);
 	if (mix->rt.active) {
 		spa_list_remove(&mix->rt.link);
 		mix->rt.active = false;
@@ -455,6 +570,70 @@ static int port_set_io(void *object,
 	return 0;
 }
 
+bool pw_impl_port_collect_poll_buffers(struct pw_impl_port *port)
+{
+	struct impl *impl = SPA_CONTAINER_OF(port, struct impl, this);
+	struct pw_impl_port_mix *mix;
+
+	if (!SPA_ATOMIC_LOAD(impl->poll_pool) || port->buffers.n_buffers == 0)
+		return false;
+
+	spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
+		struct spa_io_buffers *io = mix->io[0];
+
+		if (SPA_ATOMIC_LOAD(io->status) == SPA_STATUS_NEED_DATA &&
+				SPA_ATOMIC_LOAD(io->buffer_id) != SPA_ID_INVALID &&
+				claim_poll_buffer(io, SPA_STATUS_NEED_DATA)) {
+			drop_poll_lease(impl, mix, SPA_ATOMIC_LOAD(io->buffer_id));
+			SPA_ATOMIC_STORE(io->buffer_id, SPA_ID_INVALID);
+			SPA_ATOMIC_STORE(io->status, SPA_STATUS_NEED_DATA);
+		}
+	}
+	if (port->rt.io.status != SPA_STATUS_HAVE_DATA &&
+			port->rt.io.buffer_id == SPA_ID_INVALID && impl->poll_returns) {
+		uint32_t id = __builtin_ctzll(impl->poll_returns);
+		impl->poll_returns &= ~(UINT64_C(1) << id);
+		if (id < port->buffers.n_buffers) {
+			port->rt.io.buffer_id = id;
+			port->rt.io.status = SPA_STATUS_NEED_DATA;
+			return false;
+		}
+	}
+	return impl->poll_outstanding == port->buffers.n_buffers;
+}
+
+static void tee_poll_buffer(struct impl *impl)
+{
+	struct spa_io_buffers *io = &impl->this.rt.io;
+	struct pw_impl_port_mix *mix;
+	uint32_t id = io->buffer_id;
+
+	if (id >= impl->this.buffers.n_buffers || id >= PW_POLL_MAX_BUFFERS)
+		return;
+
+	spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
+		struct spa_io_buffers *peer = mix->io[0];
+		int32_t status = SPA_ATOMIC_LOAD(peer->status);
+
+		if ((status != SPA_STATUS_NEED_DATA && status != SPA_STATUS_OK) ||
+				!claim_poll_buffer(peer, status))
+			continue;
+		if (mix->rt.poll_generation != impl->poll_generation) {
+			mix->rt.poll_generation = impl->poll_generation;
+			mix->rt.poll_leases = 0;
+		}
+		drop_poll_lease(impl, mix, SPA_ATOMIC_LOAD(peer->buffer_id));
+		mix->rt.poll_leases |= UINT64_C(1) << id;
+		if (impl->poll_refs[id]++ == 0)
+			impl->poll_outstanding++;
+		SPA_ATOMIC_STORE(peer->buffer_id, id);
+		SPA_ATOMIC_STORE(peer->status, SPA_STATUS_HAVE_DATA);
+	}
+	if (impl->poll_refs[id] != 0)
+		io->buffer_id = SPA_ID_INVALID;
+	io->status = SPA_STATUS_NEED_DATA;
+}
+
 static int tee_process(void *object)
 {
 	struct impl *impl = object;
@@ -463,6 +642,11 @@ static int tee_process(void *object)
 	struct spa_io_buffers *io = &this->rt.io;
 	uint32_t cycle = this->node->rt.position->clock.cycle & 1;
 
+	if (SPA_ATOMIC_LOAD(impl->poll_pool)) {
+		if (io->status == SPA_STATUS_HAVE_DATA)
+			tee_poll_buffer(impl);
+		return SPA_STATUS_HAVE_DATA | SPA_STATUS_NEED_DATA;
+	}
 	pw_log_trace_fp("%p: tee input status:%d id:%d cycle:%d", this, io->status, io->buffer_id, cycle);
 	spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
 		pw_log_trace_fp("%p: port %d %p->%p id:%d", this,
@@ -544,6 +728,39 @@ static const struct spa_node_methods schedule_tee_node_reliable = {
 	.process = tee_process_reliable,
 };
 
+static void mix_poll_buffer(struct spa_io_buffers *io, struct pw_impl_port_mix *mix)
+{
+	struct spa_io_buffers *peer = mix->io[0];
+	uint32_t returned = io->status == SPA_STATUS_NEED_DATA ? io->buffer_id : SPA_ID_INVALID;
+
+	if (returned == SPA_ID_INVALID && mix->rt.poll_callbacks)
+		returned = __builtin_ctzll(mix->rt.poll_callbacks);
+	int32_t status = SPA_ATOMIC_LOAD(peer->status);
+
+	if (io->status == SPA_STATUS_HAVE_DATA)
+		return;
+	if (status == SPA_STATUS_HAVE_DATA && claim_poll_buffer(peer, status)) {
+		uint32_t id = SPA_ATOMIC_LOAD(peer->buffer_id);
+
+		if (returned < PW_POLL_MAX_BUFFERS)
+			mix->rt.poll_callbacks &= ~(UINT64_C(1) << returned);
+		SPA_ATOMIC_STORE(peer->buffer_id, returned);
+		SPA_ATOMIC_STORE(peer->status, SPA_STATUS_NEED_DATA);
+		io->buffer_id = id;
+		io->status = SPA_STATUS_HAVE_DATA;
+	} else if (status == SPA_STATUS_NEED_DATA &&
+			returned != SPA_ID_INVALID && claim_poll_buffer(peer, status)) {
+		if (SPA_ATOMIC_LOAD(peer->buffer_id) == SPA_ID_INVALID) {
+			SPA_ATOMIC_STORE(peer->buffer_id, returned);
+			if (returned < PW_POLL_MAX_BUFFERS)
+				mix->rt.poll_callbacks &= ~(UINT64_C(1) << returned);
+			if (io->status == SPA_STATUS_NEED_DATA && io->buffer_id == returned)
+				io->buffer_id = SPA_ID_INVALID;
+		}
+		SPA_ATOMIC_STORE(peer->status, SPA_STATUS_NEED_DATA);
+	}
+}
+
 static int schedule_mix_input(void *object)
 {
 	struct impl *impl = object;
@@ -557,6 +774,10 @@ static int schedule_mix_input(void *object)
 		return SPA_STATUS_HAVE_DATA | SPA_STATUS_NEED_DATA;
 
 	spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
+		if (mix->poll_buffers) {
+			mix_poll_buffer(io, mix);
+			break;
+		}
 		reliable |= mix->row_transport;
 		pw_log_trace_fp("%p: mix input %d %p->%p status:%d id:%d cycle:%d", this,
 				mix->port.port_id, mix->io[cycle], io,
@@ -581,6 +802,12 @@ static int schedule_mix_reuse_buffer(void *object, uint32_t port_id, uint32_t bu
 
 	spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
 		pw_log_trace_fp("%p: reuse buffer %d %d", impl, port_id, buffer_id);
+		if (mix->poll_buffers) {
+			if (buffer_id >= PW_POLL_MAX_BUFFERS)
+				return -EINVAL;
+			mix->rt.poll_callbacks |= UINT64_C(1) << buffer_id;
+			return 0;
+		}
 		if (mix->peer == NULL || mix->peer->p == NULL ||
 		    !mix->peer->p->node->row_transport)
 			return 0;
@@ -736,6 +963,15 @@ static const struct spa_node_methods schedule_mix_node = {
 	.process = schedule_mix_input,
 };
 
+static int add_poll_link(struct spa_loop *loop, bool async, uint32_t seq,
+		const void *data, size_t size, void *user_data)
+{
+	struct impl *impl = user_data;
+	SPA_ATOMIC_INC(impl->poll_links);
+	SPA_ATOMIC_STORE(impl->poll_pool, true);
+	return 0;
+}
+
 SPA_EXPORT
 int pw_impl_port_init_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mix)
 {
@@ -749,12 +985,14 @@ int pw_impl_port_init_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mi
 	    port->n_mix != 0)
 		return -EBUSY;
 	if (port->direction == PW_DIRECTION_INPUT && port->n_mix != 0) {
+		if (mix->poll_buffers)
+			return -EBUSY;
 		if (mix->peer != NULL && mix->peer->p != NULL &&
 		    mix->peer->p->node->row_transport)
 			return -EBUSY;
 		spa_list_for_each(other, &port->mix_list, link)
-			if (other->peer != NULL && other->peer->p != NULL &&
-			    other->peer->p->node->row_transport)
+			if (other->poll_buffers || (other->peer != NULL && other->peer->p != NULL &&
+			    other->peer->p->node->row_transport))
 				return -EBUSY;
 	}
 
@@ -792,6 +1030,12 @@ int pw_impl_port_init_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mi
 		spa_pod_dynamic_builder_clean(&b);
 	}
 
+	if (mix->poll_buffers && port->direction == PW_DIRECTION_OUTPUT) {
+		struct impl *impl = SPA_CONTAINER_OF(port, struct impl, this);
+		if ((res = pw_loop_locked(port->node->data_loop, add_poll_link,
+				SPA_ID_INVALID, NULL, 0, impl)) < 0)
+			goto error_remove_port;
+	}
 	spa_list_append(&port->mix_list, &mix->link);
 	port->n_mix++;
 
@@ -875,6 +1119,8 @@ static int check_properties(struct pw_impl_port *port)
 	}
 
 	new_bool = pw_properties_get_bool(port->properties, PW_KEY_PORT_RELIABLE, node->reliable);
+	if (SPA_ATOMIC_LOAD(impl->poll_pool))
+		new_bool = false;
 	if (new_bool != port->reliable && port->direction == PW_DIRECTION_OUTPUT) {
 		pw_log_info("%p: reliable %d->%d", port, port->reliable, new_bool);
 		port->reliable = new_bool;
@@ -2406,6 +2652,9 @@ int pw_impl_port_is_linked(struct pw_impl_port *port)
 	return spa_list_is_empty(&port->links) ? 0 : 1;
 }
 
+static int reset_poll_pool(struct spa_loop *loop, bool async, uint32_t seq,
+		const void *data, size_t size, void *user_data);
+
 SPA_EXPORT
 int pw_impl_port_set_param(struct pw_impl_port *port, uint32_t id, uint32_t flags,
 		      const struct spa_pod *param)
@@ -2456,7 +2705,11 @@ int pw_impl_port_set_param(struct pw_impl_port *port, uint32_t id, uint32_t flag
 	if (id == SPA_PARAM_Format) {
 		/* setting the format always destroys the negotiated buffers */
 		if (port->direction == PW_DIRECTION_OUTPUT) {
+			struct impl *impl = SPA_CONTAINER_OF(port, struct impl, this);
 			struct pw_impl_link *l;
+			if (SPA_ATOMIC_LOAD(impl->poll_pool))
+				pw_loop_locked(node->data_loop, reset_poll_pool,
+						SPA_ID_INVALID, NULL, 0, impl);
 			/* remove all buffers shared with an output port peer */
 			spa_list_for_each(l, &port->links, output_link)
 				pw_impl_port_use_buffers(l->input, &l->rt.in_mix, 0, NULL, 0);
@@ -2476,6 +2729,19 @@ int pw_impl_port_set_param(struct pw_impl_port *port, uint32_t id, uint32_t flag
 		}
 	}
 	return res;
+}
+
+static int reset_poll_pool(struct spa_loop *loop, bool async, uint32_t seq,
+		const void *data, size_t size, void *user_data)
+{
+	struct impl *impl = user_data;
+	impl->poll_generation++;
+	SPA_ATOMIC_STORE(impl->poll_pool, SPA_ATOMIC_LOAD(impl->poll_links) != 0);
+	memset(impl->poll_refs, 0, sizeof(impl->poll_refs));
+	impl->poll_outstanding = 0;
+	impl->poll_returns = 0;
+	impl->this.rt.io = SPA_IO_BUFFERS_INIT;
+	return 0;
 }
 
 static int negotiate_mixer_buffers(struct pw_impl_port *port, uint32_t flags,
@@ -2571,6 +2837,16 @@ static int negotiate_mixer_buffers(struct pw_impl_port *port, uint32_t flags,
 }
 
 
+static int reset_poll_input(struct spa_loop *loop, bool async, uint32_t seq,
+		const void *data, size_t size, void *user_data)
+{
+	struct pw_impl_port_mix *mix = user_data;
+
+	mix->rt.poll_callbacks = 0;
+	mix->p->rt.io = SPA_IO_BUFFERS_INIT;
+	return 0;
+}
+
 SPA_EXPORT
 int pw_impl_port_use_buffers(struct pw_impl_port *port, struct pw_impl_port_mix *mix, uint32_t flags,
 		struct spa_buffer **buffers, uint32_t n_buffers)
@@ -2600,6 +2876,19 @@ int pw_impl_port_use_buffers(struct pw_impl_port *port, struct pw_impl_port_mix 
 	/* first negotiate with the node, this makes it possible to let the
 	 * node allocate buffer memory if needed */
 	if (port->state == PW_IMPL_PORT_STATE_READY && !port->destroying) {
+		if (mix->poll_buffers && port->direction == PW_DIRECTION_OUTPUT) {
+			struct impl *impl = SPA_CONTAINER_OF(port, struct impl, this);
+			res = pw_loop_locked(port->node->data_loop, reset_poll_pool,
+					SPA_ID_INVALID, NULL, 0, impl);
+			if (res < 0)
+				return res;
+		}
+		if (mix->poll_buffers && port->direction == PW_DIRECTION_INPUT) {
+			res = pw_loop_locked(port->node->data_loop, reset_poll_input,
+					SPA_ID_INVALID, NULL, 0, mix);
+			if (res < 0)
+				return res;
+		}
 		res = negotiate_mixer_buffers(port, flags, buffers, n_buffers);
 
 		if (res < 0) {

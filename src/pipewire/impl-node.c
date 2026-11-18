@@ -2029,6 +2029,9 @@ static int poll_process_node(void *data)
 	int status;
 
 	if (is_poll_driver(node)) {
+		struct pw_impl_port *port;
+		bool needs_returns = false;
+
 		if (SPA_ATOMIC_LOAD(activation->status) ==
 				PW_NODE_ACTIVATION_TRIGGERED) {
 			process_node(node, get_time_ns(node->rt.target.system));
@@ -2041,9 +2044,15 @@ static int poll_process_node(void *data)
 				SPA_ATOMIC_LOAD(activation->status) !=
 				PW_NODE_ACTIVATION_FINISHED)
 			return 0;
+		spa_list_for_each(port, &node->rt.output_mix, rt.node_link)
+			needs_returns |= pw_impl_port_collect_poll_buffers(port);
 		status = spa_node_process_fast(node->node);
-		if (status == SPA_STATUS_OK)
-			return 0;
+		if (status == SPA_STATUS_OK) {
+			if (!needs_returns)
+				return 0;
+			/* Consumers can return loans even after the output pool fills. */
+			status = SPA_STATUS_NEED_DATA;
+		}
 		if (status < 0) {
 			if (SPA_ATOMIC_CAS(node->poll_error, 0, status)) {
 				struct pw_loop *main_loop =

@@ -319,9 +319,91 @@ static void test_exported_filter_return(void)
 	spa_assert_se(shared.status == SPA_STATUS_HAVE_DATA && shared.buffer_id == 1);
 }
 
+static void test_poll_buffer_fanout(void)
+{
+	struct spa_io_position position = { 0 };
+	struct pw_impl_node node = { .rt.position = &position };
+	struct impl output = { 0 }, inputs[2] = { 0 };
+	struct spa_io_buffers io[2] = { SPA_IO_BUFFERS_INIT, SPA_IO_BUFFERS_INIT };
+	struct pw_impl_port_mix send[2] = { 0 }, receive[2] = { 0 };
+	struct pw_poll_buffer_loans loans = { 0 }, *result = &loans;
+	struct mix_io_update unbind = { .mix = &send[1] };
+
+	output.this.node = &node;
+	output.this.direction = PW_DIRECTION_OUTPUT;
+	output.this.buffers.n_buffers = 2;
+	output.this.rt.io = SPA_IO_BUFFERS_INIT;
+	output.poll_pool = true;
+	output.poll_links = 2;
+	spa_list_init(&output.rt.mix_list);
+	for (uint32_t i = 0; i < 2; i++) {
+		inputs[i].this.node = &node;
+		inputs[i].this.direction = PW_DIRECTION_INPUT;
+		inputs[i].this.rt.io = SPA_IO_BUFFERS_INIT;
+		send[i].p = &output.this;
+		send[i].poll_buffers = receive[i].poll_buffers = true;
+		send[i].io[0] = receive[i].io[0] = &io[i];
+		send[i].rt.active = true;
+		spa_list_init(&inputs[i].rt.mix_list);
+		spa_list_append(&inputs[i].rt.mix_list, &receive[i].rt.link);
+		spa_list_append(&output.rt.mix_list, &send[i].rt.link);
+	}
+
+	output.this.rt.io = (struct spa_io_buffers) { SPA_STATUS_HAVE_DATA, 0 };
+	tee_process(&output);
+	spa_assert_se(output.this.rt.io.buffer_id == SPA_ID_INVALID);
+	schedule_mix_input(&inputs[0]);
+	schedule_mix_input(&inputs[1]);
+	spa_assert_se(inputs[0].this.rt.io.buffer_id == 0);
+	spa_assert_se(inputs[1].this.rt.io.buffer_id == 0);
+
+	/* The first client returns through the SPA callback. The other still
+	 * owns its buffer even if its mix I/O is detached. */
+	inputs[0].this.rt.io = SPA_IO_BUFFERS_INIT;
+	spa_assert_se(schedule_mix_reuse_buffer(&inputs[0], 0, 0) == 0);
+	schedule_mix_input(&inputs[0]);
+	do_set_mix_io(NULL, false, 0, NULL, 0, &unbind);
+	spa_assert_se(!pw_impl_port_collect_poll_buffers(&output.this));
+	spa_assert_se(output.this.rt.io.buffer_id == SPA_ID_INVALID);
+
+	detach_poll_loans(NULL, false, 0, &result, sizeof(result), &send[1]);
+	spa_assert_se(loans.ids == 1);
+	spa_assert_se(!pw_impl_port_collect_poll_buffers(&output.this));
+	spa_assert_se(output.this.rt.io.buffer_id == SPA_ID_INVALID);
+
+	restore_poll_loans(NULL, false, 0, &loans, sizeof(loans), &output);
+	spa_assert_se(!pw_impl_port_collect_poll_buffers(&output.this));
+	spa_assert_se(output.this.rt.io.buffer_id == 0);
+	output.this.rt.io.buffer_id = SPA_ID_INVALID;
+	spa_assert_se(!pw_impl_port_collect_poll_buffers(&output.this));
+	spa_assert_se(output.this.rt.io.buffer_id == SPA_ID_INVALID);
+
+	/* A stale acknowledgment cannot return an ID from a new pool. */
+	reset_poll_pool(NULL, false, 0, NULL, 0, &output);
+	output.this.rt.io = (struct spa_io_buffers) { SPA_STATUS_HAVE_DATA, 0 };
+	tee_process(&output);
+	restore_poll_loans(NULL, false, 0, &loans, sizeof(loans), &output);
+	spa_assert_se(!pw_impl_port_collect_poll_buffers(&output.this));
+	spa_assert_se(output.this.rt.io.buffer_id == SPA_ID_INVALID);
+
+	/* A full pool must allow a return to reach the driver without a new frame. */
+	schedule_mix_input(&inputs[0]);
+	inputs[0].this.rt.io = SPA_IO_BUFFERS_INIT;
+	output.this.rt.io = (struct spa_io_buffers) { SPA_STATUS_HAVE_DATA, 1 };
+	tee_process(&output);
+	schedule_mix_input(&inputs[0]);
+	inputs[0].this.rt.io = SPA_IO_BUFFERS_INIT;
+	spa_assert_se(pw_impl_port_collect_poll_buffers(&output.this));
+	inputs[0].this.rt.io = (struct spa_io_buffers) { SPA_STATUS_NEED_DATA, 0 };
+	schedule_mix_input(&inputs[0]);
+	spa_assert_se(!pw_impl_port_collect_poll_buffers(&output.this));
+	spa_assert_se(output.this.rt.io.buffer_id == 0);
+}
+
 int main(int argc, char *argv[])
 {
 	pw_init(&argc, &argv);
+	test_poll_buffer_fanout();
 	test_pending_mix_and_release();
 	test_exported_filter_return();
 	pw_deinit();
