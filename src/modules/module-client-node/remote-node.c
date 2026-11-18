@@ -617,7 +617,8 @@ client_node_port_use_buffers(void *_data,
 	prot = PW_MEMMAP_FLAG_READWRITE;
 
 	/* clear previous buffers */
-	clear_buffers(data, mix);
+	if ((res = clear_buffers(data, mix)) < 0)
+		goto error_exit;
 
 	bufs = alloca(n_buffers * sizeof(struct spa_buffer *));
 
@@ -940,6 +941,8 @@ static int client_node_port_set_mix_info(void *_data,
 		struct pw_impl_port *port;
 		const char *row_return = props == NULL ? NULL :
 			spa_dict_lookup(props, "pipewireao.row-transport-return");
+		const char *poll_return = props == NULL ? NULL :
+			spa_dict_lookup(props, PW_POLL_BUFFER_RETURN_KEY);
 		if (mix != NULL)
 			return -EEXIST;
 		port = pw_impl_node_find_port(data->node, direction, port_id);
@@ -949,6 +952,7 @@ static int client_node_port_set_mix_info(void *_data,
 		if (mix == NULL)
 			return -errno;
 		mix->mix.row_transport = row_return != NULL && spa_atob(row_return);
+		mix->mix.poll_buffers = poll_return != NULL && spa_atob(poll_return);
 	}
 	return 0;
 }
@@ -1225,6 +1229,7 @@ static struct pw_proxy *node_export(struct pw_core *core, void *object, bool do_
 	user_data_size = SPA_ROUND_UP_N(user_data_size, __alignof__(struct node_data));
 
 	pw_properties_set(node->properties, "pipewireao.row-transport-return", "true");
+	pw_properties_set(node->properties, PW_POLL_BUFFER_RETURN_KEY, "true");
 	client_node = pw_core_create_object(core,
 			"client-node",
 			PW_TYPE_INTERFACE_ClientNode,

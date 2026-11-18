@@ -1495,6 +1495,8 @@ static int port_init_mix(void *data, struct pw_impl_port_mix *mix)
 	struct spa_io_async_buffers *ab;
 	struct spa_dict_item row_item = SPA_DICT_ITEM_INIT("pipewireao.row-transport-return", "true");
 	struct spa_dict row_props = SPA_DICT_INIT(&row_item, 1);
+	struct spa_dict_item poll_item = SPA_DICT_ITEM_INIT(PW_POLL_BUFFER_RETURN_KEY, "true");
+	struct spa_dict poll_props = SPA_DICT_INIT(&poll_item, 1);
 	bool row_transport = mix->port.direction == SPA_DIRECTION_INPUT &&
 		mix->peer != NULL && mix->peer->p != NULL &&
 		mix->peer->p->node->row_transport;
@@ -1502,6 +1504,11 @@ static int port_init_mix(void *data, struct pw_impl_port_mix *mix)
 	if (row_transport && (impl->resource == NULL || impl->resource->version < 4 ||
 	    !pw_properties_get_bool(impl->this.node->properties,
 			"pipewireao.row-transport-return", false)))
+		return -ENOTSUP;
+
+	if (mix->poll_buffers && (impl->resource == NULL || impl->resource->version < 4 ||
+	    !pw_properties_get_bool(impl->this.node->properties,
+			PW_POLL_BUFFER_RETURN_KEY, false)))
 		return -ENOTSUP;
 
 	if ((m = create_mix(port, mix->port.port_id)) == NULL)
@@ -1541,7 +1548,7 @@ static int port_init_mix(void *data, struct pw_impl_port_mix *mix)
 		pw_client_node_resource_port_set_mix_info(impl->resource,
 					 mix->port.direction, mix->p->port_id,
 					 mix->port.port_id, mix->peer_id,
-					 row_transport ? &row_props : NULL);
+					 row_transport ? &row_props : mix->poll_buffers ? &poll_props : NULL);
 
 	pw_log_debug("%p: init mix id:%d io:%p/%p base:%p", impl,
 			mix->id, mix->io[0], mix->io[1], area->map->ptr);

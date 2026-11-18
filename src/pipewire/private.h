@@ -1055,6 +1055,7 @@ struct pw_impl_port_mix {
 	uint32_t id;
 	uint32_t peer_id;
 	bool have_buffers;
+	bool poll_buffers;
 	bool row_transport;
 	bool row_borrowed;
 	uint32_t row_borrowed_id;
@@ -1062,6 +1063,9 @@ struct pw_impl_port_mix {
 	struct {
 		bool active;
 		struct spa_list link;
+		uint64_t poll_leases;
+		uint64_t poll_callbacks;
+		uint64_t poll_generation;
 	} rt;
 	uint8_t *buffer_out;
 };
@@ -1182,6 +1186,20 @@ struct pw_impl_port {
 	void *owner_data;		/**< extra owner data */
 	void *user_data;                /**< extra user data */
 };
+
+#define PW_POLL_BUFFER_RETURN_KEY "pipewireao.poll-buffer-return"
+#define PW_POLL_MAX_BUFFERS 64u
+
+struct pw_poll_buffer_loans {
+	uint64_t ids;
+	uint64_t generation;
+};
+
+bool pw_impl_port_uses_poll_buffers(const struct pw_impl_port *port);
+bool pw_impl_port_collect_poll_buffers(struct pw_impl_port *port);
+struct pw_poll_buffer_loans pw_impl_port_detach_poll_loans(struct pw_impl_port_mix *mix);
+void pw_impl_port_restore_poll_loans(struct pw_impl_port *port,
+		const struct pw_poll_buffer_loans *loans);
 
 static inline const char* passive_mode_to_string(uint32_t passive_mode)
 {
