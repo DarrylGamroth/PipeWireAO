@@ -106,6 +106,8 @@ struct startup_parameter {
 	size_t size;
 	struct spa_chunk chunk;
 	struct spa_data data;
+	struct spa_meta_header header;
+	struct spa_meta meta;
 	struct spa_buffer buffer;
 };
 
@@ -115,7 +117,8 @@ struct feedback_buffer {
 	struct spa_chunk chunk;
 	struct spa_data data;
 	struct spa_meta_header header;
-	struct spa_meta meta;
+	struct spa_meta metas[SPA_FGN_MAX_METAS];
+	uint8_t metadata[SPA_META_MAX_BYTES] SPA_ALIGNED(8);
 	struct spa_buffer buffer;
 };
 
@@ -526,8 +529,16 @@ static int configure_startup_parameters(struct impl *impl,
 			.data = parameter->mapping,
 			.chunk = &parameter->chunk,
 		};
+		parameter->header.pts = SPA_TIME_INVALID;
+		parameter->meta = (struct spa_meta) {
+			.type = SPA_META_Header,
+			.size = sizeof(parameter->header),
+			.data = &parameter->header,
+		};
 		parameter->buffer = (struct spa_buffer) {
+			.n_metas = 1,
 			.n_datas = 1,
+			.metas = &parameter->meta,
 			.datas = &parameter->data,
 		};
 		updates[i] = (struct spa_fgn_parameter_update) {
@@ -603,8 +614,12 @@ static bool feedback_format_equal(const struct spa_fgn_format *input,
 }
 
 static int init_feedback_buffer(struct feedback_buffer *buffer,
-		size_t size, int32_t stride, bool input)
+		size_t size, int32_t stride, bool input,
+		const struct spa_fgn_port_info *output_info)
 {
+	uint32_t offset = 0;
+	uint32_t n_metas = output_info == NULL ? 0 : output_info->n_metas;
+
 	if ((buffer->memory = calloc(1, size)) == NULL)
 		return -ENOMEM;
 	buffer->size = size;
@@ -622,14 +637,29 @@ static int init_feedback_buffer(struct feedback_buffer *buffer,
 		.chunk = &buffer->chunk,
 	};
 	buffer->header.pts = SPA_TIME_INVALID;
-	buffer->meta = (struct spa_meta) {
+	buffer->metas[0] = (struct spa_meta) {
 		.type = SPA_META_Header,
 		.size = sizeof(buffer->header),
 		.data = &buffer->header,
 	};
+	for (uint32_t i = 0; i < n_metas; i++) {
+		const struct spa_meta_requirement *requirement = &output_info->metas[i];
+		uint32_t aligned_size = SPA_ROUND_UP_N(requirement->size, 8);
+
+		if (aligned_size > sizeof(buffer->metadata) - offset)
+			return -ENOSPC;
+		buffer->metas[i + 1] = (struct spa_meta) {
+			.type = requirement->type,
+			.size = requirement->size,
+			.data = &buffer->metadata[offset],
+		};
+		if (!spa_meta_record_init(&buffer->metas[i + 1]))
+			return -EINVAL;
+		offset += aligned_size;
+	}
 	buffer->buffer = (struct spa_buffer) {
-		.n_metas = 1,
-		.metas = &buffer->meta,
+		.n_metas = n_metas + 1,
+		.metas = buffer->metas,
 		.n_datas = 1,
 		.datas = &buffer->data,
 	};
@@ -717,10 +747,12 @@ static int configure_feedback_bridges(struct impl *impl,
 			res = -EINVAL;
 			goto error;
 		}
+		/* The delayed input retains Header and the feedback values. The
+		 * producer still needs its full declared output layout. */
 		if ((res = init_feedback_buffer(&bridge->input, input_size,
-				input_stride, true)) < 0 ||
+				input_stride, true, NULL)) < 0 ||
 		    (res = init_feedback_buffer(&bridge->output, output_size,
-				output_stride, false)) < 0)
+				output_stride, false, output_info)) < 0)
 			goto error;
 		index++;
 	}
