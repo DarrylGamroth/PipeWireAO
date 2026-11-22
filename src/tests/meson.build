@@ -361,6 +361,9 @@ ndarray_filter_chain_feedback = executable(
 test(
   'pw-test-ndarray-filter-chain-feedback',
   ndarray_filter_chain_feedback,
+  args : [spa_filter_graph_plugin_ndarray_example.full_path()],
+  depends : [spa_support_lib, spa_filter_graph_plugin_ndarray_example],
+  env : ['PIPEWIREAO_SPA_PLUGIN_DIR=@0@'.format(spa_dep.get_variable('plugindir'))],
 )
 test(
   'pw-test-ndarray-filter-chain-props',

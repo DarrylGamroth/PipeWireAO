@@ -623,17 +623,19 @@ static void test_refcounted_pool_drops(void)
 				SPA_VERSION_LOG, &drop_log_methods, &capture),
 	};
 	struct spa_log *previous_log = pw_log_get();
-	enum spa_log_level previous_level = pw_log_level;
+	enum spa_log_level previous_level = log_port->level;
+	bool previous_custom_level = log_port->has_custom_level;
 
 	set_output_mode(output, "refcounted");
+	set_port_property(output, PW_KEY_PORT_ALIAS, "camera:rows");
 	output->buffers.n_buffers = SPA_N_ELEMENTS(pool);
 	spa_assert_se(spa_node_port_use_buffers(output->mix, SPA_DIRECTION_INPUT, 0,
 			0, pool, SPA_N_ELEMENTS(pool)) == 0);
 	spa_assert_se(pw_impl_port_init_mix(output, &send) == 0);
 	set_mix_buffers(&send, &shared);
 	pw_log_set(&capture.log);
-	pw_log_set_level(SPA_LOG_LEVEL_WARN);
 	log_port->level = SPA_LOG_LEVEL_WARN;
+	log_port->has_custom_level = true;
 
 	publish_buffer(output, 0);
 	for (uint32_t i = 0; i < 3; i++)
@@ -655,10 +657,12 @@ static void test_refcounted_pool_drops(void)
 	output->node = NULL;
 	pw_impl_port_destroy(output);
 	spa_assert_se(capture.warnings == 1);
-	spa_assert_se(strstr(capture.warning, "dropped 3 refcounted buffers") != NULL);
+	spa_assert_se(strcmp(capture.warning,
+			"port 0 (camera:rows) dropped 3 refcounted buffers with a full pool") == 0);
 
+	log_port->level = previous_level;
+	log_port->has_custom_level = previous_custom_level;
 	pw_log_set(previous_log);
-	pw_log_set_level(previous_level);
 }
 
 static void test_active_fast_output_mode(void)

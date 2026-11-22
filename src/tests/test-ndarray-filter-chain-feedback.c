@@ -8,6 +8,7 @@
 #undef NDEBUG
 #endif
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
 /* Compile the module into this test so these checks cover its private
@@ -147,6 +148,116 @@ static void test_retained_input_removal(void)
 	assert(!invalidate_retained_buffer(&impl, &port, &retained));
 }
 
+struct feedback_log_capture {
+	struct spa_log log;
+	uint32_t errors;
+	char message[128];
+};
+
+static SPA_PRINTF_FUNC(7, 0) void
+capture_feedback_error(void *object, enum spa_log_level level,
+		const struct spa_log_topic *topic, const char *file, int line,
+		const char *func, const char *fmt, va_list args)
+{
+	struct feedback_log_capture *capture = object;
+
+	if (level == SPA_LOG_LEVEL_ERROR && topic == mod_topic) {
+		capture->errors++;
+		vsnprintf(capture->message, sizeof(capture->message), fmt, args);
+	}
+}
+
+static const struct spa_log_methods feedback_log_methods = {
+	SPA_VERSION_LOG_METHODS,
+	.logtv = capture_feedback_error,
+};
+
+static void test_feedback_error_publication(const char *plugin)
+{
+	struct feedback_log_capture capture = {
+		.log.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Log,
+				SPA_VERSION_LOG, &feedback_log_methods, &capture),
+	};
+	struct spa_log *previous_log = pw_log_get();
+	enum spa_log_level previous_level = mod_topic->level;
+	bool previous_custom_level = mod_topic->has_custom_level;
+	struct port *inputs[2] = { NULL }, *outputs[2] = { NULL };
+	struct spa_buffer *process_inputs[2], *process_outputs[2];
+	struct pw_buffer *input_buffers[2] = { NULL }, *output_buffers[2] = { NULL };
+	struct impl impl = {
+		.n_inputs = 2, .n_outputs = 2, .inputs = inputs, .outputs = outputs,
+		.process_inputs = process_inputs, .process_outputs = process_outputs,
+		.input_buffers = input_buffers, .output_buffers = output_buffers,
+	};
+	const struct pw_filter_events events = { PW_VERSION_FILTER_EVENTS };
+	struct pw_main_loop *main = pw_main_loop_new(NULL);
+	struct pw_properties *feedback;
+	const char *state_error;
+	char config[4096], expected[128];
+	int res;
+
+	res = snprintf(config, sizeof(config),
+			"{ nodes = ["
+			" { type = ndarray name = defer plugin = \"%s\" label = defer-f32 }"
+			" { type = ndarray name = skipped plugin = \"%s\" label = scale-f32"
+			"   config = { shape = [ 4 ] schema = test.deferred/1 } }"
+			" { type = ndarray name = ready plugin = \"%s\" label = scale-f32"
+			"   config = { shape = [ 4 ] schema = test.deferred/1 } }"
+			"] links = [ { output = \"defer:out\" input = \"skipped:in\" } ]"
+			" inputs = [ \"defer:in\" \"ready:in\" ]"
+			" outputs = [ \"skipped:out\" \"ready:out\" ] }",
+			plugin, plugin, plugin);
+	assert(res > 0 && (size_t)res < sizeof(config));
+	assert(spa_fgn_graph_new(config, &impl.graph) == 0);
+	feedback = pw_properties_new(FEEDBACK_PREFIX "defer:in", "skipped:out",
+			FEEDBACK_PREFIX "ready:in", "ready:out", NULL);
+	assert(feedback != NULL);
+	assert(configure_feedback_bridges(&impl, feedback) == 0);
+	pw_properties_free(feedback);
+	assert(spa_fgn_graph_activate(impl.graph) == 0);
+
+	assert(main != NULL);
+	impl.main_loop = pw_main_loop_get_loop(main);
+	pw_loop_enter(impl.main_loop);
+	impl.filter = pw_filter_new_simple(impl.main_loop, "feedback-error",
+			pw_properties_new(PW_KEY_CONFIG_NAME, "null",
+					"support.dbus", "false",
+					"context.modules.allow-empty", "true", NULL), &events, NULL);
+	assert(impl.filter != NULL);
+	impl.main_event = pw_loop_add_event(impl.main_loop, main_event, &impl);
+	assert(impl.main_event != NULL);
+	pw_log_set(&capture.log);
+	mod_topic->level = SPA_LOG_LEVEL_ERROR;
+	mod_topic->has_custom_level = true;
+
+	/* One bridge has an output while the other inherits the deferred output. */
+	process(&impl, NULL);
+	assert(atomic_load(&impl.process_error) == -ENODATA);
+	assert(capture.errors == 0);
+	assert(pw_filter_get_state(impl.filter, NULL) == PW_FILTER_STATE_UNCONNECTED);
+	assert(pw_loop_iterate(impl.main_loop, 0) >= 0);
+	assert(atomic_load(&impl.process_error) == 0);
+	assert(capture.errors == 1);
+	snprintf(expected, sizeof(expected), "ndarray feedback output incomplete: %s",
+			spa_strerror(-ENODATA));
+	assert(strcmp(capture.message, expected) == 0);
+	assert(pw_filter_get_state(impl.filter, &state_error) == PW_FILTER_STATE_ERROR);
+	assert(errno == ENODATA);
+	snprintf(expected, sizeof(expected), "ndarray graph process failed: %s",
+			spa_strerror(-ENODATA));
+	assert(strcmp(state_error, expected) == 0);
+
+	mod_topic->level = previous_level;
+	mod_topic->has_custom_level = previous_custom_level;
+	pw_log_set(previous_log);
+	pw_loop_destroy_source(impl.main_loop, impl.main_event);
+	pw_filter_destroy(impl.filter);
+	pw_loop_leave(impl.main_loop);
+	pw_main_loop_destroy(main);
+	spa_fgn_graph_free(impl.graph);
+	clear_feedback_bridges(&impl);
+}
+
 #ifdef PW_ENABLE_DIAGNOSTIC_TRACE
 static void test_process_trace(void)
 {
@@ -246,14 +357,18 @@ static void test_process_trace(void)
 }
 #endif
 
-int main(void)
+int main(int argc, char *argv[])
 {
+	assert(argc == 2);
+	pw_init(&argc, &argv);
 	test_first_all_absent_preserves_initial_zeros();
 	test_later_all_absent_preserves_feedback_and_metadata();
 	test_rejected_outputs_do_not_partially_update();
 	test_retained_input_removal();
+	test_feedback_error_publication(argv[1]);
 #ifdef PW_ENABLE_DIAGNOSTIC_TRACE
 	test_process_trace();
 #endif
+	pw_deinit();
 	return 0;
 }

@@ -2394,9 +2394,22 @@ void pw_impl_port_destroy(struct pw_impl_port *port)
 
 	pw_impl_port_remove(port);
 
-	if (impl->rt.refcounted_drops != 0)
-		pw_log_warn("%p: port %u dropped %"PRIu64" refcounted buffers with a full pool",
-				port, port->port_id, impl->rt.refcounted_drops);
+	if (impl->rt.refcounted_drops != 0) {
+		const char *name = pw_properties_get(port->properties, PW_KEY_PORT_ALIAS);
+		char id[32];
+
+		if (name == NULL || name[0] == '\0')
+			name = pw_properties_get(port->properties, PW_KEY_PORT_NAME);
+		if (name == NULL || name[0] == '\0') {
+			if (port->global != NULL)
+				spa_scnprintf(id, sizeof(id), "global %u", port->global->id);
+			else
+				spa_scnprintf(id, sizeof(id), "%p", port);
+			name = id;
+		}
+		pw_log_warn("port %u (%s) dropped %"PRIu64" refcounted buffers with a full pool",
+				port->port_id, name, impl->rt.refcounted_drops);
+	}
 
 	if (port->global) {
 		spa_hook_remove(&port->global_listener);
