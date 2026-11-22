@@ -132,6 +132,7 @@ struct impl {
 	bool poll_pool;
 	unsigned int cache_params:1;
 
+	uint32_t requested_output_mode;  /* SPA_ID_INVALID inherits node/legacy properties */
 	uint32_t buffers_used;
 	int *refcounts;
 };
@@ -423,16 +424,41 @@ static void deactivate_mix(struct impl *impl, struct pw_impl_port_mix *mix)
 	}
 }
 
+static int configured_output_mode(const struct impl *impl)
+{
+	const struct pw_impl_port *port = &impl->this;
+	uint32_t mode = impl->requested_output_mode;
+	bool reliable;
+
+	if (SPA_ATOMIC_LOAD(impl->poll_pool))
+		mode = OUTPUT_MODE_FAST;
+	else if (mode == SPA_ID_INVALID) {
+		if (pw_properties_fetch_bool(port->properties, PW_KEY_PORT_RELIABLE, &reliable) == 0)
+			mode = reliable ? OUTPUT_MODE_RELIABLE : OUTPUT_MODE_FAST;
+		else
+			mode = port->node->output_mode;
+	}
+
+	/* Row readers acknowledge returns explicitly instead of exchanging IDs. */
+	if (mode == OUTPUT_MODE_REFCOUNTED && port->node->row_transport)
+		mode = OUTPUT_MODE_RELIABLE;
+	return mode;
+}
+
 bool pw_impl_port_uses_poll_buffers(const struct pw_impl_port *port)
 {
 	const struct impl *impl = SPA_CONTAINER_OF(port, const struct impl, this);
 	const char *media_class;
+	uint32_t mode;
 
-	if (port->direction != PW_DIRECTION_OUTPUT || port->output_mode != OUTPUT_MODE_FAST)
+	if (port->direction != PW_DIRECTION_OUTPUT)
 		return false;
 	if (SPA_ATOMIC_LOAD(impl->poll_pool))
 		return true;
 	if (port->n_mix != 0)
+		return false;
+	mode = port->buffers.n_buffers != 0 ? port->output_mode : configured_output_mode(impl);
+	if (mode != OUTPUT_MODE_FAST)
 		return false;
 	media_class = pw_properties_get(port->node->properties, PW_KEY_MEDIA_CLASS);
 	return port->mix == &impl->mix_node && !PW_IMPL_PORT_IS_CONTROL(port) &&
@@ -582,8 +608,11 @@ static int mix_port_use_buffers(void *object,
 			pw_direction_as_string(direction), port_id, buffers, n_buffers);
 
 	if (refcounted) {
+		int *counts = n_buffers == 0 ? NULL : calloc(n_buffers, sizeof(*counts));
+		if (n_buffers != 0 && counts == NULL)
+			return -ENOMEM;
 		free(impl->refcounts);
-		impl->refcounts = calloc(n_buffers, sizeof(int));
+		impl->refcounts = counts;
 		impl->buffers_used = 0;
 	}
 	return 0;
@@ -1096,6 +1125,25 @@ static int add_poll_link(struct spa_loop *loop, bool async, uint32_t seq,
 	return 0;
 }
 
+static void select_output_mode(struct impl *impl)
+{
+	struct pw_impl_port *port = &impl->this;
+	int mode = configured_output_mode(impl);
+
+	port->output_mode = mode;
+	switch (mode) {
+	case OUTPUT_MODE_FAST:
+		impl->mix_methods.process = tee_process;
+		break;
+	case OUTPUT_MODE_RELIABLE:
+		impl->mix_methods.process = tee_process_reliable;
+		break;
+	case OUTPUT_MODE_REFCOUNTED:
+		impl->mix_methods.process = tee_process_refcount;
+		break;
+	}
+}
+
 SPA_EXPORT
 int pw_impl_port_init_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mix)
 {
@@ -1103,6 +1151,12 @@ int pw_impl_port_init_mix(struct pw_impl_port *port, struct pw_impl_port_mix *mi
 	uint32_t port_id;
 	int res = 0;
 
+	if (port->direction == PW_DIRECTION_OUTPUT && port->n_mix == 0 &&
+	    port->buffers.n_buffers == 0 && port->properties != NULL) {
+		select_output_mode(SPA_CONTAINER_OF(port, struct impl, this));
+		pw_properties_set(port->properties, PW_KEY_PORT_OUTPUT_MODE,
+				output_mode_to_string(port->output_mode));
+	}
 	if ((port->exclusive ||
 	     (port->direction == PW_DIRECTION_OUTPUT &&
 	      port->node->row_transport)) &&
@@ -1246,28 +1300,11 @@ static int check_properties(struct pw_impl_port *port)
 	}
 
 	if (port->direction == PW_DIRECTION_OUTPUT) {
-		if (SPA_ATOMIC_LOAD(impl->poll_pool)) {
-			port->output_mode = OUTPUT_MODE_FAST;
-		} else if ((str = pw_properties_get(port->properties, PW_KEY_PORT_OUTPUT_MODE)) != NULL) {
-			port->output_mode = output_mode_from_string(str);
-		} else {
-			if (pw_properties_get_bool(port->properties, PW_KEY_PORT_RELIABLE, false))
-				port->output_mode = OUTPUT_MODE_RELIABLE;
-			else
-				port->output_mode = node->output_mode;
-		}
-		switch (port->output_mode) {
-		case OUTPUT_MODE_FAST:
-			impl->mix_methods.process = tee_process;
-			break;
-		case OUTPUT_MODE_RELIABLE:
-			impl->mix_methods.process = tee_process_reliable;
-			break;
-		case OUTPUT_MODE_REFCOUNTED:
-			impl->mix_methods.process = tee_process_refcount;
-			break;
-		}
-		pw_properties_set(port->properties, PW_KEY_PORT_OUTPUT_MODE,
+		/* Link setup reserves buffers and allocates per-reader bookkeeping for
+		 * the selected tee. Keep that ownership contract until teardown. */
+		if (port->n_mix == 0 && port->buffers.n_buffers == 0)
+			select_output_mode(impl);
+		changed += pw_properties_set(port->properties, PW_KEY_PORT_OUTPUT_MODE,
 				output_mode_to_string(port->output_mode));
 	}
 
@@ -1388,8 +1425,17 @@ static int update_properties(struct pw_impl_port *port, const struct spa_dict *d
 		PW_KEY_PORT_ID,
 		NULL
 	};
+	struct impl *impl = SPA_CONTAINER_OF(port, struct impl, this);
+	const struct spa_dict_item *mode;
 	int changed;
 
+	/* port.output-mode in the published dictionary is the effective mode.
+	 * Keep the explicit request separate so an inherited value stays inherited. */
+	if (port->direction == PW_DIRECTION_OUTPUT && port->n_mix == 0 &&
+	    port->buffers.n_buffers == 0 &&
+	    (mode = spa_dict_lookup_item(dict, PW_KEY_PORT_OUTPUT_MODE)) != NULL)
+		impl->requested_output_mode = mode->value == NULL ? SPA_ID_INVALID :
+			output_mode_from_string(mode->value);
 	changed = pw_properties_update_ignore(port->properties, dict, filter ? ignored : NULL);
 
 	pw_log_debug("%p: updated %d properties", port, changed);
@@ -1693,6 +1739,7 @@ struct pw_impl_port *pw_context_create_port(
 	struct impl *impl;
 	struct pw_impl_port *this;
 	struct pw_properties *properties;
+	const char *mode;
 	int res;
 
 	impl = calloc(1, sizeof(struct impl) + user_data_size);
@@ -1734,6 +1781,8 @@ struct pw_impl_port *pw_context_create_port(
 	this->direction = direction;
 	this->port_id = port_id;
 	this->properties = properties;
+	mode = pw_properties_get(properties, PW_KEY_PORT_OUTPUT_MODE);
+	impl->requested_output_mode = mode == NULL ? SPA_ID_INVALID : output_mode_from_string(mode);
 	this->state = PW_IMPL_PORT_STATE_INIT;
 	this->rt.io = SPA_IO_BUFFERS_INIT;
 

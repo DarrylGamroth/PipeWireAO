@@ -827,7 +827,8 @@ int pw_impl_link_activate(struct pw_impl_link *this)
 	 * to the io, so we don't need async IO, even when the input is async. This
 	 * avoid the problem of out-of-order buffers after a stall. */
 	reliable_driver = (impl->output.node == impl->input.node->driver_node) &&
-		impl->output.node->output_mode == OUTPUT_MODE_RELIABLE;
+		(impl->output.node->output_mode == OUTPUT_MODE_RELIABLE ||
+		 (impl->output.node->row_transport && this->output->output_mode == OUTPUT_MODE_RELIABLE));
 
 	/* Poll-driver links have an atomic mailbox, even for async clients.
 	 * A single slot also keeps delayed deliveries in publication order. */

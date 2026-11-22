@@ -908,6 +908,57 @@ static void test_exported_polling_rejects_activation_v0(void)
 	fixture_clear(&fixture);
 }
 
+static void test_row_transport_update_with_refcounted_output(void)
+{
+	const struct spa_dict_item row_transport = SPA_DICT_ITEM_INIT("pipewireao.row-transport", "true");
+	struct spa_dict_item output_mode = SPA_DICT_ITEM_INIT(PW_KEY_NODE_OUTPUT_MODE, "fast");
+	struct fixture fixture;
+	struct synthetic_node synthetic;
+	struct pw_impl_node *node;
+	struct pw_impl_port *output;
+	struct pw_impl_port_mix mix = { 0 };
+	struct spa_io_buffers io = SPA_IO_BUFFERS_INIT;
+	int res;
+
+	fixture_init_data_loops(&fixture, NULL);
+	synthetic_init_regular(&synthetic);
+	node = pw_context_create_node(fixture.context,
+			pw_properties_new(PW_KEY_NODE_OUTPUT_MODE, "refcounted", NULL), 0);
+	spa_assert_se(node != NULL);
+	spa_assert_se(pw_impl_node_set_implementation(node, &synthetic.node) == 0);
+	output = pw_context_create_port(fixture.context, PW_DIRECTION_OUTPUT, 0, NULL, 0);
+	spa_assert_se(output != NULL);
+	spa_assert_se(pw_impl_port_add(output, node) == 0);
+	spa_assert_se(output->output_mode == OUTPUT_MODE_REFCOUNTED);
+
+	/* A cold inherited default is still inherited after publication. */
+	spa_assert_se(pw_impl_node_update_properties(node, &SPA_DICT_INIT(&output_mode, 1)) == 1);
+	spa_assert_se(output->output_mode == OUTPUT_MODE_FAST);
+	output_mode.value = "refcounted";
+	spa_assert_se(pw_impl_node_update_properties(node, &SPA_DICT_INIT(&output_mode, 1)) == 1);
+	spa_assert_se(output->output_mode == OUTPUT_MODE_REFCOUNTED);
+
+	spa_assert_se(pw_impl_port_init_mix(output, &mix) == 0);
+	spa_assert_se(spa_node_port_set_io(output->mix, SPA_DIRECTION_OUTPUT, mix.port.port_id,
+			SPA_IO_Buffers, &io, sizeof(io)) == 0);
+
+	spa_assert_se(pw_impl_node_update_properties(node, &SPA_DICT_INIT(&row_transport, 1)) == 1);
+	spa_assert_se(!node->row_transport);
+	spa_assert_se(spa_streq(pw_properties_get(node->properties, row_transport.key), "false"));
+	spa_assert_se(output->output_mode == OUTPUT_MODE_REFCOUNTED);
+
+	spa_assert_se(spa_node_port_set_io(output->mix, SPA_DIRECTION_OUTPUT, mix.port.port_id,
+			SPA_IO_Buffers, NULL, 0) == 0);
+	res = pw_impl_port_release_mix(output, &mix);
+	spa_assert_se(res == 0 || res == -ENOTSUP);
+	spa_assert_se(pw_impl_node_update_properties(node, &SPA_DICT_INIT(&row_transport, 1)) == 1);
+	spa_assert_se(node->row_transport);
+	spa_assert_se(output->output_mode == OUTPUT_MODE_RELIABLE);
+
+	pw_impl_node_destroy(node);
+	fixture_clear(&fixture);
+}
+
 static int compare_u64(const void *a, const void *b)
 {
 	const uint64_t av = *(const uint64_t *)a;
@@ -1462,6 +1513,7 @@ int main(int argc, char *argv[])
 	test_exported_node_polling_activation();
 	test_remote_node_on_polling_control_loop();
 	test_exported_polling_rejects_activation_v0();
+	test_row_transport_update_with_refcounted_output();
 
 	pw_deinit();
 	return 0;

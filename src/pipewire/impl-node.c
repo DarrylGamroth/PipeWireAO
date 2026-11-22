@@ -1434,7 +1434,7 @@ static void check_properties(struct pw_impl_node *node)
 	const char *str, *recalc_reason = NULL, *state = NULL, *s;
 	struct spa_fraction frac;
 	uint32_t value;
-	bool driver, trigger, sync, async;
+	bool driver, trigger, sync, async, row_transport;
 	struct match match;
 	size_t len;
 
@@ -1478,8 +1478,19 @@ static void check_properties(struct pw_impl_node *node)
 		else
 			node->output_mode = OUTPUT_MODE_FAST;
 	}
-	node->row_transport = pw_properties_get_bool(node->properties,
-			"pipewireao.row-transport", false);
+	row_transport = pw_properties_get_bool(node->properties, "pipewireao.row-transport", false);
+	if (row_transport && !node->row_transport) {
+		struct pw_impl_port *port;
+		spa_list_for_each(port, &node->output_ports, link) {
+			if (port->output_mode == OUTPUT_MODE_REFCOUNTED &&
+			    (port->n_mix != 0 || port->buffers.n_buffers != 0)) {
+				pw_properties_set(node->properties, "pipewireao.row-transport", "false");
+				row_transport = false;
+				break;
+			}
+		}
+	}
+	node->row_transport = row_transport;
 	if (node->row_transport && node->rt.reliable_event == NULL) {
 		int res = pw_loop_locked(node->data_loop, add_reliable_event,
 				SPA_ID_INVALID, NULL, 0, node);
