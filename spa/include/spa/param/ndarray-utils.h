@@ -332,12 +332,24 @@ static inline void spa_ndarray_build_rate(struct spa_pod_builder *builder,
 	spa_pod_builder_pop(builder, &choice);
 }
 
+/** Build an ndarray Format or EnumFormat with optional choices and schema.
+ *
+ * The size bounds access to info, including any additional shape dimensions.
+ * A NULL schema omits the property; otherwise its exact string is copied into
+ * the POD. A rate of 0/0 omits the rate property. NULL choices selects fixed
+ * values, and shape and schema are always fixed, even for EnumFormat.
+ *
+ * Return NULL with errno set to EINVAL for invalid input, EOVERFLOW for an
+ * overflowing payload extent, or ENOSPC when the builder cannot fit the POD.
+ * The builder may have advanced on ENOSPC; callers may reset its saved state.
+ */
 SPA_API_NDARRAY_UTILS struct spa_pod *
-spa_format_ndarray_ext_build_choices(struct spa_pod_builder *builder, uint32_t id,
+spa_format_ndarray_ext_build_choices_schema(struct spa_pod_builder *builder, uint32_t id,
 		const struct spa_ndarray_info *info, size_t size,
-		const struct spa_ndarray_choices *choices)
+		const struct spa_ndarray_choices *choices, const char *schema)
 {
 	struct spa_pod_frame object;
+	struct spa_pod *pod;
 	uint32_t n_element_types = choices == NULL ? 0 : choices->n_element_types;
 	uint32_t n_layouts = choices == NULL ? 0 : choices->n_layouts;
 	const void *element_types = choices == NULL ? NULL : choices->element_types;
@@ -364,7 +376,25 @@ spa_format_ndarray_ext_build_choices(struct spa_pod_builder *builder, uint32_t i
 			info->layout, n_layouts, layouts);
 	if (info->rate.denom != 0)
 		spa_ndarray_build_rate(builder, &info->rate, choices);
-	return (struct spa_pod *)spa_pod_builder_pop(builder, &object);
+	if (schema != NULL) {
+		spa_pod_builder_prop(builder, SPA_FORMAT_NDARRAY_schema, 0);
+		spa_pod_builder_string(builder, schema);
+	}
+	pod = (struct spa_pod *)spa_pod_builder_pop(builder, &object);
+	if (pod == NULL || spa_pod_builder_corrupted(builder)) {
+		errno = ENOSPC;
+		return NULL;
+	}
+	return pod;
+}
+
+SPA_API_NDARRAY_UTILS struct spa_pod *
+spa_format_ndarray_ext_build_choices(struct spa_pod_builder *builder, uint32_t id,
+		const struct spa_ndarray_info *info, size_t size,
+		const struct spa_ndarray_choices *choices)
+{
+	return spa_format_ndarray_ext_build_choices_schema(builder, id, info, size,
+			choices, NULL);
 }
 
 SPA_API_NDARRAY_UTILS struct spa_pod *

@@ -559,27 +559,19 @@ static int copy_config(struct pw_ndarray_filter *filter,
 static struct spa_pod *build_format(struct spa_pod_builder *builder,
 		uint32_t id, const struct pw_ndarray_filter_format *format)
 {
-	struct spa_pod_frame object;
+	struct spa_ndarray_info info = SPA_NDARRAY_INFO_INIT(
+		.element_type = format->element_type,
+		.layout = format->layout,
+		.rate = SPA_FRACTION(format->rate_num, format->rate_denom),
+		.n_dimensions = format->n_dimensions);
 
-	spa_pod_builder_push_object(builder, &object,
-			SPA_TYPE_OBJECT_Format, id);
-	spa_pod_builder_add(builder,
-			SPA_FORMAT_mediaType, SPA_POD_Id(SPA_MEDIA_TYPE_application),
-			SPA_FORMAT_mediaSubtype, SPA_POD_Id(SPA_MEDIA_SUBTYPE_ndarray),
-			SPA_FORMAT_NDARRAY_elementType, SPA_POD_Id(format->element_type),
-			SPA_FORMAT_NDARRAY_shape,
-			SPA_POD_Array(sizeof(uint32_t), SPA_TYPE_Int,
-				format->n_dimensions, format->shape),
-			SPA_FORMAT_NDARRAY_layout, SPA_POD_Id(format->layout),
-			0);
-	if (format->rate_denom != 0)
-		spa_pod_builder_add(builder, SPA_FORMAT_NDARRAY_rate,
-				SPA_POD_Fraction(&SPA_FRACTION(
-					format->rate_num, format->rate_denom)), 0);
-	if (format->schema != NULL)
-		spa_pod_builder_add(builder, SPA_FORMAT_NDARRAY_schema,
-				SPA_POD_String(format->schema), 0);
-	return spa_pod_builder_pop(builder, &object);
+	if (format->n_dimensions > SPA_NDARRAY_MAX_DIMENSIONS) {
+		errno = EINVAL;
+		return NULL;
+	}
+	memcpy(info.shape, format->shape, format->n_dimensions * sizeof(uint32_t));
+	return spa_format_ndarray_ext_build_choices_schema(builder, id,
+			&info, sizeof(info), NULL, format->schema);
 }
 
 static int build_port_params(struct spa_pod_builder *builder,

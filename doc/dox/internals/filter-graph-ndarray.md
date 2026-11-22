@@ -97,6 +97,15 @@ Verification intent: inspect the ABI-v7 C and Rust layouts; accept equal
 optional schemas; reject schema mismatch and presence mismatch; and verify SPA
 schema projection, validation, and duplicate-key rejection.
 
+The shared `spa_format_ndarray_ext_build_choices_schema()` helper in
+`spa/param/ndarray-utils.h` constructs both Format and EnumFormat PODs from a
+size-bounded `spa_ndarray_info`, optional choices, and an optional exact schema
+string. The ndarray filter and FGN adapter use this helper with fixed values.
+A null schema or absent rate omits its property. Schema meaning and nonempty
+schema validation remain the port owner's responsibility. Existing builders
+delegate to this helper with a null schema. Failed construction returns null
+and sets `errno`; insufficient builder capacity reports `ENOSPC`.
+
 ### FGN-CONFIG-001 — Construction configuration boundary
 
 A node `config` value MUST be an object in PipeWire's relaxed SPA JSON syntax.
