@@ -411,6 +411,86 @@ PWTEST(ndarray_format_schema)
 	return PWTEST_PASS;
 }
 
+PWTEST(ndarray_format_encoding_bounds)
+{
+	const uint32_t capacity = SPA_POD_MAX_SIZE + 256;
+	uint8_t *buffer = malloc(capacity);
+	char *schema = malloc(SPA_POD_MAX_SIZE + 1);
+	struct spa_pod_builder builder;
+	struct spa_pod *pod;
+	struct spa_ndarray_info info = SPA_NDARRAY_INFO_INIT(
+		.element_type = SPA_ELEMENT_TYPE_F32_LE,
+		.layout = SPA_NDARRAY_LAYOUT_ROW_MAJOR,
+		.n_dimensions = 1,
+		.shape = { 1 });
+	struct spa_ndarray_choices choices = SPA_NDARRAY_CHOICES_INIT();
+	uint32_t boundary;
+
+	pwtest_ptr_notnull(buffer);
+	pwtest_ptr_notnull(schema);
+	memset(schema, 's', SPA_POD_MAX_SIZE);
+	schema[SPA_POD_MAX_SIZE] = '\0';
+	spa_pod_builder_init(&builder, buffer, capacity);
+	errno = 0;
+	pod = spa_format_ndarray_ext_build_choices_schema(&builder,
+			SPA_PARAM_Format, &info, sizeof(info), NULL, schema);
+	pwtest_bool_true(pod == NULL);
+	pwtest_int_eq(errno, EOVERFLOW);
+	pwtest_int_eq(builder.state.offset, 0U);
+
+	/* Find the largest aligned object body below the SPA validity limit. */
+	spa_pod_builder_init(&builder, buffer, capacity);
+	pod = spa_format_ndarray_ext_build_choices_schema(&builder,
+			SPA_PARAM_Format, &info, sizeof(info), NULL, "");
+	pwtest_ptr_notnull(pod);
+	boundary = SPA_POD_MAX_SIZE - pod->size - 1;
+	schema[boundary] = '\0';
+	spa_pod_builder_init(&builder, buffer, capacity);
+	pod = spa_format_ndarray_ext_build_choices_schema(&builder,
+			SPA_PARAM_Format, &info, sizeof(info), NULL, schema);
+	pwtest_ptr_notnull(pod);
+	pwtest_bool_true(SPA_POD_IS_VALID(pod));
+	pwtest_int_eq(pod->size, SPA_POD_MAX_SIZE - 8U);
+	schema[boundary] = 's';
+	schema[boundary + 1] = '\0';
+	spa_pod_builder_init(&builder, buffer, capacity);
+	errno = 0;
+	pwtest_bool_true(spa_format_ndarray_ext_build_choices_schema(&builder,
+			SPA_PARAM_Format, &info, sizeof(info), NULL, schema) == NULL);
+	pwtest_int_eq(errno, EOVERFLOW);
+	spa_pod_builder_init(&builder, buffer, capacity);
+
+	/* Counts that cannot fit must fail before reading their arrays. */
+	choices.n_element_types = UINT32_MAX;
+	choices.element_types = (const enum spa_element_type *)(uintptr_t)1;
+	pwtest_bool_true(spa_format_ndarray_ext_build_choices_schema(&builder,
+			SPA_PARAM_EnumFormat, &info, sizeof(info), &choices, NULL) == NULL);
+	pwtest_int_eq(errno, EOVERFLOW);
+	choices = SPA_NDARRAY_CHOICES_INIT(
+		.n_layouts = UINT32_MAX,
+		.layouts = (const enum spa_ndarray_layout *)(uintptr_t)1);
+	pwtest_bool_true(spa_format_ndarray_ext_build_choices_schema(&builder,
+			SPA_PARAM_EnumFormat, &info, sizeof(info), &choices, NULL) == NULL);
+	pwtest_int_eq(errno, EOVERFLOW);
+	choices = SPA_NDARRAY_CHOICES_INIT(
+		.rate_choice = SPA_CHOICE_Enum,
+		.n_rate_values = UINT32_MAX,
+		.rate_values = (const struct spa_fraction *)(uintptr_t)1);
+	info.rate = SPA_FRACTION(1000, 1);
+	pwtest_bool_true(spa_format_ndarray_ext_build_choices_schema(&builder,
+			SPA_PARAM_EnumFormat, &info, sizeof(info), &choices, NULL) == NULL);
+	pwtest_int_eq(errno, EOVERFLOW);
+	info.n_dimensions = UINT32_MAX;
+	pwtest_bool_true(spa_format_ndarray_ext_build_choices_schema(&builder,
+			SPA_PARAM_Format, &info, SIZE_MAX, NULL, NULL) == NULL);
+	pwtest_int_eq(errno, EOVERFLOW);
+	pwtest_int_eq(builder.state.offset, 0U);
+
+	free(schema);
+	free(buffer);
+	return PWTEST_PASS;
+}
+
 PWTEST(ndarray_format_schema_rank)
 {
 	uint8_t buffer[4096];
@@ -609,6 +689,7 @@ PWTEST_SUITE(spa_format)
 	pwtest_add(ndarray_format_choices, PWTEST_NOARG);
 	pwtest_add(ndarray_format_schema, PWTEST_NOARG);
 	pwtest_add(ndarray_format_schema_rank, PWTEST_NOARG);
+	pwtest_add(ndarray_format_encoding_bounds, PWTEST_NOARG);
 
 	return PWTEST_PASS;
 }

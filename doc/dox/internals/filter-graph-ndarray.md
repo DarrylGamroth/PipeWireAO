@@ -104,7 +104,11 @@ string. The ndarray filter and FGN adapter use this helper with fixed values.
 A null schema or absent rate omits its property. Schema meaning and nonempty
 schema validation remain the port owner's responsibility. Existing builders
 delegate to this helper with a null schema. Failed construction returns null
-and sets `errno`; insufficient builder capacity reports `ENOSPC`.
+and sets `errno`; insufficient builder capacity reports `ENOSPC`. Encodings
+whose object body reaches `SPA_POD_MAX_SIZE` report `EOVERFLOW`. Shape and
+choice counts are bounded before their arrays are traversed, schema scanning
+is bounded by that same limit, and the completed POD must pass
+`SPA_POD_IS_VALID`. A failed construction may advance the builder.
 
 ### FGN-CONFIG-001 — Construction configuration boundary
 

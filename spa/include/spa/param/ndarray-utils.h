@@ -340,8 +340,12 @@ static inline void spa_ndarray_build_rate(struct spa_pod_builder *builder,
  * values, and shape and schema are always fixed, even for EnumFormat.
  *
  * Return NULL with errno set to EINVAL for invalid input, EOVERFLOW for an
- * overflowing payload extent, or ENOSPC when the builder cannot fit the POD.
- * The builder may have advanced on ENOSPC; callers may reset its saved state.
+ * overflowing payload extent or an encoding whose body reaches
+ * SPA_POD_MAX_SIZE, or ENOSPC when the builder cannot fit the POD. Component
+ * sizes are bounded before traversing shapes or choices. Schema scanning is
+ * bounded by SPA_POD_MAX_SIZE; it must be terminated within that bound.
+ * The builder may have advanced on ENOSPC or EOVERFLOW; callers may reset its
+ * saved state.
  */
 SPA_API_NDARRAY_UTILS struct spa_pod *
 spa_format_ndarray_ext_build_choices_schema(struct spa_pod_builder *builder, uint32_t id,
@@ -354,11 +358,31 @@ spa_format_ndarray_ext_build_choices_schema(struct spa_pod_builder *builder, uin
 	uint32_t n_layouts = choices == NULL ? 0 : choices->n_layouts;
 	const void *element_types = choices == NULL ? NULL : choices->element_types;
 	const void *layouts = choices == NULL ? NULL : choices->layouts;
+	uint32_t n_rates = choices == NULL ? 0 : choices->n_rate_values;
+	size_t schema_length = 0;
 	int res;
 
-	if (builder == NULL ||
-	    (res = spa_ndarray_choices_validate(info, size, choices)) < 0) {
-		errno = builder == NULL ? EINVAL : -res;
+	if (builder == NULL || info == NULL || !SPA_NDARRAY_INFO_VALID_SIZE(size)) {
+		errno = EINVAL;
+		return NULL;
+	}
+	/* Bound each variable-length component before traversing caller data. */
+	if (info->n_dimensions >= SPA_POD_MAX_SIZE / sizeof(uint32_t) ||
+	    n_element_types >= SPA_POD_MAX_SIZE / sizeof(uint32_t) ||
+	    n_layouts >= SPA_POD_MAX_SIZE / sizeof(uint32_t) ||
+	    n_rates >= SPA_POD_MAX_SIZE / sizeof(struct spa_fraction)) {
+		errno = EOVERFLOW;
+		return NULL;
+	}
+	if (schema != NULL) {
+		schema_length = strnlen(schema, SPA_POD_MAX_SIZE);
+		if (schema_length >= SPA_POD_MAX_SIZE - 1) {
+			errno = EOVERFLOW;
+			return NULL;
+		}
+	}
+	if ((res = spa_ndarray_choices_validate(info, size, choices)) < 0) {
+		errno = -res;
 		return NULL;
 	}
 
@@ -378,11 +402,15 @@ spa_format_ndarray_ext_build_choices_schema(struct spa_pod_builder *builder, uin
 		spa_ndarray_build_rate(builder, &info->rate, choices);
 	if (schema != NULL) {
 		spa_pod_builder_prop(builder, SPA_FORMAT_NDARRAY_schema, 0);
-		spa_pod_builder_string(builder, schema);
+		spa_pod_builder_string_len(builder, schema, (uint32_t)schema_length);
 	}
 	pod = (struct spa_pod *)spa_pod_builder_pop(builder, &object);
 	if (pod == NULL || spa_pod_builder_corrupted(builder)) {
 		errno = ENOSPC;
+		return NULL;
+	}
+	if (!SPA_POD_IS_VALID(pod)) {
+		errno = EOVERFLOW;
 		return NULL;
 	}
 	return pod;
