@@ -117,6 +117,7 @@ struct impl {
 
 	struct {
 		struct spa_list mix_list;
+		uint64_t refcounted_drops;
 	} rt;
 
 	struct spa_list param_list;
@@ -840,7 +841,7 @@ static int tee_process_refcount(void *object)
 		}
 
 		if (impl->buffers_used == n_buffers) {
-			pw_log_warn("%p: no buffers available for recycling, dropping %u", this, buffer_id);
+			impl->rt.refcounted_drops++;
 		} else {
 			spa_list_for_each(mix, &impl->rt.mix_list, rt.link) {
 				struct spa_io_buffers *mio = mix->io[cycle];
@@ -2392,6 +2393,10 @@ void pw_impl_port_destroy(struct pw_impl_port *port)
 		pw_control_destroy(control);
 
 	pw_impl_port_remove(port);
+
+	if (impl->rt.refcounted_drops != 0)
+		pw_log_warn("%p: port %u dropped %"PRIu64" refcounted buffers with a full pool",
+				port, port->port_id, impl->rt.refcounted_drops);
 
 	if (port->global) {
 		spa_hook_remove(&port->global_listener);

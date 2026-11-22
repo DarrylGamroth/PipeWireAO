@@ -579,6 +579,88 @@ static void test_refcounted_buffer_fanout(uint32_t first)
 	pw_properties_free(producer.properties);
 }
 
+struct drop_log_capture {
+	struct spa_log log;
+	uint32_t warnings;
+	char warning[128];
+};
+
+static SPA_PRINTF_FUNC(7, 0) void
+capture_drop_warning(void *object, enum spa_log_level level,
+		const struct spa_log_topic *topic, const char *file, int line,
+		const char *func, const char *fmt, va_list args)
+{
+	struct drop_log_capture *capture = object;
+
+	if (level == SPA_LOG_LEVEL_WARN && topic == log_port) {
+		capture->warnings++;
+		vsnprintf(capture->warning, sizeof(capture->warning), fmt, args);
+	}
+}
+
+static const struct spa_log_methods drop_log_methods = {
+	SPA_VERSION_LOG_METHODS,
+	.logtv = capture_drop_warning,
+};
+
+static void test_refcounted_pool_drops(void)
+{
+	struct source_capture source = {
+		.node.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Node,
+				SPA_VERSION_NODE, &source_methods, &source),
+	};
+	struct spa_io_position position = { 0 };
+	struct pw_properties properties = { 0 };
+	struct pw_impl_node producer = { .node = &source.node, .data_loop = &data_loop,
+		.rt.position = &position, .properties = &properties };
+	struct pw_impl_port *output = new_output_port(&producer);
+	struct pw_impl_port_mix send = { 0 };
+	struct spa_io_buffers shared = SPA_IO_BUFFERS_INIT;
+	struct spa_buffer buffers[2] = { 0 };
+	struct spa_buffer *pool[] = { &buffers[0], &buffers[1] };
+	struct drop_log_capture capture = {
+		.log.iface = SPA_INTERFACE_INIT(SPA_TYPE_INTERFACE_Log,
+				SPA_VERSION_LOG, &drop_log_methods, &capture),
+	};
+	struct spa_log *previous_log = pw_log_get();
+	enum spa_log_level previous_level = pw_log_level;
+
+	set_output_mode(output, "refcounted");
+	output->buffers.n_buffers = SPA_N_ELEMENTS(pool);
+	spa_assert_se(spa_node_port_use_buffers(output->mix, SPA_DIRECTION_INPUT, 0,
+			0, pool, SPA_N_ELEMENTS(pool)) == 0);
+	spa_assert_se(pw_impl_port_init_mix(output, &send) == 0);
+	set_mix_buffers(&send, &shared);
+	pw_log_set(&capture.log);
+	pw_log_set_level(SPA_LOG_LEVEL_WARN);
+	log_port->level = SPA_LOG_LEVEL_WARN;
+
+	publish_buffer(output, 0);
+	for (uint32_t i = 0; i < 3; i++)
+		publish_buffer(output, 1);
+	spa_assert_se(capture.warnings == 0);
+	spa_assert_se(shared.status == SPA_STATUS_HAVE_DATA && shared.buffer_id == 0);
+	spa_assert_se(source.reuses[0] == 0 && source.reuses[1] == 3);
+
+	shared.status = SPA_STATUS_NEED_DATA;
+	publish_buffer(output, 1);
+	spa_assert_se(shared.status == SPA_STATUS_HAVE_DATA && shared.buffer_id == 1);
+	spa_assert_se(source.reuses[0] == 1 && source.reuses[1] == 3);
+
+	set_mix_buffers(&send, NULL);
+	output->destroying = true;
+	spa_assert_se(pw_impl_port_release_mix(output, &send) == 0);
+	spa_assert_se(source.reuses[1] == 4);
+	spa_assert_se(capture.warnings == 0);
+	output->node = NULL;
+	pw_impl_port_destroy(output);
+	spa_assert_se(capture.warnings == 1);
+	spa_assert_se(strstr(capture.warning, "dropped 3 refcounted buffers") != NULL);
+
+	pw_log_set(previous_log);
+	pw_log_set_level(previous_level);
+}
+
 static void test_active_fast_output_mode(void)
 {
 	struct spa_io_position position = { 0 };
@@ -762,6 +844,7 @@ int main(int argc, char *argv[])
 	test_non_row_reliable_recycling();
 	test_refcounted_buffer_fanout(0);
 	test_refcounted_buffer_fanout(1);
+	test_refcounted_pool_drops();
 	test_active_fast_output_mode();
 	test_legacy_output_mode_preferences();
 	test_row_output_mode();

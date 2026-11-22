@@ -303,6 +303,7 @@ struct impl {
 	bool control_lock_initialized;
 	_Atomic bool destroying;
 	_Atomic int process_error;
+	bool process_feedback_failed;	/* published with process_error */
 	_Atomic bool process_failed;
 	_Atomic bool publish_after_process;
 	bool run_control;
@@ -968,6 +969,9 @@ static void main_event(void *data, uint64_t count SPA_UNUSED)
 	res = atomic_exchange_explicit(&impl->process_error, 0,
 			memory_order_acq_rel);
 	if (res < 0 && impl->filter != NULL) {
+		if (impl->process_feedback_failed)
+			pw_log_error("ndarray feedback output incomplete: %s",
+					spa_strerror(res));
 		pw_filter_set_error(impl->filter, res,
 				"ndarray graph process failed: %s", spa_strerror(res));
 		return;
@@ -1129,7 +1133,7 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 	struct impl *impl = data;
 	bool ready = true;
 	uint32_t i;
-	int res;
+	int res, feedback_res = 0;
 
 	if (atomic_load_explicit(&impl->process_failed, memory_order_acquire))
 		return;
@@ -1199,14 +1203,10 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 #ifdef PW_ENABLE_DIAGNOSTIC_TRACE
 		fgn_process_trace_end(&impl->process_trace, record, res);
 #endif
-		if (res >= 0) {
-			int feedback_res = commit_feedback_bridges(impl);
-			if (feedback_res < 0) {
-				res = feedback_res;
-				pw_log_error("ndarray feedback output incomplete: %s",
-						spa_strerror(res));
-			}
-		}
+		if (res >= 0)
+			feedback_res = commit_feedback_bridges(impl);
+		if (feedback_res < 0)
+			res = feedback_res;
 		if (res < 0) {
 			atomic_store_explicit(&impl->process_failed, true,
 					memory_order_release);
@@ -1216,6 +1216,7 @@ static void process(void *data, struct spa_io_position *position SPA_UNUSED)
 				    buffer->datas != NULL && buffer->datas[0].chunk != NULL)
 					buffer->datas[0].chunk->size = 0;
 			}
+			impl->process_feedback_failed = feedback_res < 0;
 			if (atomic_exchange_explicit(&impl->process_error, res,
 					memory_order_acq_rel) == 0)
 				pw_loop_signal_event(impl->main_loop, impl->main_event);
