@@ -79,6 +79,7 @@ context.spa-libs = {
     # that factory.
     #
     support.*       = support/libspa-support
+    api.pipewireao.discard = discard/libspa-pipewireao-discard
     audio.convert.* = audioconvert/libspa-audioconvert
     audio.adapt     = audioconvert/libspa-audioconvert
     api.alsa.*      = alsa/libspa-alsa

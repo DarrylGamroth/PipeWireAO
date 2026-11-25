@@ -27,6 +27,7 @@ context.spa-libs = {
     #
     audio.convert.* = audioconvert/libspa-audioconvert
     support.*       = support/libspa-support
+    api.pipewireao.discard = discard/libspa-pipewireao-discard
     video.convert.* = videoconvert/libspa-videoconvert
 }
 

@@ -1,3 +1,4 @@
+subdir('discard')
 if alsa_dep.found()
   subdir('alsa')
 endif

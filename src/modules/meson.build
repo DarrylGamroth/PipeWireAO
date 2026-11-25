@@ -905,3 +905,22 @@ if build_module_avb
   )
 endif
 summary({'avb': build_module_avb}, bool_yn: true, section: 'Optional Modules')
+
+if host_machine.system() == 'linux'
+  queue_state = static_library('pipewireao-queue-state',
+    ['queue/queue.c', 'queue/buffer-transfer.c', 'queue/metadata.c'],
+    dependencies: [spa_dep, pthread_lib],
+    gnu_symbol_visibility: 'hidden',
+  )
+  queue_module = shared_library('pipewire-module-queue', 'queue/module-queue.c',
+    link_with: queue_state,
+    dependencies: [pipewire_dep, spa_dep, pthread_lib],
+    c_args: ['-DPACKAGE_VERSION="@0@"'.format(meson.project_version())],
+    gnu_symbol_visibility: 'hidden',
+    install: true,
+    install_dir: modules_install_dir,
+  )
+  if get_option('tests').allowed()
+    subdir('queue/tests')
+  endif
+endif
