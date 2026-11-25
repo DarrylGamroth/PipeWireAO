@@ -25,11 +25,15 @@ static void test_boundaries(void)
 {
 	struct pwao_queue_ring ring;
 
-	CHECK(pwao_queue_ring_init(NULL, 1) == -EINVAL);
-	CHECK(pwao_queue_ring_init(&ring, 0) == -EINVAL);
+	CHECK(pwao_queue_ring_init(NULL, 1,
+			PWAO_QUEUE_OVERFLOW_BACKPRESSURE) == -EINVAL);
+	CHECK(pwao_queue_ring_init(&ring, 0,
+			PWAO_QUEUE_OVERFLOW_BACKPRESSURE) == -EINVAL);
 	CHECK(pwao_queue_ring_init(&ring,
-			PWAO_QUEUE_RING_MAX_SLOTS + 1u) == -EINVAL);
-	CHECK(pwao_queue_ring_init(&ring, 1) == 0);
+			PWAO_QUEUE_RING_MAX_SLOTS + 1u,
+			PWAO_QUEUE_OVERFLOW_BACKPRESSURE) == -EINVAL);
+	CHECK(pwao_queue_ring_init(&ring, 1,
+			PWAO_QUEUE_OVERFLOW_BACKPRESSURE) == 0);
 	CHECK(pwao_queue_ring_size(&ring) == 0);
 }
 
@@ -38,7 +42,8 @@ static void test_fifo_and_full(void)
 	struct pwao_queue_ring ring;
 	uint64_t value;
 
-	CHECK(pwao_queue_ring_init(&ring, 3) == 0);
+	CHECK(pwao_queue_ring_init(&ring, 3,
+			PWAO_QUEUE_OVERFLOW_BACKPRESSURE) == 0);
 	CHECK(pwao_queue_ring_try_push(&ring, 10) == 1);
 	CHECK(pwao_queue_ring_try_push(&ring, 11) == 1);
 	CHECK(pwao_queue_ring_try_push(&ring, 12) == 1);
@@ -53,12 +58,32 @@ static void test_fifo_and_full(void)
 			value == UINT64_MAX);
 }
 
+static void test_position_wrap(void)
+{
+	struct pwao_queue_ring ring;
+	uint64_t value;
+
+	CHECK(pwao_queue_ring_init(&ring, 3,
+			PWAO_QUEUE_OVERFLOW_DROP_OLDEST) == 0);
+	atomic_store(&ring.read_index, UINT64_MAX - 1u);
+	atomic_store(&ring.write_index, UINT64_MAX - 1u);
+	CHECK(pwao_queue_ring_try_push(&ring, 10) == 1);
+	CHECK(pwao_queue_ring_try_push(&ring, 11) == 1);
+	CHECK(pwao_queue_ring_try_push(&ring, 12) == 1);
+	CHECK(pwao_queue_ring_try_push(&ring, 13) == 0);
+	CHECK(pwao_queue_ring_try_pop(&ring, &value) == 1 && value == 10);
+	CHECK(pwao_queue_ring_try_pop(&ring, &value) == 1 && value == 11);
+	CHECK(pwao_queue_ring_try_pop(&ring, &value) == 1 && value == 12);
+	CHECK(pwao_queue_ring_try_pop(&ring, &value) == 0);
+}
+
 static void test_conditional_claim(void)
 {
 	struct pwao_queue_ring ring;
 	uint64_t value;
 
-	CHECK(pwao_queue_ring_init(&ring, 2) == 0);
+	CHECK(pwao_queue_ring_init(&ring, 2,
+			PWAO_QUEUE_OVERFLOW_BACKPRESSURE) == 0);
 	CHECK(pwao_queue_ring_try_peek(&ring, &value) == 0 &&
 			value == UINT64_MAX);
 	CHECK(pwao_queue_ring_try_push(&ring, 41) == 1);
@@ -77,18 +102,20 @@ static void test_drop_oldest(void)
 	struct pwao_queue_ring ring;
 	uint64_t dropped, value;
 
-	CHECK(pwao_queue_ring_init(&ring, 1) == 0);
-	CHECK(pwao_queue_ring_drop_oldest_push(&ring, 1, &dropped) == 1);
+	CHECK(pwao_queue_ring_init(&ring, 1,
+			PWAO_QUEUE_OVERFLOW_DROP_OLDEST) == 0);
+	CHECK(pwao_queue_ring_admit(&ring, 1, &dropped) == PWAO_QUEUE_ADMIT_QUEUED);
 	CHECK(dropped == UINT64_MAX);
-	CHECK(pwao_queue_ring_drop_oldest_push(&ring, 2, &dropped) == 1);
+	CHECK(pwao_queue_ring_admit(&ring, 2, &dropped) == PWAO_QUEUE_ADMIT_REPLACED);
 	CHECK(dropped == 1);
 	CHECK(pwao_queue_ring_try_pop(&ring, &value) == 1 && value == 2);
 
-	CHECK(pwao_queue_ring_init(&ring, 3) == 0);
+	CHECK(pwao_queue_ring_init(&ring, 3,
+			PWAO_QUEUE_OVERFLOW_DROP_OLDEST) == 0);
 	CHECK(pwao_queue_ring_try_push(&ring, 20) == 1);
 	CHECK(pwao_queue_ring_try_push(&ring, 21) == 1);
 	CHECK(pwao_queue_ring_try_push(&ring, 22) == 1);
-	CHECK(pwao_queue_ring_drop_oldest_push(&ring, 23, &dropped) == 1);
+	CHECK(pwao_queue_ring_admit(&ring, 23, &dropped) == PWAO_QUEUE_ADMIT_REPLACED);
 	CHECK(dropped == 20);
 	CHECK(pwao_queue_ring_try_pop(&ring, &value) == 1 && value == 21);
 	CHECK(pwao_queue_ring_try_pop(&ring, &value) == 1 && value == 22);
@@ -101,7 +128,8 @@ static void test_reset(void)
 	struct pwao_queue_ring ring;
 	uint64_t value;
 
-	CHECK(pwao_queue_ring_init(&ring, 2) == 0);
+	CHECK(pwao_queue_ring_init(&ring, 2,
+			PWAO_QUEUE_OVERFLOW_BACKPRESSURE) == 0);
 	CHECK(pwao_queue_ring_try_push(&ring, 1) == 1);
 	pwao_queue_ring_reset(&ring);
 	CHECK(pwao_queue_ring_size(&ring) == 0);
@@ -117,10 +145,11 @@ static void test_wide_entries(void)
 	const uint64_t first = (UINT64_C(1) << 48) | 3u;
 	const uint64_t second = (UINT64_C(2) << 48) | 7u;
 
-	CHECK(pwao_queue_ring_init(&ring, 1) == 0);
-	CHECK(pwao_queue_ring_drop_oldest_push(&ring, first, &dropped) == 1);
+	CHECK(pwao_queue_ring_init(&ring, 1,
+			PWAO_QUEUE_OVERFLOW_DROP_OLDEST) == 0);
+	CHECK(pwao_queue_ring_admit(&ring, first, &dropped) == PWAO_QUEUE_ADMIT_QUEUED);
 	CHECK(dropped == UINT64_MAX);
-	CHECK(pwao_queue_ring_drop_oldest_push(&ring, second, &dropped) == 1);
+	CHECK(pwao_queue_ring_admit(&ring, second, &dropped) == PWAO_QUEUE_ADMIT_REPLACED);
 	CHECK(dropped == first);
 	CHECK(pwao_queue_ring_try_pop(&ring, &value) == 1 && value == second);
 }
@@ -130,50 +159,48 @@ static void test_overflow_policies(void)
 	struct pwao_queue_ring ring;
 	uint64_t released, value;
 
-	CHECK(pwao_queue_ring_init(&ring, 1) == 0);
-	CHECK(pwao_queue_ring_admit(&ring, 10,
-			PWAO_QUEUE_OVERFLOW_BACKPRESSURE, &released) ==
+	CHECK(pwao_queue_ring_init(&ring, 1,
+			PWAO_QUEUE_OVERFLOW_BACKPRESSURE) == 0);
+	CHECK(pwao_queue_ring_admit(&ring, 10, &released) ==
 			PWAO_QUEUE_ADMIT_QUEUED);
 	CHECK(released == UINT64_MAX);
-	CHECK(pwao_queue_ring_admit(&ring, 11,
-			PWAO_QUEUE_OVERFLOW_BACKPRESSURE, &released) ==
+	CHECK(pwao_queue_ring_admit(&ring, 11, &released) ==
 			PWAO_QUEUE_ADMIT_BACKPRESSURE);
 	CHECK(released == UINT64_MAX);
 	CHECK(pwao_queue_ring_try_pop(&ring, &value) == 1 && value == 10);
-	CHECK(pwao_queue_ring_admit(&ring, 11,
-			PWAO_QUEUE_OVERFLOW_BACKPRESSURE, &released) ==
+	CHECK(pwao_queue_ring_admit(&ring, 11, &released) ==
 			PWAO_QUEUE_ADMIT_QUEUED);
 	CHECK(pwao_queue_ring_try_pop(&ring, &value) == 1 && value == 11);
 
-	CHECK(pwao_queue_ring_init(&ring, 2) == 0);
+	CHECK(pwao_queue_ring_init(&ring, 2,
+			PWAO_QUEUE_OVERFLOW_DROP_NEWEST) == 0);
 	CHECK(pwao_queue_ring_try_push(&ring, 20) == 1);
 	CHECK(pwao_queue_ring_try_push(&ring, 21) == 1);
-	CHECK(pwao_queue_ring_admit(&ring, 22,
-			PWAO_QUEUE_OVERFLOW_DROP_NEWEST, &released) ==
+	CHECK(pwao_queue_ring_admit(&ring, 22, &released) ==
 			PWAO_QUEUE_ADMIT_DROPPED);
 	CHECK(released == 22);
 	CHECK(pwao_queue_ring_try_pop(&ring, &value) == 1 && value == 20);
 	CHECK(pwao_queue_ring_try_pop(&ring, &value) == 1 && value == 21);
 
-	CHECK(pwao_queue_ring_init(&ring, 2) == 0);
+	CHECK(pwao_queue_ring_init(&ring, 2,
+			PWAO_QUEUE_OVERFLOW_DROP_OLDEST) == 0);
 	CHECK(pwao_queue_ring_try_push(&ring, 30) == 1);
 	CHECK(pwao_queue_ring_try_push(&ring, 31) == 1);
-	CHECK(pwao_queue_ring_admit(&ring, 32,
-			PWAO_QUEUE_OVERFLOW_DROP_OLDEST, &released) ==
+	CHECK(pwao_queue_ring_admit(&ring, 32, &released) ==
 			PWAO_QUEUE_ADMIT_REPLACED);
 	CHECK(released == 30);
 	CHECK(pwao_queue_ring_try_pop(&ring, &value) == 1 && value == 31);
 	CHECK(pwao_queue_ring_try_pop(&ring, &value) == 1 && value == 32);
-	CHECK(pwao_queue_ring_admit(&ring, 1,
-			(enum pwao_queue_overflow)99, &released) == -EINVAL);
+	CHECK(pwao_queue_ring_init(&ring, 1,
+			(enum pwao_queue_overflow)99) == -EINVAL);
 }
 
 struct stress_state {
 	struct pwao_queue_ring ring;
 	uint64_t *payloads;
+	uint8_t *dropped;
+	uint8_t *consumed;
 	_Atomic uint32_t producer_done;
-	_Atomic uint64_t dropped;
-	_Atomic uint64_t consumed;
 	_Atomic uint32_t failure;
 };
 
@@ -190,17 +217,24 @@ static void *producer_main(void *data)
 
 	for (sequence = 0; sequence < STRESS_ITEMS; sequence++) {
 		uint64_t dropped;
+		int result;
 
 		state->payloads[sequence] = payload_for(sequence);
-		if (pwao_queue_ring_drop_oldest_push(&state->ring, sequence,
-				&dropped) != 1) {
+		result = pwao_queue_ring_admit(&state->ring, sequence, &dropped);
+		if (result != PWAO_QUEUE_ADMIT_QUEUED &&
+				result != PWAO_QUEUE_ADMIT_REPLACED) {
 			atomic_store_explicit(&state->failure, 1,
 					memory_order_relaxed);
 			break;
 		}
-		if (dropped != UINT64_MAX)
-			atomic_fetch_add_explicit(&state->dropped, 1,
-					memory_order_relaxed);
+		if (dropped != UINT64_MAX) {
+			if (dropped >= sequence || state->dropped[dropped] != 0) {
+				atomic_store_explicit(&state->failure, 1,
+						memory_order_relaxed);
+				break;
+			}
+			state->dropped[dropped] = 1;
+		}
 	}
 	atomic_store_explicit(&state->producer_done, 1, memory_order_release);
 	return NULL;
@@ -238,7 +272,7 @@ static void *consumer_main(void *data)
 					memory_order_relaxed);
 			break;
 		}
-		if (entry > UINT32_MAX) {
+		if (entry >= STRESS_ITEMS) {
 			atomic_store_explicit(&state->failure, 1,
 					memory_order_relaxed);
 			break;
@@ -252,8 +286,7 @@ static void *consumer_main(void *data)
 		}
 		previous = sequence;
 		have_previous = 1;
-		atomic_fetch_add_explicit(&state->consumed, 1,
-				memory_order_relaxed);
+		state->consumed[sequence] = 1;
 	}
 	return NULL;
 }
@@ -262,19 +295,22 @@ static void test_concurrent_replacement(uint32_t capacity)
 {
 	struct stress_state state = { 0 };
 	pthread_t producer, consumer;
-	uint64_t accounted;
+	uint32_t sequence;
 
 	state.payloads = calloc(STRESS_ITEMS, sizeof(*state.payloads));
-	CHECK(state.payloads != NULL);
-	CHECK(pwao_queue_ring_init(&state.ring, capacity) == 0);
+	state.dropped = calloc(2u * STRESS_ITEMS, sizeof(*state.dropped));
+	CHECK(state.payloads != NULL && state.dropped != NULL);
+	state.consumed = state.dropped + STRESS_ITEMS;
+	CHECK(pwao_queue_ring_init(&state.ring, capacity,
+			PWAO_QUEUE_OVERFLOW_DROP_OLDEST) == 0);
 	CHECK(pthread_create(&producer, NULL, producer_main, &state) == 0);
 	CHECK(pthread_create(&consumer, NULL, consumer_main, &state) == 0);
 	CHECK(pthread_join(producer, NULL) == 0);
 	CHECK(pthread_join(consumer, NULL) == 0);
 	CHECK(atomic_load_explicit(&state.failure, memory_order_relaxed) == 0);
-	accounted = atomic_load_explicit(&state.dropped, memory_order_relaxed) +
-			atomic_load_explicit(&state.consumed, memory_order_relaxed);
-	CHECK(accounted == STRESS_ITEMS);
+	for (sequence = 0; sequence < STRESS_ITEMS; sequence++)
+		CHECK(state.dropped[sequence] + state.consumed[sequence] == 1);
+	free(state.dropped);
 	free(state.payloads);
 }
 
@@ -282,6 +318,7 @@ int main(void)
 {
 	test_boundaries();
 	test_fifo_and_full();
+	test_position_wrap();
 	test_conditional_claim();
 	test_drop_oldest();
 	test_reset();
@@ -289,5 +326,6 @@ int main(void)
 	test_overflow_policies();
 	test_concurrent_replacement(1);
 	test_concurrent_replacement(17);
+	test_concurrent_replacement(PWAO_QUEUE_RING_MAX_SLOTS);
 	return 0;
 }

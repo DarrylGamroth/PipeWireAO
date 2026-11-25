@@ -108,8 +108,9 @@ static void prepare(struct fixture *fixture)
 	queue->n_capture_present = queue->n_playback_present = 2;
 	queue->refs = 1;
 	queue->blocked_input = SLOT_TOKEN_NONE;
-	spa_assert_se(pwao_queue_ring_init(&queue->pending, 1) == 0);
-	spa_assert_se(pwao_queue_ring_init(&queue->completions, 1) == 0);
+	spa_assert_se(pwao_queue_ring_init(&queue->pending, 1, queue->overflow) == 0);
+	spa_assert_se(pwao_queue_ring_init(&queue->completions, 1,
+			PWAO_QUEUE_OVERFLOW_BACKPRESSURE) == 0);
 	for (uint32_t i = 0; i < 2; i++) {
 		fixture->input[i].user_data = &queue->inputs[i];
 		fixture->input[i].buffer = &fixture->input_buffer[i];
@@ -217,6 +218,7 @@ static void test_capture_faults(void)
 	for (size_t i = 0; i < SPA_N_ELEMENTS(policies); i++) {
 		prepare(&fixture);
 		queue->overflow = policies[i];
+		spa_assert_se(pwao_queue_ring_init(&queue->pending, 1, queue->overflow) == 0);
 		capture.queue_result = -EIO;
 		offer_capture(&fixture.input[0], &fixture.input[1]);
 		capture_process(queue);

@@ -558,8 +558,7 @@ static void capture_process(void *data)
 				memory_order_relaxed);
 		atomic_fetch_add_explicit(&impl->input_stats.publications, 1,
 				memory_order_relaxed);
-		result = pwao_queue_ring_admit(&impl->pending, token,
-				impl->overflow, &released);
+		result = pwao_queue_ring_admit(&impl->pending, token, &released);
 		switch (result) {
 		case PWAO_QUEUE_ADMIT_QUEUED:
 			break;
@@ -2291,8 +2290,7 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 	int result;
 	struct timespec interval = { .tv_sec = 1, .tv_nsec = 0 };
 
-	result = posix_memalign((void **)&impl, SPA_CACHE_LINE_SIZE,
-			sizeof(*impl));
+	result = posix_memalign((void **)&impl, _Alignof(struct impl), sizeof(*impl));
 	if (result != 0)
 		return -result;
 	memset(impl, 0, sizeof(*impl));
@@ -2338,9 +2336,9 @@ int pipewire__module_init(struct pw_impl_module *module, const char *args)
 	if ((result = parse_options(impl, props)) < 0 ||
 			(result = setup_properties(impl, props, id)) < 0 ||
 			(result = pwao_queue_ring_init(&impl->pending,
-				impl->max_buffers)) < 0 ||
+				impl->max_buffers, impl->overflow)) < 0 ||
 			(result = pwao_queue_ring_init(&impl->completions,
-				MAX_POOL_BUFFERS)) < 0)
+				MAX_POOL_BUFFERS, PWAO_QUEUE_OVERFLOW_BACKPRESSURE)) < 0)
 		goto error;
 
 	impl->core = pw_context_get_object(context, PW_TYPE_INTERFACE_Core);
