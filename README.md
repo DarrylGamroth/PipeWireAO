@@ -25,6 +25,12 @@ the `pw_` symbol namespace, so the dynamic linker can bind a call to the wrong
 implementation according to load order. Use the separate daemon sockets for
 inter-process integration.
 
+The native distribution includes a bounded queue between graph branches and a
+single-input discard sink. The queue supports copying a complete buffer or
+leasing its storage until its consumer returns it. The discard sink exposes
+buffer and byte counts and a digest of CPU-addressable payload data.
+See the [queue contract](docs/queue.md) and [discard sink](docs/discard.md).
+
 ## Upstream foundation
 
 [PipeWire](https://pipewire.org) is a server and user space API to
