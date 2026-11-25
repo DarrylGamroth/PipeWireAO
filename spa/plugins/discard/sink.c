@@ -108,7 +108,7 @@ static const struct metric_description metric_descriptions[] = {
 	{
 		.id = SPA_PROP_PIPEWIREAO_DISCARD_PAYLOAD_DIGEST,
 		.name = SPA_PROP_INFO_PIPEWIREAO_DISCARD_PAYLOAD_DIGEST,
-		.description = "Ordered FNV-1a digest of addressable discarded payload bytes",
+		.description = "Ordered FNV-1a digest of readable MemPtr and mapped MemFd payload bytes",
 	},
 	{
 		.id = SPA_PROP_PIPEWIREAO_DISCARD_DIGEST_BYTES,
@@ -673,23 +673,24 @@ static void record_buffer(struct impl *self, const struct spa_buffer *buffer)
 	for (i = 0; i < buffer->n_datas; i++) {
 		const struct spa_data *data = &buffer->datas[i];
 
-		if (data->chunk != NULL) {
-			uint32_t offset = data->maxsize == 0 ? 0 :
-					data->chunk->offset % data->maxsize;
-			uint32_t size = SPA_MIN(data->chunk->size,
-					data->maxsize - offset);
-			const uint8_t *payload = data->data;
-			uint32_t byte;
+		const uint8_t *payload = data->data;
+		uint32_t offset, size, byte;
 
-			bytes = saturated_sum(bytes, data->chunk->size);
-			if (payload == NULL)
-				continue;
-			for (byte = 0; byte < size; byte++) {
-				digest ^= payload[offset + byte];
-				digest *= UINT64_C(1099511628211);
-			}
-			digest_bytes = saturated_sum(digest_bytes, size);
+		if (data->chunk == NULL)
+			continue;
+		bytes = saturated_sum(bytes, data->chunk->size);
+		/* Only ordinary CPU mappings can be read here without synchronization. */
+		if ((data->type != SPA_DATA_MemPtr && data->type != SPA_DATA_MemFd) ||
+				!(data->flags & SPA_DATA_FLAG_READABLE) ||
+				payload == NULL || data->maxsize == 0)
+			continue;
+		offset = data->chunk->offset % data->maxsize;
+		size = SPA_MIN(data->chunk->size, data->maxsize - offset);
+		for (byte = 0; byte < size; byte++) {
+			digest ^= payload[offset + byte];
+			digest *= UINT64_C(1099511628211);
 		}
+		digest_bytes = saturated_sum(digest_bytes, size);
 	}
 	metric_add(&self->metrics.buffers, 1);
 	metric_add(&self->metrics.data_blocks, buffer->n_datas);

@@ -200,13 +200,15 @@ static void init_test_buffers(struct test_buffer *empty,
 {
 	memset(empty, 0, sizeof(*empty));
 	memset(multi, 0, sizeof(*multi));
-	multi->datas[0].type = SPA_DATA_DmaBuf;
+	multi->datas[0].type = SPA_DATA_MemFd;
+	multi->datas[0].flags = SPA_DATA_FLAG_READABLE;
 	multi->datas[0].fd = 123;
 	multi->datas[0].maxsize = 12;
 	multi->datas[0].data = multi->payload;
 	multi->datas[0].chunk = &multi->chunks[0];
 	multi->chunks[0].size = 12;
-	multi->datas[1].type = SPA_DATA_MemId;
+	multi->datas[1].type = SPA_DATA_MemPtr;
+	multi->datas[1].flags = SPA_DATA_FLAG_READWRITE;
 	multi->datas[1].fd = -1;
 	multi->datas[1].maxsize = 34;
 	multi->datas[1].data = &multi->payload[12];
@@ -573,6 +575,27 @@ static void exercise(const struct spa_handle_factory *factory)
 	spa_assert_se(spa_node_send_command(node, &start) == -EIO);
 	spa_assert_se(spa_node_port_set_param(node, SPA_DIRECTION_INPUT, 0,
 			SPA_PARAM_Format, 0, video) == 0);
+	/* Count every block. Only the final byte of the readable MemPtr
+	 * falls inside the contiguous mapped range of this chunk. */
+	struct spa_chunk chunk = { .offset = 15, .size = 5 };
+	struct spa_data blocks[] = {
+		{ .type = SPA_DATA_MemPtr, .flags = SPA_DATA_FLAG_READABLE },
+		{ .type = SPA_DATA_MemId, .flags = SPA_DATA_FLAG_READABLE },
+		{ .type = SPA_DATA_SyncObj, .flags = SPA_DATA_FLAG_READWRITE },
+		{ .type = SPA_DATA_DmaBuf, .flags = SPA_DATA_FLAG_READABLE | SPA_DATA_FLAG_MAPPABLE },
+		{ .type = SPA_DATA_MemPtr, .flags = SPA_DATA_FLAG_WRITABLE },
+		{ .type = SPA_DATA_MemFd, .flags = SPA_DATA_FLAG_READABLE },
+		{ .type = SPA_DATA_MemPtr, .flags = SPA_DATA_FLAG_READABLE },
+	};
+	for (size_t i = 0; i < SPA_N_ELEMENTS(blocks); ++i) {
+		blocks[i].chunk = &chunk;
+		blocks[i].maxsize = 8;
+		blocks[i].data = storage[1].payload;
+	}
+	blocks[5].data = NULL; /* Unmapped MemFd. */
+	blocks[6].maxsize = 0;
+	struct spa_buffer mixed = { .n_datas = SPA_N_ELEMENTS(blocks), .datas = blocks };
+	buffers[1] = &mixed;
 	spa_assert_se(spa_node_port_use_buffers(node, SPA_DIRECTION_INPUT, 0, 0,
 			buffers, SPA_N_ELEMENTS(buffers)) == 0);
 	spa_assert_se(spa_node_port_set_io(node, SPA_DIRECTION_INPUT, 0,
@@ -582,9 +605,8 @@ static void exercise(const struct spa_handle_factory *factory)
 	spa_assert_se(spa_node_process(node) == SPA_STATUS_OK);
 	spa_assert_se(spa_node_send_command(node, &start) == 0);
 	spa_assert_se(spa_node_process(node) == SPA_STATUS_NEED_DATA);
-	digest = digest_payload(digest, storage[1].payload,
-			SPA_N_ELEMENTS(storage[1].payload));
-	expect_metrics(node, &capture, 4, 6, 138, 1, 10, digest, 138);
+	digest = digest_payload(digest, &storage[1].payload[7], 1);
+	expect_metrics(node, &capture, 4, 11, 127, 1, 10, digest, 93);
 	spa_assert_se(spa_node_send_command(node, &suspend) == 0);
 
 	spa_hook_remove(&listener);
