@@ -3,7 +3,7 @@
 
 #include "buffer-transfer.h"
 #include "queue.h"
-#include "metadata.h"
+#include <spa/buffer/meta-json.h>
 
 #include <errno.h>
 #include <inttypes.h>
@@ -143,7 +143,7 @@ struct impl {
 	struct pw_properties *capture_props;
 	struct pw_properties *playback_props;
 	struct spa_pod *format;
-    struct pwao_metadata metadata;
+    struct spa_meta_profile metadata;
 
 	struct spa_source *stats_timer;
 	struct pwao_queue_ring pending;
@@ -2120,7 +2120,7 @@ static const struct pw_impl_module_events module_events = {
 static int parse_options(struct impl *impl, const struct pw_properties *props)
 {
     const char *value;
-    int metadata_result = pwao_metadata_parse(&impl->metadata, pw_properties_get(props, "metadata"));
+    int metadata_result = spa_meta_profile_parse(&impl->metadata, pw_properties_get(props, "metadata"));
     if (metadata_result < 0) return metadata_result;
 
 	value = pw_properties_get(props, "queue.max-buffers");

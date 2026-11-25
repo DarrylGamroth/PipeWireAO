@@ -908,7 +908,7 @@ summary({'avb': build_module_avb}, bool_yn: true, section: 'Optional Modules')
 
 if host_machine.system() == 'linux'
   queue_state = static_library('pipewireao-queue-state',
-    ['queue/queue.c', 'queue/buffer-transfer.c', 'queue/metadata.c'],
+    ['queue/queue.c', 'queue/buffer-transfer.c'],
     dependencies: [spa_dep, pthread_lib],
     gnu_symbol_visibility: 'hidden',
   )

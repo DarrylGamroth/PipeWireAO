@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-#include "metadata.h"
+#include <spa/buffer/meta-json.h>
 #include <stdlib.h>
 #define CHECK(x) do { if (!(x)) abort(); } while (0)
 #include <stdio.h>
@@ -7,13 +7,13 @@
 
 int main(void)
 {
-    struct pwao_metadata metadata;
-    CHECK(pwao_metadata_parse(&metadata, NULL) == 0 && metadata.count == 1);
-    CHECK(pwao_metadata_parse(&metadata, "[]") == 0 && metadata.count == 1);
-    CHECK(pwao_metadata_parse(&metadata, "[{type=1022 size=8 required=true}]") == 0);
+    struct spa_meta_profile metadata;
+    CHECK(spa_meta_profile_parse(&metadata, NULL) == 0 && metadata.count == 1);
+    CHECK(spa_meta_profile_parse(&metadata, "[]") == 0 && metadata.count == 1);
+    CHECK(spa_meta_profile_parse(&metadata, "[{type=1022 size=8 required=true}]") == 0);
     CHECK(metadata.count == 2 && metadata.records[1].type == 1022 && metadata.records[1].flags == SPA_META_REQUIREMENT_REQUIRED);
-    CHECK(pwao_metadata_parse(&metadata, "[{type=1 size=32 required=true}]") == 0 && metadata.count == 1);
-    CHECK(pwao_metadata_parse(&metadata, "[{type=769 size=24 required=false},{type=773 size=24 required=false}]") == 0);
+    CHECK(spa_meta_profile_parse(&metadata, "[{type=1 size=32 required=true}]") == 0 && metadata.count == 1);
+    CHECK(spa_meta_profile_parse(&metadata, "[{type=769 size=24 required=false},{type=773 size=24 required=false}]") == 0);
     const char *invalid[] = {
         "[{type=769 size=64 required=false}]", "[{type=770 size=336 required=false}]",
         "[{type=773 size=32 required=false}]",
@@ -28,17 +28,17 @@ int main(void)
         "[{type=65536 size=0 required=false}]",
     };
     for (size_t i = 0; i < sizeof(invalid)/sizeof(invalid[0]); i++) {
-        int result = pwao_metadata_parse(&metadata, invalid[i]);
+        int result = spa_meta_profile_parse(&metadata, invalid[i]);
         if (result >= 0) fprintf(stderr, "accepted invalid metadata: %s\n", invalid[i]);
         CHECK(result < 0);
     }
-    CHECK(pwao_metadata_parse(&metadata, "[{type=1022 size=4064 required=true}]") == 0);
-    CHECK(pwao_metadata_parse(&metadata, "[{type=1022 size=4065 required=true}]") < 0);
+    CHECK(spa_meta_profile_parse(&metadata, "[{type=1022 size=4064 required=true}]") == 0);
+    CHECK(spa_meta_profile_parse(&metadata, "[{type=1022 size=4065 required=true}]") < 0);
     char text[8192]; size_t length = 1; text[0] = '[';
     for (unsigned i = 0; i < 64; i++) {
         length += snprintf(text + length, sizeof(text) - length, "{type=%u size=8 required=false}", 0x380 + i);
         text[length] = ']'; text[length + 1] = 0;
-        CHECK((pwao_metadata_parse(&metadata, text) == 0) == (i < 63));
+        CHECK((spa_meta_profile_parse(&metadata, text) == 0) == (i < 63));
     }
     return 0;
 }
